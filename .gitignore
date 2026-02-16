@@ -1,2 +1,46 @@
+# ── Claude Code ──────────────────────────────────────────────────────
 .claude
 
+# ── Python ──────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+.venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ── Node / Frontend ─────────────────────────────────────────────────
+node_modules/
+frontend/dist/
+frontend/.tsbuildinfo
+frontend/node_modules/.tmp/
+
+# ── Environment ─────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ── Database ────────────────────────────────────────────────────────
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+data/
+
+# ── IDE ─────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── OS ──────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db

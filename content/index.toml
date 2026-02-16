@@ -1,0 +1,16 @@
+[site]
+title = "My AgBlogger Site"
+description = "A markdown-first blog"
+default_author = ""
+timezone = "UTC"
+
+# Top-level pages. Order determines tab order. First = main page.
+# The special id "timeline" refers to the built-in post timeline.
+[[pages]]
+id = "timeline"
+title = "Posts"
+
+[[pages]]
+id = "about"
+title = "About"
+file = "about.md"
