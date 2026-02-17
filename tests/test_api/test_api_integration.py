@@ -234,6 +234,84 @@ class TestFiltering:
         assert data["total"] >= 1
 
 
+class TestSync:
+    @pytest.mark.asyncio
+    async def test_sync_init(self, client: AsyncClient) -> None:
+        # Login first
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+
+        resp = await client.post(
+            "/api/sync/init",
+            json={"client_manifest": []},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "to_upload" in data
+        assert "to_download" in data
+        # Server has files, client has empty manifest, so should see downloads
+        assert len(data["to_download"]) >= 1
+
+    @pytest.mark.asyncio
+    async def test_sync_init_requires_auth(self, client: AsyncClient) -> None:
+        resp = await client.post(
+            "/api/sync/init",
+            json={"client_manifest": []},
+        )
+        assert resp.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_sync_download(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+
+        resp = await client.get(
+            "/api/sync/download/posts/hello.md",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+        assert b"Hello World" in resp.content
+
+    @pytest.mark.asyncio
+    async def test_sync_download_nonexistent(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+
+        resp = await client.get(
+            "/api/sync/download/nonexistent.md",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_sync_commit(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+
+        resp = await client.post(
+            "/api/sync/commit",
+            json={"resolutions": {}},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "ok"
+        assert data["files_synced"] >= 1
+
+
 class TestRender:
     @pytest.mark.asyncio
     async def test_render_preview(self, client: AsyncClient) -> None:
