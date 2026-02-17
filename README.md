@@ -25,6 +25,7 @@ A markdown-first blogging platform where markdown files with YAML front matter a
 - Node.js 20+
 - [Pandoc](https://pandoc.org/installing.html)
 - [uv](https://docs.astral.sh/uv/) (recommended) or pip
+- [just](https://just.systems/) (command runner)
 - Docker & Docker Compose (for containerized deployment)
 
 ## Quick Start
@@ -33,31 +34,19 @@ A markdown-first blogging platform where markdown files with YAML front matter a
 # Install backend dependencies
 uv sync
 
-# Install frontend dependencies and build
-cd frontend && npm install && npm run build && cd ..
+# Install frontend dependencies
+cd frontend && npm install && cd ..
 
 # Copy and edit environment config
 cp .env.example .env
 
-# Run database migrations and start the server
-source .venv/bin/activate
-uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
+# Start both backend and frontend dev servers
+just dev
 ```
 
-The app is available at http://localhost:8000. API docs are at http://localhost:8000/docs.
+This starts the backend at http://localhost:8000 and the frontend at http://localhost:5173 (proxying API calls to the backend). API docs are at http://localhost:8000/docs.
 
 Default credentials: `admin` / `admin` (change via `.env`).
-
-### Frontend Development
-
-For hot-reload during frontend work, run the Vite dev server in a separate terminal:
-
-```bash
-cd frontend
-npm run dev
-```
-
-This starts http://localhost:5173 and proxies API calls to the backend.
 
 ## Testing
 
@@ -80,17 +69,17 @@ cd frontend
 npm test
 ```
 
-### Type Checking & Linting
+### Type Checking, Linting & Formatting
 
 ```bash
-# Python
-mypy backend/
-ruff check backend/
+# Run all checks (backend + frontend)
+just check
 
-# TypeScript
-cd frontend
-npm run typecheck
-npm run lint
+# Backend only (mypy, ruff check, ruff format --check)
+just check-backend
+
+# Frontend only (tsc, eslint)
+just check-frontend
 ```
 
 ## Deployment
