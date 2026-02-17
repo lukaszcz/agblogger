@@ -119,12 +119,22 @@ export default function Header() {
           <Link
             to="/labels"
             className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-              location.pathname.startsWith('/labels')
+              location.pathname === '/labels' || location.pathname.startsWith('/labels/')
                 ? 'border-accent text-accent'
                 : 'border-transparent text-muted hover:text-ink hover:border-border-dark'
             }`}
           >
             Labels
+          </Link>
+          <Link
+            to="/labels/graph"
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+              location.pathname === '/labels/graph'
+                ? 'border-accent text-accent'
+                : 'border-transparent text-muted hover:text-ink hover:border-border-dark'
+            }`}
+          >
+            Graph
           </Link>
         </nav>
       </div>

@@ -181,6 +181,59 @@ class TestAuth:
         assert resp.status_code == 401
 
 
+class TestFiltering:
+    @pytest.mark.asyncio
+    async def test_filter_by_label(self, client: AsyncClient) -> None:
+        resp = await client.get("/api/posts", params={"labels": "swe"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] >= 1
+        for post in data["posts"]:
+            assert "swe" in post["labels"]
+
+    @pytest.mark.asyncio
+    async def test_filter_by_author(self, client: AsyncClient) -> None:
+        resp = await client.get("/api/posts", params={"author": "Admin"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] >= 1
+
+    @pytest.mark.asyncio
+    async def test_filter_by_date_range(self, client: AsyncClient) -> None:
+        resp = await client.get(
+            "/api/posts", params={"from": "2026-01-01", "to": "2026-12-31"}
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] >= 1
+
+    @pytest.mark.asyncio
+    async def test_filter_no_results(self, client: AsyncClient) -> None:
+        resp = await client.get("/api/posts", params={"author": "Nonexistent"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 0
+
+    @pytest.mark.asyncio
+    async def test_label_mode_or(self, client: AsyncClient) -> None:
+        resp = await client.get(
+            "/api/posts", params={"labels": "swe", "labelMode": "or"}
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] >= 1
+
+    @pytest.mark.asyncio
+    async def test_label_mode_and(self, client: AsyncClient) -> None:
+        resp = await client.get(
+            "/api/posts", params={"labels": "swe", "labelMode": "and"}
+        )
+        assert resp.status_code == 200
+        # AND with single label same as OR
+        data = resp.json()
+        assert data["total"] >= 1
+
+
 class TestRender:
     @pytest.mark.asyncio
     async def test_render_preview(self, client: AsyncClient) -> None:

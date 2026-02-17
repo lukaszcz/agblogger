@@ -34,6 +34,7 @@ async def list_posts(
     per_page: int = 20,
     label: str | None = None,
     labels: list[str] | None = None,
+    label_mode: str = "or",
     author: str | None = None,
     from_date: str | None = None,
     to_date: str | None = None,
@@ -67,18 +68,31 @@ async def list_posts(
         # Get all descendant labels for each requested label
         from backend.services.label_service import get_label_descendant_ids
 
-        all_label_ids: set[str] = set()
-        for lid in label_ids:
-            descendants = await get_label_descendant_ids(session, lid)
-            all_label_ids.update(descendants)
+        if label_mode == "and":
+            # AND mode: post must have ALL specified labels (or descendants)
+            for lid in label_ids:
+                descendants = await get_label_descendant_ids(session, lid)
+                stmt = stmt.where(
+                    PostCache.id.in_(
+                        select(PostLabelCache.post_id).where(
+                            PostLabelCache.label_id.in_(descendants)
+                        )
+                    )
+                )
+        else:
+            # OR mode (default): post must have ANY specified label
+            all_label_ids: set[str] = set()
+            for lid in label_ids:
+                descendants = await get_label_descendant_ids(session, lid)
+                all_label_ids.update(descendants)
 
-        stmt = stmt.where(
-            PostCache.id.in_(
-                select(PostLabelCache.post_id).where(
-                    PostLabelCache.label_id.in_(all_label_ids)
+            stmt = stmt.where(
+                PostCache.id.in_(
+                    select(PostLabelCache.post_id).where(
+                        PostLabelCache.label_id.in_(all_label_ids)
+                    )
                 )
             )
-        )
 
     # Count total
     count_stmt = select(func.count()).select_from(stmt.subquery())
