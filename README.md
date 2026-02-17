@@ -161,11 +161,12 @@ Posts are markdown files with YAML front matter in the `content/posts/` director
 
 ```markdown
 ---
-title: My Post
-date: 2026-02-17
-labels: [programming, python]
-status: published
+created_at: 2026-02-02 22:21:29.975359+00
+modified_at: 2026-02-02 22:21:35.000000+00
+author: Admin
+labels: ["#swe"]
 ---
+# Hello World
 
 Post content here with **markdown**, $\LaTeX$ math, and ```code blocks```.
 ```
