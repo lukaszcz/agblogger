@@ -89,6 +89,17 @@ async def client(app_settings: Settings) -> AsyncClient:  # type: ignore[misc]
     await engine.dispose()
 
 
+class TestHealth:
+    @pytest.mark.asyncio
+    async def test_health_check(self, client: AsyncClient) -> None:
+        resp = await client.get("/api/health")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "ok"
+        assert data["version"] == "0.1.0"
+        assert data["database"] == "ok"
+
+
 class TestSiteConfig:
     @pytest.mark.asyncio
     async def test_get_site_config(self, client: AsyncClient) -> None:

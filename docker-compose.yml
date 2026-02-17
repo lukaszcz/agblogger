@@ -13,6 +13,12 @@ services:
       - CONTENT_DIR=/data/content
       - DATABASE_URL=sqlite+aiosqlite:///data/db/agblogger.db
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
 
 volumes:
   agblogger-db:

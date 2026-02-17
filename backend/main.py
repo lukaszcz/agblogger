@@ -3,19 +3,22 @@
 from __future__ import annotations
 
 import logging
+import sys
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from backend.api.auth import router as auth_router
+from backend.api.crosspost import router as crosspost_router
+from backend.api.health import router as health_router
 from backend.api.labels import router as labels_router
 from backend.api.pages import router as pages_router
 from backend.api.posts import router as posts_router
 from backend.api.render import router as render_router
-from backend.api.crosspost import router as crosspost_router
 from backend.api.sync import router as sync_router
 from backend.config import Settings
 from backend.database import create_engine
@@ -28,10 +31,28 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _configure_logging(debug: bool) -> None:
+    """Configure structured logging."""
+    level = logging.DEBUG if debug else logging.INFO
+    fmt = "%(asctime)s %(levelname)-8s %(name)s: %(message)s"
+    logging.basicConfig(
+        level=level,
+        format=fmt,
+        stream=sys.stdout,
+        force=True,
+    )
+    # Quiet noisy libraries
+    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+    logging.getLogger("sqlalchemy.engine").setLevel(
+        logging.INFO if debug else logging.WARNING
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """Application lifespan: startup and shutdown."""
     settings: Settings = app.state.settings
+    _configure_logging(settings.debug)
     logger.info("Starting AgBlogger (debug=%s)", settings.debug)
 
     # Create database engine
@@ -92,6 +113,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.settings = settings
 
+    # GZip compression for responses > 500 bytes
+    app.add_middleware(GZipMiddleware, minimum_size=500)
+
     # CORS
     app.add_middleware(
         CORSMiddleware,
@@ -102,6 +126,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
 
     # API routers
+    app.include_router(health_router)
     app.include_router(auth_router)
     app.include_router(posts_router)
     app.include_router(labels_router)
