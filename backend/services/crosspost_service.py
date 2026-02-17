@@ -1,0 +1,195 @@
+"""Cross-posting service: manages social accounts and cross-posting operations."""
+
+from __future__ import annotations
+
+import json
+import logging
+from typing import TYPE_CHECKING
+
+from sqlalchemy import select
+
+from backend.crosspost.base import CrossPostContent, CrossPostResult
+from backend.crosspost.registry import get_poster, list_platforms
+from backend.models.crosspost import CrossPost, SocialAccount
+from backend.schemas.crosspost import SocialAccountCreate
+from backend.services.datetime_service import format_datetime, now_utc
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from backend.filesystem.content_manager import ContentManager
+
+logger = logging.getLogger(__name__)
+
+
+async def create_social_account(
+    session: AsyncSession,
+    user_id: int,
+    data: SocialAccountCreate,
+) -> SocialAccount:
+    """Create a new social account connection.
+
+    Validates the platform name and stores credentials as JSON.
+    """
+    available = list_platforms()
+    if data.platform not in available:
+        msg = f"Unknown platform: {data.platform!r}. Available: {available}"
+        raise ValueError(msg)
+
+    now = format_datetime(now_utc())
+    account = SocialAccount(
+        user_id=user_id,
+        platform=data.platform,
+        account_name=data.account_name,
+        credentials=json.dumps(data.credentials),
+        created_at=now,
+        updated_at=now,
+    )
+    session.add(account)
+    await session.commit()
+    await session.refresh(account)
+    return account
+
+
+async def get_social_accounts(
+    session: AsyncSession,
+    user_id: int,
+) -> list[SocialAccount]:
+    """List all social accounts for a user."""
+    stmt = select(SocialAccount).where(SocialAccount.user_id == user_id)
+    result = await session.execute(stmt)
+    return list(result.scalars().all())
+
+
+async def delete_social_account(
+    session: AsyncSession,
+    account_id: int,
+    user_id: int,
+) -> bool:
+    """Delete a social account. Returns True if found and deleted."""
+    stmt = select(SocialAccount).where(
+        SocialAccount.id == account_id,
+        SocialAccount.user_id == user_id,
+    )
+    result = await session.execute(stmt)
+    account = result.scalar_one_or_none()
+    if account is None:
+        return False
+    await session.delete(account)
+    await session.commit()
+    return True
+
+
+async def crosspost(
+    session: AsyncSession,
+    content_manager: ContentManager,
+    post_path: str,
+    platforms: list[str],
+    user_id: int,
+    site_url: str,
+) -> list[CrossPostResult]:
+    """Cross-post a blog post to the specified platforms.
+
+    Reads the post from the content manager, builds CrossPostContent,
+    then calls each platform poster. Errors are caught per-platform
+    and recorded in the cross_posts table.
+    """
+    # Read the post
+    post_data = content_manager.read_post(post_path)
+    if post_data is None:
+        msg = f"Post not found: {post_path}"
+        raise ValueError(msg)
+
+    # Build the post URL
+    # Strip .md extension and leading posts/ for the URL slug
+    slug = post_path
+    if slug.startswith("posts/"):
+        slug = slug.removeprefix("posts/")
+    if slug.endswith(".md"):
+        slug = slug.removesuffix(".md")
+    post_url = f"{site_url.rstrip('/')}/posts/{slug}"
+
+    excerpt = content_manager.get_excerpt(post_data)
+    content = CrossPostContent(
+        title=post_data.title,
+        excerpt=excerpt,
+        url=post_url,
+        labels=post_data.labels,
+    )
+
+    # Get user's social accounts
+    stmt = select(SocialAccount).where(
+        SocialAccount.user_id == user_id,
+        SocialAccount.platform.in_(platforms),
+    )
+    result = await session.execute(stmt)
+    accounts = {acct.platform: acct for acct in result.scalars().all()}
+
+    results: list[CrossPostResult] = []
+    now = format_datetime(now_utc())
+
+    for platform_name in platforms:
+        account = accounts.get(platform_name)
+        if account is None:
+            # No account configured for this platform
+            error_msg = f"No {platform_name} account configured"
+            cp = CrossPost(
+                post_path=post_path,
+                platform=platform_name,
+                status="failed",
+                error=error_msg,
+                created_at=now,
+            )
+            session.add(cp)
+            results.append(
+                CrossPostResult(
+                    platform_id="",
+                    url="",
+                    success=False,
+                    error=error_msg,
+                )
+            )
+            continue
+
+        credentials = json.loads(account.credentials)
+        try:
+            poster = await get_poster(platform_name, credentials)
+            post_result = await poster.post(content)
+        except Exception as exc:
+            logger.exception("Cross-post to %s failed", platform_name)
+            post_result = CrossPostResult(
+                platform_id="",
+                url="",
+                success=False,
+                error=str(exc),
+            )
+
+        # Record the result
+        cp = CrossPost(
+            post_path=post_path,
+            platform=platform_name,
+            platform_id=post_result.platform_id or None,
+            status="posted" if post_result.success else "failed",
+            posted_at=now if post_result.success else None,
+            error=post_result.error,
+            created_at=now,
+        )
+        session.add(cp)
+        results.append(post_result)
+
+    await session.commit()
+    return results
+
+
+async def get_crosspost_history(
+    session: AsyncSession,
+    post_path: str,
+) -> list[CrossPost]:
+    """Get cross-posting history for a specific post."""
+    stmt = (
+        select(CrossPost)
+        .where(CrossPost.post_path == post_path)
+        .order_by(CrossPost.created_at.desc())
+    )
+    result = await session.execute(stmt)
+    return list(result.scalars().all())

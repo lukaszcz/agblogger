@@ -312,6 +312,57 @@ class TestSync:
         assert data["files_synced"] >= 1
 
 
+class TestCrosspost:
+    @pytest.mark.asyncio
+    async def test_list_accounts_requires_auth(self, client: AsyncClient) -> None:
+        resp = await client.get("/api/crosspost/accounts")
+        assert resp.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_list_accounts_empty(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+
+        resp = await client.get(
+            "/api/crosspost/accounts",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+        assert resp.json() == []
+
+    @pytest.mark.asyncio
+    async def test_create_account(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+
+        resp = await client.post(
+            "/api/crosspost/accounts",
+            json={
+                "platform": "bluesky",
+                "account_name": "test.bsky.social",
+                "credentials": {"identifier": "test", "password": "secret"},
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["platform"] == "bluesky"
+        assert data["account_name"] == "test.bsky.social"
+
+    @pytest.mark.asyncio
+    async def test_crosspost_history_empty(self, client: AsyncClient) -> None:
+        resp = await client.get("/api/crosspost/history/posts/hello.md")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["items"] == []
+
+
 class TestRender:
     @pytest.mark.asyncio
     async def test_render_preview(self, client: AsyncClient) -> None:

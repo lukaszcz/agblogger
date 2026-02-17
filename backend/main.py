@@ -15,6 +15,7 @@ from backend.api.labels import router as labels_router
 from backend.api.pages import router as pages_router
 from backend.api.posts import router as posts_router
 from backend.api.render import router as render_router
+from backend.api.crosspost import router as crosspost_router
 from backend.api.sync import router as sync_router
 from backend.config import Settings
 from backend.database import create_engine
@@ -107,6 +108,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(pages_router)
     app.include_router(render_router)
     app.include_router(sync_router)
+    app.include_router(crosspost_router)
 
     # Serve frontend static files in production
     frontend_dir = settings.frontend_dir
