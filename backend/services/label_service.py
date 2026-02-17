@@ -26,37 +26,37 @@ async def get_all_labels(session: AsyncSession) -> list[LabelResponse]:
     result = await session.execute(stmt)
     labels = result.scalars().all()
 
+    # Batch: get all parent relationships in one query
+    parent_stmt = select(LabelParentCache)
+    parent_result = await session.execute(parent_stmt)
+    all_parents = parent_result.scalars().all()
+
+    parents_map: dict[str, list[str]] = {}
+    children_map: dict[str, list[str]] = {}
+    for rel in all_parents:
+        parents_map.setdefault(rel.label_id, []).append(rel.parent_id)
+        children_map.setdefault(rel.parent_id, []).append(rel.label_id)
+
+    # Batch: get all post counts in one query
+    count_stmt = (
+        select(PostLabelCache.label_id, func.count())
+        .group_by(PostLabelCache.label_id)
+    )
+    count_result = await session.execute(count_stmt)
+    post_counts: dict[str, int] = {
+        row[0]: row[1] for row in count_result.all()
+    }
+
     responses: list[LabelResponse] = []
     for label in labels:
-        # Get parents
-        parent_stmt = select(LabelParentCache.parent_id).where(
-            LabelParentCache.label_id == label.id
-        )
-        parent_result = await session.execute(parent_stmt)
-        parents = [r[0] for r in parent_result.all()]
-
-        # Get children
-        child_stmt = select(LabelParentCache.label_id).where(
-            LabelParentCache.parent_id == label.id
-        )
-        child_result = await session.execute(child_stmt)
-        children = [r[0] for r in child_result.all()]
-
-        # Get post count
-        count_stmt = select(func.count()).select_from(PostLabelCache).where(
-            PostLabelCache.label_id == label.id
-        )
-        count_result = await session.execute(count_stmt)
-        post_count = count_result.scalar() or 0
-
         responses.append(
             LabelResponse(
                 id=label.id,
                 names=json.loads(label.names),
                 is_implicit=label.is_implicit,
-                parents=parents,
-                children=children,
-                post_count=post_count,
+                parents=parents_map.get(label.id, []),
+                children=children_map.get(label.id, []),
+                post_count=post_counts.get(label.id, 0),
             )
         )
 

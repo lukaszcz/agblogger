@@ -161,6 +161,13 @@ class SyncClient:
                 local_path.unlink()
                 print(f"  Deleted: {file_path}")
 
+        # Commit to update server manifest
+        resp = self.client.post(
+            "/api/sync/commit",
+            json={"resolutions": {}},
+        )
+        resp.raise_for_status()
+
         # Update local manifest
         local_files = scan_local_files(self.content_dir)
         save_manifest(self.content_dir, local_files)

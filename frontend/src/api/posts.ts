@@ -6,6 +6,7 @@ export interface PostListParams {
   per_page?: number
   label?: string
   labels?: string
+  labelMode?: string
   author?: string
   from?: string
   to?: string

@@ -42,6 +42,7 @@ export default function TimelinePage() {
       page,
       per_page: 10,
       labels: filterState.labels.length > 0 ? filterState.labels.join(',') : undefined,
+      labelMode: filterState.labelMode !== 'or' ? filterState.labelMode : undefined,
       author: filterState.author || undefined,
       from: filterState.fromDate || undefined,
       to: filterState.toDate || undefined,

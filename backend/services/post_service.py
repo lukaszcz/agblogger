@@ -55,7 +55,8 @@ async def list_posts(
         stmt = stmt.where(PostCache.created_at >= from_date)
 
     if to_date:
-        stmt = stmt.where(PostCache.created_at <= to_date)
+        # Include the entire day by comparing against next day
+        stmt = stmt.where(PostCache.created_at < to_date + "T23:59:59")
 
     # Label filtering
     label_ids: list[str] = []
@@ -99,7 +100,10 @@ async def list_posts(
     total_result = await session.execute(count_stmt)
     total = total_result.scalar() or 0
 
-    # Sort
+    # Sort (validated against allowlist)
+    allowed_sorts = {"created_at", "modified_at", "title", "author"}
+    if sort not in allowed_sorts:
+        sort = "created_at"
     sort_col = getattr(PostCache, sort, PostCache.created_at)
     if order == "asc":
         stmt = stmt.order_by(sort_col.asc())
@@ -113,9 +117,19 @@ async def list_posts(
     result = await session.execute(stmt)
     posts = result.scalars().all()
 
+    # Batch load labels for all posts in one query
+    post_ids = [post.id for post in posts]
+    labels_map: dict[int, list[str]] = {pid: [] for pid in post_ids}
+    if post_ids:
+        label_stmt = select(PostLabelCache.post_id, PostLabelCache.label_id).where(
+            PostLabelCache.post_id.in_(post_ids)
+        )
+        label_result = await session.execute(label_stmt)
+        for row in label_result.all():
+            labels_map[row[0]].append(row[1])
+
     summaries: list[PostSummary] = []
     for post in posts:
-        post_label_ids = await _post_labels(session, post.id)
         summaries.append(
             PostSummary(
                 id=post.id,
@@ -126,7 +140,7 @@ async def list_posts(
                 modified_at=post.modified_at,
                 is_draft=post.is_draft,
                 excerpt=post.excerpt,
-                labels=post_label_ids,
+                labels=labels_map.get(post.id, []),
             )
         )
 

@@ -99,15 +99,12 @@ async def create_post_endpoint(
         default_author=content_manager.site_config.default_author,
     )
 
-    # Write to filesystem
-    content_manager.write_post(body.file_path, post_data)
-
-    # Update cache
     from backend.filesystem.frontmatter import generate_excerpt
 
     excerpt = generate_excerpt(post_data.content)
     rendered_html = render_markdown(post_data.content)
 
+    # DB first, then filesystem — rollback DB on filesystem failure
     post = PostCache(
         file_path=body.file_path,
         title=post_data.title,
@@ -120,6 +117,14 @@ async def create_post_endpoint(
         rendered_html=rendered_html,
     )
     session.add(post)
+    await session.flush()
+
+    try:
+        content_manager.write_post(body.file_path, post_data)
+    except Exception:
+        await session.rollback()
+        raise HTTPException(status_code=500, detail="Failed to write post file")
+
     await session.commit()
     await session.refresh(post)
 
@@ -162,8 +167,6 @@ async def update_post_endpoint(
     )
     post_data.modified_at = now_utc()
 
-    content_manager.write_post(file_path, post_data)
-
     from backend.filesystem.frontmatter import generate_excerpt
 
     existing.title = post_data.title
@@ -173,6 +176,14 @@ async def update_post_endpoint(
     existing.content_hash = hash_content(body.content)
     existing.excerpt = generate_excerpt(post_data.content)
     existing.rendered_html = render_markdown(post_data.content)
+
+    await session.flush()
+
+    try:
+        content_manager.write_post(file_path, post_data)
+    except Exception:
+        await session.rollback()
+        raise HTTPException(status_code=500, detail="Failed to write post file")
 
     await session.commit()
     await session.refresh(existing)

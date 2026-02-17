@@ -102,6 +102,15 @@ class TestComputeSyncPlan:
         plan = compute_sync_plan(client, {}, server)
         assert len(plan.conflicts) == 1
 
+    def test_delete_modify_conflict(self) -> None:
+        """Server deleted, client modified = conflict."""
+        manifest = {"a.md": _entry("a.md", "original")}
+        client = {"a.md": _entry("a.md", "modified")}
+        server: dict[str, FileEntry] = {}
+        plan = compute_sync_plan(client, manifest, server)
+        assert len(plan.conflicts) == 1
+        assert plan.conflicts[0].change_type == ChangeType.DELETE_MODIFY_CONFLICT
+
     def test_multiple_files_mixed(self) -> None:
         manifest = {
             "keep.md": _entry("keep.md", "same"),

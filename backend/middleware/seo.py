@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import html
-import re
+import logging
 from typing import TYPE_CHECKING
 
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -12,6 +12,8 @@ from starlette.responses import Response
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+logger = logging.getLogger(__name__)
 
 
 class SEOMiddleware(BaseHTTPMiddleware):
@@ -72,12 +74,16 @@ class SEOMiddleware(BaseHTTPMiddleware):
                     # Inject meta tags before </head>
                     body_str = body_str.replace("</head>", f"{meta_tags}\n</head>")
         except Exception:
-            pass  # Don't break the response on SEO errors
+            logger.warning("SEO meta tag injection failed for %s", path, exc_info=True)
 
+        # Build new response with correct Content-Length
+        encoded = body_str.encode("utf-8")
+        headers = dict(response.headers)
+        headers["content-length"] = str(len(encoded))
         return Response(
-            content=body_str,
+            content=encoded,
             status_code=response.status_code,
-            headers=dict(response.headers),
+            headers=headers,
             media_type=response.media_type,
         )
 

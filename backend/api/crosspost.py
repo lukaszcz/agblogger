@@ -118,21 +118,17 @@ async def crosspost_endpoint(
             detail=str(exc),
         ) from exc
 
-    # Fetch the newly created crosspost records to return with IDs
-    history = await get_crosspost_history(session, body.post_path)
-    # Return the most recent entries matching the number of platforms
-    recent = history[: len(body.platforms)]
     return [
         CrossPostResponse(
-            id=cp.id,
-            post_path=cp.post_path,
-            platform=cp.platform,
-            platform_id=cp.platform_id,
-            status=cp.status,
-            posted_at=cp.posted_at,
-            error=cp.error,
+            id=0,  # IDs not needed in response
+            post_path=body.post_path,
+            platform=body.platforms[i] if i < len(body.platforms) else "",
+            platform_id=r.platform_id or None,
+            status="posted" if r.success else "failed",
+            posted_at=None,
+            error=r.error,
         )
-        for cp in recent
+        for i, r in enumerate(results)
     ]
 
 

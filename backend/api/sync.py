@@ -115,13 +115,16 @@ async def sync_upload(
 
     # Security: ensure path is within content dir
     target_path = file_path.lstrip("/")
-    if ".." in target_path:
+    full_path = (content_manager.content_dir / target_path).resolve()
+    if not full_path.is_relative_to(content_manager.content_dir.resolve()):
         raise HTTPException(status_code=400, detail="Invalid file path")
 
-    full_path = content_manager.content_dir / target_path
+    # Enforce max upload size (10 MB)
+    max_size = 10 * 1024 * 1024
+    content = await file.read(max_size + 1)
+    if len(content) > max_size:
+        raise HTTPException(status_code=413, detail="File too large (max 10 MB)")
     full_path.parent.mkdir(parents=True, exist_ok=True)
-
-    content = await file.read()
     full_path.write_bytes(content)
 
     return {"status": "ok", "file_path": target_path}
@@ -134,10 +137,9 @@ async def sync_download(
     user: Annotated[User, Depends(require_auth)],
 ) -> FileResponse:
     """Download a file from server to client."""
-    if ".." in file_path:
+    full_path = (content_manager.content_dir / file_path).resolve()
+    if not full_path.is_relative_to(content_manager.content_dir.resolve()):
         raise HTTPException(status_code=400, detail="Invalid file path")
-
-    full_path = content_manager.content_dir / file_path
     if not full_path.exists():
         raise HTTPException(status_code=404, detail="File not found")
 

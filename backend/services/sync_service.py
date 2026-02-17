@@ -146,8 +146,20 @@ def compute_sync_plan(
             plan.to_download.append(path)
 
         elif in_client and in_manifest and not in_server:
-            # Remote deletion
-            plan.to_delete_local.append(path)
+            # Server deleted the file — check if client modified it
+            client_hash = client_manifest[path].content_hash
+            manifest_hash = server_manifest[path].content_hash
+            if client_hash != manifest_hash:
+                # Client modified a file the server deleted
+                plan.conflicts.append(
+                    SyncChange(
+                        file_path=path,
+                        change_type=ChangeType.DELETE_MODIFY_CONFLICT,
+                        action="merge",
+                    )
+                )
+            else:
+                plan.to_delete_local.append(path)
 
         elif not in_client and in_manifest and in_server:
             # Local deletion
@@ -171,24 +183,6 @@ def compute_sync_plan(
         elif not in_client and in_manifest and not in_server:
             # Both deleted
             plan.no_change.append(path)
-
-        elif not in_client and not in_manifest and not in_server:
-            pass  # impossible
-
-        elif in_client and in_manifest and not in_server:
-            # Check if client modified before server deleted
-            client_hash = client_manifest[path].content_hash
-            manifest_hash = server_manifest[path].content_hash
-            if client_hash != manifest_hash:
-                plan.conflicts.append(
-                    SyncChange(
-                        file_path=path,
-                        change_type=ChangeType.DELETE_MODIFY_CONFLICT,
-                        action="merge",
-                    )
-                )
-            else:
-                plan.to_delete_local.append(path)
 
     return plan
 

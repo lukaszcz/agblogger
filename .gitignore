@@ -34,6 +34,11 @@ frontend/node_modules/.tmp/
 *.db-shm
 data/
 
+# ── Playwright ────────────────────────────────────────────────────────
+playwright-report/
+playwright-results/
+.playwright-mcp/
+
 # ── IDE ─────────────────────────────────────────────────────────────
 .vscode/
 .idea/
