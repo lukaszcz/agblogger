@@ -1,9 +1,41 @@
 import { render, screen } from '@testing-library/react'
+import { describe, it, expect, vi } from 'vitest'
+
+const mockFetchConfig = vi.fn()
+const mockCheckAuth = vi.fn()
+
+const siteState = {
+  config: { title: 'Test Blog', description: '', pages: [{ id: 'timeline', title: 'Posts', file: null }] },
+  isLoading: false,
+  fetchConfig: mockFetchConfig,
+}
+
+const authState = {
+  user: null,
+  isLoading: false,
+  error: null,
+  login: vi.fn(),
+  logout: vi.fn(),
+  checkAuth: mockCheckAuth,
+}
+
+vi.mock('@/stores/siteStore', () => ({
+  useSiteStore: (selector: (s: typeof siteState) => unknown) => selector(siteState),
+}))
+
+vi.mock('@/stores/authStore', () => ({
+  useAuthStore: (selector: (s: typeof authState) => unknown) => selector(authState),
+}))
+
+vi.mock('@/api/posts', () => ({
+  fetchPosts: vi.fn().mockResolvedValue({ posts: [], total: 0, page: 1, per_page: 20, total_pages: 1 }),
+}))
+
 import App from './App'
 
 describe('App', () => {
-  it('renders the app', () => {
+  it('renders the header with site title', () => {
     render(<App />)
-    expect(screen.getByText('AgBlogger')).toBeInTheDocument()
+    expect(screen.getByText('Test Blog')).toBeInTheDocument()
   })
 })

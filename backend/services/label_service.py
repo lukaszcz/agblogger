@@ -1,0 +1,138 @@
+"""Label service: DAG operations and queries."""
+
+from __future__ import annotations
+
+import json
+from typing import TYPE_CHECKING
+
+from sqlalchemy import func, select, text
+
+from backend.models.label import LabelCache, LabelParentCache, PostLabelCache
+from backend.schemas.label import (
+    LabelGraphEdge,
+    LabelGraphNode,
+    LabelGraphResponse,
+    LabelResponse,
+)
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+
+async def get_all_labels(session: AsyncSession) -> list[LabelResponse]:
+    """Get all labels with parent/child info and post counts."""
+    # Get all labels
+    stmt = select(LabelCache)
+    result = await session.execute(stmt)
+    labels = result.scalars().all()
+
+    responses: list[LabelResponse] = []
+    for label in labels:
+        # Get parents
+        parent_stmt = select(LabelParentCache.parent_id).where(
+            LabelParentCache.label_id == label.id
+        )
+        parent_result = await session.execute(parent_stmt)
+        parents = [r[0] for r in parent_result.all()]
+
+        # Get children
+        child_stmt = select(LabelParentCache.label_id).where(
+            LabelParentCache.parent_id == label.id
+        )
+        child_result = await session.execute(child_stmt)
+        children = [r[0] for r in child_result.all()]
+
+        # Get post count
+        count_stmt = select(func.count()).select_from(PostLabelCache).where(
+            PostLabelCache.label_id == label.id
+        )
+        count_result = await session.execute(count_stmt)
+        post_count = count_result.scalar() or 0
+
+        responses.append(
+            LabelResponse(
+                id=label.id,
+                names=json.loads(label.names),
+                is_implicit=label.is_implicit,
+                parents=parents,
+                children=children,
+                post_count=post_count,
+            )
+        )
+
+    return responses
+
+
+async def get_label(session: AsyncSession, label_id: str) -> LabelResponse | None:
+    """Get a single label by ID."""
+    label = await session.get(LabelCache, label_id)
+    if label is None:
+        return None
+
+    parent_stmt = select(LabelParentCache.parent_id).where(
+        LabelParentCache.label_id == label_id
+    )
+    parent_result = await session.execute(parent_stmt)
+    parents = [r[0] for r in parent_result.all()]
+
+    child_stmt = select(LabelParentCache.label_id).where(
+        LabelParentCache.parent_id == label_id
+    )
+    child_result = await session.execute(child_stmt)
+    children = [r[0] for r in child_result.all()]
+
+    count_stmt = select(func.count()).select_from(PostLabelCache).where(
+        PostLabelCache.label_id == label_id
+    )
+    count_result = await session.execute(count_stmt)
+    post_count = count_result.scalar() or 0
+
+    return LabelResponse(
+        id=label.id,
+        names=json.loads(label.names),
+        is_implicit=label.is_implicit,
+        parents=parents,
+        children=children,
+        post_count=post_count,
+    )
+
+
+async def get_label_descendant_ids(
+    session: AsyncSession, label_id: str
+) -> list[str]:
+    """Get all descendant label IDs using recursive CTE."""
+    stmt = text("""
+        WITH RECURSIVE descendants(id) AS (
+            SELECT :label_id
+            UNION ALL
+            SELECT lp.label_id
+            FROM label_parents_cache lp
+            JOIN descendants d ON lp.parent_id = d.id
+        )
+        SELECT DISTINCT id FROM descendants
+    """)
+    result = await session.execute(stmt, {"label_id": label_id})
+    return [r[0] for r in result.all()]
+
+
+async def get_label_graph(session: AsyncSession) -> LabelGraphResponse:
+    """Get the full label DAG for visualization."""
+    labels = await get_all_labels(session)
+
+    nodes = [
+        LabelGraphNode(
+            id=label.id,
+            names=label.names,
+            post_count=label.post_count,
+        )
+        for label in labels
+    ]
+
+    edge_stmt = select(LabelParentCache)
+    edge_result = await session.execute(edge_stmt)
+    edges = [
+        LabelGraphEdge(source=e.label_id, target=e.parent_id)
+        for e in edge_result.scalars().all()
+    ]
+
+    return LabelGraphResponse(nodes=nodes, edges=edges)

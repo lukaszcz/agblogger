@@ -1,0 +1,198 @@
+"""Tests for content manager and filesystem operations."""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from backend.filesystem.content_manager import (
+    ContentManager,
+    discover_posts,
+    get_directory_labels,
+    hash_content,
+)
+from backend.filesystem.frontmatter import (
+    extract_title,
+    generate_excerpt,
+    parse_labels,
+    parse_post,
+)
+from backend.filesystem.toml_manager import parse_labels_config, parse_site_config
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+
+class TestHashContent:
+    def test_hash_string(self) -> None:
+        h = hash_content("hello")
+        assert len(h) == 64  # SHA-256 hex digest
+        assert h == hash_content("hello")
+
+    def test_hash_different_content(self) -> None:
+        assert hash_content("a") != hash_content("b")
+
+
+class TestDirectoryLabels:
+    def test_post_in_subdirectory(self) -> None:
+        labels = get_directory_labels("posts/cooking/best-pasta.md")
+        assert labels == ["cooking"]
+
+    def test_nested_directories(self) -> None:
+        labels = get_directory_labels("posts/tech/swe/tips.md")
+        assert labels == ["tech", "swe"]
+
+    def test_post_in_root(self) -> None:
+        labels = get_directory_labels("posts/hello.md")
+        assert labels == []
+
+    def test_no_posts_dir(self) -> None:
+        labels = get_directory_labels("other/file.md")
+        assert labels == []
+
+
+class TestExtractTitle:
+    def test_heading(self) -> None:
+        assert extract_title("# My Title\n\nContent") == "My Title"
+
+    def test_no_heading_fallback_to_filename(self) -> None:
+        assert extract_title("No heading here", "hello-world.md") == "Hello World"
+
+    def test_date_prefix_stripped(self) -> None:
+        title = extract_title("No heading", "2026-02-02-my-post.md")
+        assert title == "My Post"
+
+    def test_untitled(self) -> None:
+        assert extract_title("No heading here") == "Untitled"
+
+
+class TestParseLabels:
+    def test_hash_labels(self) -> None:
+        assert parse_labels(["#swe", "#ai"]) == ["swe", "ai"]
+
+    def test_plain_labels(self) -> None:
+        assert parse_labels(["cooking"]) == ["cooking"]
+
+    def test_empty(self) -> None:
+        assert parse_labels(None) == []
+        assert parse_labels([]) == []
+
+
+class TestGenerateExcerpt:
+    def test_basic_excerpt(self) -> None:
+        content = "# Title\n\nThis is the first paragraph.\n\nSecond paragraph."
+        excerpt = generate_excerpt(content)
+        assert "This is the first paragraph." in excerpt
+
+    def test_truncation(self) -> None:
+        content = "Word " * 100
+        excerpt = generate_excerpt(content, max_length=50)
+        assert len(excerpt) <= 53  # 50 + "..."
+        assert excerpt.endswith("...")
+
+
+class TestParsePost:
+    def test_basic_post(self) -> None:
+        content = """---
+created_at: 2026-02-02 22:21:29.975359+00
+labels: ["#swe", "#ai"]
+---
+# My Post
+
+Content here.
+"""
+        post = parse_post(content, file_path="posts/test.md")
+        assert post.title == "My Post"
+        assert post.created_at.year == 2026
+        assert "swe" in post.labels
+        assert "ai" in post.labels
+        assert not post.is_draft
+
+    def test_draft_post(self) -> None:
+        content = """---
+created_at: 2026-01-01
+draft: true
+---
+# Draft
+
+Not published yet.
+"""
+        post = parse_post(content)
+        assert post.is_draft is True
+
+    def test_no_frontmatter(self) -> None:
+        content = "# Just a title\n\nSome content."
+        post = parse_post(content, file_path="posts/simple.md")
+        assert post.title == "Just a title"
+        assert post.labels == []
+
+
+class TestSiteConfig:
+    def test_parse_config(self, tmp_content_dir: Path) -> None:
+        config = parse_site_config(tmp_content_dir)
+        assert config.title == "Test Blog"
+        assert config.timezone == "UTC"
+        assert len(config.pages) >= 1
+
+    def test_missing_config(self, tmp_path: Path) -> None:
+        config = parse_site_config(tmp_path)
+        assert config.title == "My Blog"
+
+
+class TestLabelsConfig:
+    def test_parse_empty(self, tmp_content_dir: Path) -> None:
+        labels = parse_labels_config(tmp_content_dir)
+        assert labels == {}
+
+    def test_parse_with_entries(self, tmp_path: Path) -> None:
+        labels_path = tmp_path / "labels.toml"
+        labels_path.write_text(
+            '[labels]\n[labels.swe]\nnames = ["software engineering"]\nparent = "#cs"\n'
+            "[labels.cs]\nnames = []\n"
+        )
+        labels = parse_labels_config(tmp_path)
+        assert "swe" in labels
+        assert labels["swe"].parents == ["cs"]
+
+
+class TestContentManager:
+    def test_scan_empty(self, tmp_content_dir: Path) -> None:
+        cm = ContentManager(content_dir=tmp_content_dir)
+        posts = cm.scan_posts()
+        assert posts == []
+
+    def test_scan_with_posts(self, tmp_content_dir: Path) -> None:
+        posts_dir = tmp_content_dir / "posts"
+        (posts_dir / "test.md").write_text(
+            "---\ncreated_at: 2026-01-01\n---\n# Test\n\nContent.\n"
+        )
+        cm = ContentManager(content_dir=tmp_content_dir)
+        posts = cm.scan_posts()
+        assert len(posts) == 1
+        assert posts[0].title == "Test"
+
+    def test_discover_posts(self, tmp_content_dir: Path) -> None:
+        posts_dir = tmp_content_dir / "posts"
+        (posts_dir / "a.md").write_text("# A")
+        sub = posts_dir / "sub"
+        sub.mkdir()
+        (sub / "b.md").write_text("# B")
+        found = discover_posts(tmp_content_dir)
+        assert len(found) == 2
+
+    def test_write_and_read_post(self, tmp_content_dir: Path) -> None:
+        cm = ContentManager(content_dir=tmp_content_dir)
+        post = parse_post(
+            "---\ncreated_at: 2026-01-01\n---\n# Written\n\nBody.\n",
+            file_path="posts/written.md",
+        )
+        cm.write_post("posts/written.md", post)
+        read_back = cm.read_post("posts/written.md")
+        assert read_back is not None
+        assert read_back.title == "Written"
+
+    def test_delete_post(self, tmp_content_dir: Path) -> None:
+        posts_dir = tmp_content_dir / "posts"
+        (posts_dir / "to-delete.md").write_text("# Delete me")
+        cm = ContentManager(content_dir=tmp_content_dir)
+        assert cm.delete_post("posts/to-delete.md") is True
+        assert cm.delete_post("posts/nonexistent.md") is False

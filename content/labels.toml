@@ -1,1 +1,11 @@
 [labels]
+  [labels.cs]
+  names = ["computer science"]
+
+  [labels.swe]
+  names = ["software engineering", "programming"]
+  parent = "#cs"
+
+  [labels.ai]
+  names = ["artificial intelligence", "machine learning"]
+  parent = "#cs"

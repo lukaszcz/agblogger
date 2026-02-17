@@ -1,0 +1,64 @@
+import { useEffect, useState } from 'react'
+import { useParams, Link } from 'react-router-dom'
+import { ArrowLeft, Tag } from 'lucide-react'
+import PostCard from '@/components/posts/PostCard'
+import { fetchLabelPosts, fetchLabel } from '@/api/labels'
+import type { LabelResponse, PostListResponse } from '@/api/client'
+
+export default function LabelPostsPage() {
+  const { labelId } = useParams()
+  const [label, setLabel] = useState<LabelResponse | null>(null)
+  const [data, setData] = useState<PostListResponse | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!labelId) return
+    setLoading(true)
+    Promise.all([fetchLabel(labelId), fetchLabelPosts(labelId)])
+      .then(([l, d]) => {
+        setLabel(l)
+        setData(d)
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false))
+  }, [labelId])
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-24">
+        <div className="w-6 h-6 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="animate-fade-in">
+      <Link
+        to="/labels"
+        className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-ink transition-colors mb-6"
+      >
+        <ArrowLeft size={14} />
+        All labels
+      </Link>
+
+      <div className="flex items-center gap-3 mb-2">
+        <Tag size={20} className="text-accent" />
+        <h1 className="font-display text-3xl text-ink">#{labelId}</h1>
+      </div>
+
+      {label?.names && label.names.length > 0 && (
+        <p className="text-muted mb-8">{label.names.join(', ')}</p>
+      )}
+
+      {!data || data.posts.length === 0 ? (
+        <p className="text-muted text-center py-16">No posts with this label.</p>
+      ) : (
+        <div className="divide-y divide-border/60">
+          {data.posts.map((post, i) => (
+            <PostCard key={post.id} post={post} index={i} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}

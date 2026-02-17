@@ -1,0 +1,163 @@
+"""YAML front matter parser/serializer for blog posts."""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass, field
+from datetime import date, datetime
+from typing import Any
+
+import frontmatter
+
+from backend.services.datetime_service import format_datetime, parse_datetime
+
+
+@dataclass
+class PostData:
+    """Parsed blog post data."""
+
+    title: str
+    content: str
+    raw_content: str
+    created_at: datetime
+    modified_at: datetime
+    author: str | None = None
+    labels: list[str] = field(default_factory=list)
+    is_draft: bool = False
+    file_path: str = ""
+
+
+def extract_title(content: str, file_path: str = "") -> str:
+    """Extract title from first # heading in markdown body.
+
+    Falls back to deriving title from filename.
+    """
+    for line in content.strip().split("\n"):
+        stripped = line.strip()
+        if stripped.startswith("# ") and not stripped.startswith("## "):
+            return stripped.removeprefix("# ").strip()
+    # Fallback: derive from filename
+    if file_path:
+        name = file_path.rsplit("/", maxsplit=1)[-1]
+        name = re.sub(r"^\d{4}-\d{2}-\d{2}-?", "", name)  # strip date prefix
+        name = name.removesuffix(".md")
+        return name.replace("-", " ").replace("_", " ").title()
+    return "Untitled"
+
+
+def parse_labels(raw_labels: list[Any] | None) -> list[str]:
+    """Parse label references from front matter.
+
+    Labels are stored as '#label-id' strings.
+    """
+    if not raw_labels:
+        return []
+    result: list[str] = []
+    for label in raw_labels:
+        label_str = str(label).strip()
+        if label_str.startswith("#"):
+            result.append(label_str.removeprefix("#"))
+        else:
+            result.append(label_str)
+    return result
+
+
+def parse_post(
+    raw_content: str,
+    file_path: str = "",
+    default_tz: str = "UTC",
+    default_author: str = "",
+) -> PostData:
+    """Parse a markdown file with YAML front matter into PostData."""
+    post = frontmatter.loads(raw_content)
+
+    # Parse created_at
+    raw_created = post.get("created_at")
+    if raw_created is not None:
+        if isinstance(raw_created, date) and not isinstance(raw_created, datetime):
+            raw_created = datetime(
+                raw_created.year, raw_created.month, raw_created.day
+            )
+        created_at = parse_datetime(raw_created, default_tz=default_tz)
+    else:
+        from backend.services.datetime_service import now_utc
+
+        created_at = now_utc()
+
+    # Parse modified_at
+    raw_modified = post.get("modified_at")
+    if raw_modified is not None:
+        if isinstance(raw_modified, date) and not isinstance(raw_modified, datetime):
+            raw_modified = datetime(
+                raw_modified.year, raw_modified.month, raw_modified.day
+            )
+        modified_at = parse_datetime(raw_modified, default_tz=default_tz)
+    else:
+        modified_at = created_at
+
+    title = extract_title(post.content, file_path)
+    labels = parse_labels(post.get("labels"))
+    author = post.get("author") or default_author or None
+    is_draft = bool(post.get("draft", False))
+
+    return PostData(
+        title=title,
+        content=post.content,
+        raw_content=raw_content,
+        created_at=created_at,
+        modified_at=modified_at,
+        author=author,
+        labels=labels,
+        is_draft=is_draft,
+        file_path=file_path,
+    )
+
+
+def serialize_post(post_data: PostData) -> str:
+    """Serialize PostData back to markdown with YAML front matter."""
+    metadata: dict[str, Any] = {
+        "created_at": format_datetime(post_data.created_at),
+        "modified_at": format_datetime(post_data.modified_at),
+    }
+    if post_data.author:
+        metadata["author"] = post_data.author
+    if post_data.labels:
+        metadata["labels"] = [f"#{label}" for label in post_data.labels]
+    if post_data.is_draft:
+        metadata["draft"] = True
+
+    post = frontmatter.Post(post_data.content, **metadata)
+    return frontmatter.dumps(post) + "\n"
+
+
+def generate_excerpt(content: str, max_length: int = 200) -> str:
+    """Generate a plain-text excerpt from markdown content.
+
+    Strips headings, links, images, and code blocks.
+    """
+    lines: list[str] = []
+    in_code_block = False
+    for line in content.split("\n"):
+        if line.strip().startswith("```"):
+            in_code_block = not in_code_block
+            continue
+        if in_code_block:
+            continue
+        if line.strip().startswith("#"):
+            continue
+        if line.strip().startswith("!["):
+            continue
+        stripped = line.strip()
+        if stripped:
+            # Strip markdown links
+            stripped = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", stripped)
+            # Strip bold/italic
+            stripped = re.sub(r"[*_]{1,3}([^*_]+)[*_]{1,3}", r"\1", stripped)
+            # Strip inline code
+            stripped = re.sub(r"`([^`]+)`", r"\1", stripped)
+            lines.append(stripped)
+
+    text = " ".join(lines)
+    if len(text) > max_length:
+        text = text[:max_length].rsplit(" ", maxsplit=1)[0] + "..."
+    return text

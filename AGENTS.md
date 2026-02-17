@@ -12,6 +12,7 @@ Use the frontend-design skill to design the user interface and user experience.
 ## Completion criteria:
 - Implement all required features as specified in PLAN.md.
 - Ensure code is well-structured and follows best practices.
+- Ensure strict typing.
 - Write tests for all implemented features.
 - Ensure tests pass before moving on to the next phase.
 - Ensure the application works end-to-end. Use the playwright mcp to test in the browser.
