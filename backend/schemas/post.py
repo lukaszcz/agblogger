@@ -48,6 +48,7 @@ class PostCreate(BaseModel):
         description="Relative path under content/, e.g. posts/my-post.md",
     )
     body: str = Field(
+        min_length=1,
         max_length=500_000,
         description="Markdown body without front matter",
     )
@@ -59,6 +60,7 @@ class PostUpdate(BaseModel):
     """Request to update an existing post."""
 
     body: str = Field(
+        min_length=1,
         max_length=500_000,
         description="Markdown body without front matter",
     )

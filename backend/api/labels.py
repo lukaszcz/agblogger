@@ -59,6 +59,7 @@ async def create_label_endpoint(
         write_labels_config(content_manager.content_dir, labels)
         content_manager.reload_config()
 
+    await session.commit()
     return result
 
 

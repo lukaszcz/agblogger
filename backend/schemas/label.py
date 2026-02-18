@@ -41,6 +41,6 @@ class LabelGraphResponse(BaseModel):
 class LabelCreate(BaseModel):
     """Request to create or update a label."""
 
-    id: str = Field(min_length=1)
+    id: str = Field(min_length=1, max_length=100, pattern=r"^[a-z0-9][a-z0-9-]*$")
     names: list[str] = Field(default_factory=list)
     parents: list[str] = Field(default_factory=list)

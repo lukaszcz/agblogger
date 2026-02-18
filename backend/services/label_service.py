@@ -116,7 +116,7 @@ async def create_label(session: AsyncSession, label_id: str) -> LabelResponse | 
         is_implicit=False,
     )
     session.add(label)
-    await session.commit()
+    await session.flush()
 
     return LabelResponse(
         id=label_id,
