@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { ArrowLeft, Tag } from 'lucide-react'
+import { ArrowLeft, Tag, Settings } from 'lucide-react'
+
 import PostCard from '@/components/posts/PostCard'
+import { useAuthStore } from '@/stores/authStore'
 import { fetchLabelPosts, fetchLabel } from '@/api/labels'
 import type { LabelResponse, PostListResponse } from '@/api/client'
 
 export default function LabelPostsPage() {
   const { labelId } = useParams()
+  const user = useAuthStore((s) => s.user)
   const [label, setLabel] = useState<LabelResponse | null>(null)
   const [data, setData] = useState<PostListResponse | null>(null)
   const [loading, setLoading] = useState(true)
@@ -61,6 +64,16 @@ export default function LabelPostsPage() {
       <div className="flex items-center gap-3 mb-2">
         <Tag size={20} className="text-accent" />
         <h1 className="font-display text-3xl text-ink">#{labelId}</h1>
+        {user && (
+          <Link
+            to={`/labels/${labelId}/settings`}
+            className="ml-auto p-1.5 text-muted hover:text-ink transition-colors rounded-lg
+                     hover:bg-paper-warm"
+            aria-label="Label settings"
+          >
+            <Settings size={18} />
+          </Link>
+        )}
       </div>
 
       {label?.names && label.names.length > 0 && (

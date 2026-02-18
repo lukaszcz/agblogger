@@ -9,6 +9,7 @@ import LoginPage from '@/pages/LoginPage'
 import LabelListPage from '@/pages/LabelListPage'
 import LabelPostsPage from '@/pages/LabelPostsPage'
 import LabelGraphPage from '@/pages/LabelGraphPage'
+import LabelSettingsPage from '@/pages/LabelSettingsPage'
 import EditorPage from '@/pages/EditorPage'
 import { useSiteStore } from '@/stores/siteStore'
 import { useAuthStore } from '@/stores/authStore'
@@ -35,6 +36,7 @@ export default function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/labels" element={<LabelListPage />} />
             <Route path="/labels/graph" element={<LabelGraphPage />} />
+            <Route path="/labels/:labelId/settings" element={<LabelSettingsPage />} />
             <Route path="/labels/:labelId" element={<LabelPostsPage />} />
             <Route path="/editor/*" element={<EditorPage />} />
           </Routes>
