@@ -317,6 +317,89 @@ class TestSync:
         assert data["status"] == "ok"
         assert data["files_synced"] >= 1
 
+    @pytest.mark.asyncio
+    async def test_sync_upload_normalizes_frontmatter(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # Upload a post with NO front matter
+        content = b"# New Synced Post\n\nContent here.\n"
+        resp = await client.post(
+            "/api/sync/upload",
+            params={"file_path": "posts/synced-new.md"},
+            files={"file": ("synced-new.md", io.BytesIO(content), "text/plain")},
+            headers=headers,
+        )
+        assert resp.status_code == 200
+
+        # Commit with uploaded_files so normalization runs
+        resp = await client.post(
+            "/api/sync/commit",
+            json={"resolutions": {}, "uploaded_files": ["posts/synced-new.md"]},
+            headers=headers,
+        )
+        assert resp.status_code == 200
+
+        # Verify the post was cached with normalized timestamps
+        resp = await client.get("/api/posts/posts/synced-new.md")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["title"] == "New Synced Post"
+        assert data["created_at"] is not None
+        assert data["modified_at"] is not None
+
+    @pytest.mark.asyncio
+    async def test_sync_commit_warns_on_unrecognized_fields(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # Upload a post with an unrecognized front matter field
+        content = b"---\ncustom_field: hello\n---\n# Post\n\nContent.\n"
+        resp = await client.post(
+            "/api/sync/upload",
+            params={"file_path": "posts/custom-fields.md"},
+            files={"file": ("custom-fields.md", io.BytesIO(content), "text/plain")},
+            headers=headers,
+        )
+        assert resp.status_code == 200
+
+        # Commit with uploaded_files
+        resp = await client.post(
+            "/api/sync/commit",
+            json={"resolutions": {}, "uploaded_files": ["posts/custom-fields.md"]},
+            headers=headers,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert any("custom_field" in w for w in data["warnings"])
+
+    @pytest.mark.asyncio
+    async def test_sync_commit_backward_compatible_no_uploaded_files(
+        self, client: AsyncClient
+    ) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # Commit with no uploaded_files field at all (backward compatible)
+        resp = await client.post(
+            "/api/sync/commit",
+            json={"resolutions": {}},
+            headers=headers,
+        )
+        assert resp.status_code == 200
+
 
 class TestCrosspost:
     @pytest.mark.asyncio
