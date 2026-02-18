@@ -28,6 +28,7 @@ export default function EditorPage() {
   const [preview, setPreview] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const renderedPreview = useRenderedHtml(preview)
+  const busy = saving || previewing
 
   useEffect(() => {
     if (!isNew && filePath) {
@@ -124,7 +125,7 @@ export default function EditorPage() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => void handlePreview()}
-            disabled={previewing || saving}
+            disabled={busy}
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium
                      border border-border rounded-lg hover:bg-paper-warm disabled:opacity-50 transition-colors"
           >
@@ -133,7 +134,7 @@ export default function EditorPage() {
           </button>
           <button
             onClick={() => void handleSave()}
-            disabled={saving || previewing}
+            disabled={busy}
             className="flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium
                      bg-accent text-white rounded-lg hover:bg-accent-light disabled:opacity-50 transition-colors"
           >
@@ -160,7 +161,7 @@ export default function EditorPage() {
               type="text"
               value={newPath}
               onChange={(e) => setNewPath(e.target.value)}
-              disabled={saving}
+              disabled={busy}
               placeholder="posts/my-new-post.md"
               className="w-full px-3 py-2 bg-paper-warm border border-border rounded-lg
                        text-ink font-mono text-sm
@@ -172,7 +173,7 @@ export default function EditorPage() {
 
         <div>
           <label className="block text-xs font-medium text-muted mb-1">Labels</label>
-          <LabelInput value={labels} onChange={setLabels} disabled={saving} />
+          <LabelInput value={labels} onChange={setLabels} disabled={busy} />
         </div>
 
         <div className="flex items-center justify-between">
@@ -182,7 +183,7 @@ export default function EditorPage() {
                 type="checkbox"
                 checked={isDraft}
                 onChange={(e) => setIsDraft(e.target.checked)}
-                disabled={saving}
+                disabled={busy}
                 className="rounded border-border text-accent focus:ring-accent/20"
               />
               <span className="text-sm text-ink">Draft</span>
@@ -212,7 +213,7 @@ export default function EditorPage() {
               setBody(e.target.value)
               setPreview(null)
             }}
-            disabled={saving}
+            disabled={busy}
             className="w-full h-full min-h-[60vh] p-4 bg-paper-warm border border-border rounded-lg
                      font-mono text-sm leading-relaxed text-ink resize-none
                      focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20
