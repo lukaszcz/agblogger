@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import os
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
 
-class ChangeType(str, Enum):
+class ChangeType(StrEnum):
     """Type of change detected between client, server, and manifest."""
 
     NO_CHANGE = "no_change"
@@ -101,8 +101,8 @@ def compute_sync_plan(
     """
     plan = SyncPlan()
 
-    all_paths = set(client_manifest.keys()) | set(server_manifest.keys()) | set(
-        server_current.keys()
+    all_paths = (
+        set(client_manifest.keys()) | set(server_manifest.keys()) | set(server_current.keys())
     )
 
     for path in sorted(all_paths):

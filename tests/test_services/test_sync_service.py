@@ -3,7 +3,6 @@
 from backend.services.sync_service import (
     ChangeType,
     FileEntry,
-    SyncPlan,
     compute_sync_plan,
 )
 

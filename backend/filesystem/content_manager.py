@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from backend.filesystem.frontmatter import PostData, generate_excerpt, parse_post
@@ -16,6 +15,8 @@ from backend.filesystem.toml_manager import (
 )
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     pass
 
 

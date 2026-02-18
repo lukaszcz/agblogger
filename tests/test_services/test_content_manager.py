@@ -162,9 +162,7 @@ class TestContentManager:
 
     def test_scan_with_posts(self, tmp_content_dir: Path) -> None:
         posts_dir = tmp_content_dir / "posts"
-        (posts_dir / "test.md").write_text(
-            "---\ncreated_at: 2026-01-01\n---\n# Test\n\nContent.\n"
-        )
+        (posts_dir / "test.md").write_text("---\ncreated_at: 2026-01-01\n---\n# Test\n\nContent.\n")
         cm = ContentManager(content_dir=tmp_content_dir)
         posts = cm.scan_posts()
         assert len(posts) == 1

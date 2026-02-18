@@ -75,9 +75,7 @@ def parse_post(
     raw_created = post.get("created_at")
     if raw_created is not None:
         if isinstance(raw_created, date) and not isinstance(raw_created, datetime):
-            raw_created = datetime(
-                raw_created.year, raw_created.month, raw_created.day
-            )
+            raw_created = datetime(raw_created.year, raw_created.month, raw_created.day)
         created_at = parse_datetime(raw_created, default_tz=default_tz)
     else:
         from backend.services.datetime_service import now_utc
@@ -88,9 +86,7 @@ def parse_post(
     raw_modified = post.get("modified_at")
     if raw_modified is not None:
         if isinstance(raw_modified, date) and not isinstance(raw_modified, datetime):
-            raw_modified = datetime(
-                raw_modified.year, raw_modified.month, raw_modified.day
-            )
+            raw_modified = datetime(raw_modified.year, raw_modified.month, raw_modified.day)
         modified_at = parse_datetime(raw_modified, default_tz=default_tz)
     else:
         modified_at = created_at
@@ -127,7 +123,7 @@ def serialize_post(post_data: PostData) -> str:
         metadata["draft"] = True
 
     post = frontmatter.Post(post_data.content, **metadata)
-    return frontmatter.dumps(post) + "\n"
+    return str(frontmatter.dumps(post)) + "\n"
 
 
 def generate_excerpt(content: str, max_length: int = 200) -> str:

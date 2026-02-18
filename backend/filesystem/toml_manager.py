@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import tomllib
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import tomli_w
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @dataclass

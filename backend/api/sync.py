@@ -2,16 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.deps import get_content_manager, get_session, require_auth
-from backend.filesystem.content_manager import ContentManager
-from backend.models.user import User
 from backend.services.sync_service import (
     FileEntry,
     compute_sync_plan,
@@ -20,10 +17,17 @@ from backend.services.sync_service import (
     update_server_manifest,
 )
 
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from backend.filesystem.content_manager import ContentManager
+    from backend.models.user import User
+
 router = APIRouter(prefix="/api/sync", tags=["sync"])
 
 
 # ── Schemas ──────────────────────────────────────────
+
 
 class ManifestEntry(BaseModel):
     file_path: str
@@ -62,6 +66,7 @@ class SyncCommitResponse(BaseModel):
 
 # ── Endpoints ────────────────────────────────────────
 
+
 @router.post("/init", response_model=SyncPlanResponse)
 async def sync_init(
     body: SyncInitRequest,
@@ -87,10 +92,7 @@ async def sync_init(
     # Compute plan
     plan = compute_sync_plan(client_manifest, server_manifest, server_current)
 
-    conflicts = [
-        SyncPlanItem(file_path=c.file_path, action=c.action)
-        for c in plan.conflicts
-    ]
+    conflicts = [SyncPlanItem(file_path=c.file_path, action=c.action) for c in plan.conflicts]
 
     return SyncPlanResponse(
         to_upload=plan.to_upload,

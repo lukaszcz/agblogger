@@ -77,7 +77,7 @@ function layoutGraph(
   Dagre.layout(g)
 
   const nodes: Node[] = graphData.nodes.map((n) => {
-    const pos = g.node(n.id)
+    const pos = g.node(n.id) as { x: number; y: number }
     return {
       id: n.id,
       type: 'label',
@@ -187,7 +187,7 @@ export default function LabelGraphPage() {
 
   const onNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
-      navigate(`/labels/${node.id}`)
+      void navigate(`/labels/${node.id}`)
     },
     [navigate],
   )

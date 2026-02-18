@@ -1,9 +1,16 @@
 """Cross-posting models."""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from sqlalchemy import ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.models.base import Base
+
+if TYPE_CHECKING:
+    from backend.models.user import User
 
 
 class SocialAccount(Base):
@@ -21,11 +28,9 @@ class SocialAccount(Base):
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[str] = mapped_column(Text, nullable=False)
 
-    user: Mapped["User"] = relationship(back_populates="social_accounts")  # type: ignore[name-defined]  # noqa: F821
+    user: Mapped[User] = relationship(back_populates="social_accounts")
 
-    __table_args__ = (
-        UniqueConstraint("user_id", "platform", "account_name"),
-    )
+    __table_args__ = (UniqueConstraint("user_id", "platform", "account_name"),)
 
 
 class CrossPost(Base):

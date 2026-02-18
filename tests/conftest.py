@@ -1,6 +1,5 @@
 """Shared test fixtures for AgBlogger."""
 
-
 from typing import TYPE_CHECKING
 
 import pytest

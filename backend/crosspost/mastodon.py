@@ -69,9 +69,7 @@ class MastodonCrossPoster:
                     timeout=15.0,
                 )
                 if resp.status_code != 200:
-                    logger.warning(
-                        "Mastodon auth failed: %s %s", resp.status_code, resp.text
-                    )
+                    logger.warning("Mastodon auth failed: %s %s", resp.status_code, resp.text)
                     self._access_token = None
                     self._instance_url = None
                     return False

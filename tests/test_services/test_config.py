@@ -1,6 +1,5 @@
 """Tests for application configuration."""
 
-
 from typing import TYPE_CHECKING
 
 from backend.config import Settings

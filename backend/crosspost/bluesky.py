@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -51,15 +51,17 @@ def _find_facets(text: str, content: CrossPostContent) -> list[dict[str, Any]]:
     if url_start >= 0:
         byte_start = len(text[:url_start].encode("utf-8"))
         byte_end = byte_start + len(url.encode("utf-8"))
-        facets.append({
-            "index": {"byteStart": byte_start, "byteEnd": byte_end},
-            "features": [
-                {
-                    "$type": "app.bsky.richtext.facet#link",
-                    "uri": url,
-                }
-            ],
-        })
+        facets.append(
+            {
+                "index": {"byteStart": byte_start, "byteEnd": byte_end},
+                "features": [
+                    {
+                        "$type": "app.bsky.richtext.facet#link",
+                        "uri": url,
+                    }
+                ],
+            }
+        )
 
     # Hashtag facets
     for label in content.labels[:5]:
@@ -68,15 +70,17 @@ def _find_facets(text: str, content: CrossPostContent) -> list[dict[str, Any]]:
         if tag_start >= 0:
             byte_start = len(text[:tag_start].encode("utf-8"))
             byte_end = byte_start + len(tag_text.encode("utf-8"))
-            facets.append({
-                "index": {"byteStart": byte_start, "byteEnd": byte_end},
-                "features": [
-                    {
-                        "$type": "app.bsky.richtext.facet#tag",
-                        "tag": label,
-                    }
-                ],
-            })
+            facets.append(
+                {
+                    "index": {"byteStart": byte_start, "byteEnd": byte_end},
+                    "features": [
+                        {
+                            "$type": "app.bsky.richtext.facet#tag",
+                            "tag": label,
+                        }
+                    ],
+                }
+            )
 
     return facets
 
@@ -109,9 +113,7 @@ class BlueskyCrossPoster:
                     timeout=15.0,
                 )
                 if resp.status_code != 200:
-                    logger.warning(
-                        "Bluesky auth failed: %s %s", resp.status_code, resp.text
-                    )
+                    logger.warning("Bluesky auth failed: %s %s", resp.status_code, resp.text)
                     return False
                 data = resp.json()
                 self._access_jwt = data["accessJwt"]
@@ -138,7 +140,7 @@ class BlueskyCrossPoster:
         record: dict[str, Any] = {
             "$type": "app.bsky.feed.post",
             "text": text,
-            "createdAt": datetime.now(timezone.utc).isoformat(),
+            "createdAt": datetime.now(UTC).isoformat(),
         }
         if facets:
             record["facets"] = facets

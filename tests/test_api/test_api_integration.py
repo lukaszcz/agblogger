@@ -11,6 +11,7 @@ from backend.config import Settings
 from backend.main import create_app
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
     from pathlib import Path
 
 
@@ -40,12 +41,11 @@ def app_settings(tmp_content_dir: Path, tmp_path: Path) -> Settings:
 
 
 @pytest.fixture
-async def client(app_settings: Settings) -> AsyncClient:  # type: ignore[misc]
+async def client(app_settings: Settings) -> AsyncGenerator[AsyncClient]:
     """Create test HTTP client with lifespan triggered."""
     app = create_app(app_settings)
 
     # Manually trigger lifespan since ASGITransport doesn't
-    from contextlib import asynccontextmanager
 
     from backend.database import create_engine as create_db_engine
     from backend.filesystem.content_manager import ContentManager
@@ -84,7 +84,7 @@ async def client(app_settings: Settings) -> AsyncClient:  # type: ignore[misc]
         transport=ASGITransport(app=app),
         base_url="http://test",
     ) as ac:
-        yield ac  # type: ignore[misc]
+        yield ac
 
     await engine.dispose()
 
@@ -211,9 +211,7 @@ class TestFiltering:
 
     @pytest.mark.asyncio
     async def test_filter_by_date_range(self, client: AsyncClient) -> None:
-        resp = await client.get(
-            "/api/posts", params={"from": "2026-01-01", "to": "2026-12-31"}
-        )
+        resp = await client.get("/api/posts", params={"from": "2026-01-01", "to": "2026-12-31"})
         assert resp.status_code == 200
         data = resp.json()
         assert data["total"] >= 1
@@ -227,18 +225,14 @@ class TestFiltering:
 
     @pytest.mark.asyncio
     async def test_label_mode_or(self, client: AsyncClient) -> None:
-        resp = await client.get(
-            "/api/posts", params={"labels": "swe", "labelMode": "or"}
-        )
+        resp = await client.get("/api/posts", params={"labels": "swe", "labelMode": "or"})
         assert resp.status_code == 200
         data = resp.json()
         assert data["total"] >= 1
 
     @pytest.mark.asyncio
     async def test_label_mode_and(self, client: AsyncClient) -> None:
-        resp = await client.get(
-            "/api/posts", params={"labels": "swe", "labelMode": "and"}
-        )
+        resp = await client.get("/api/posts", params={"labels": "swe", "labelMode": "and"})
         assert resp.status_code == 200
         # AND with single label same as OR
         data = resp.json()

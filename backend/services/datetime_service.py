@@ -2,13 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING
+from datetime import UTC, datetime
 
 import pendulum
-
-if TYPE_CHECKING:
-    pass
 
 # Strict output format: YYYY-MM-DD HH:MM:SS.ffffff±TZ
 STRICT_FORMAT = "%Y-%m-%d %H:%M:%S.%f%z"
@@ -31,18 +27,19 @@ def parse_datetime(value: str | datetime, default_tz: str = "UTC") -> datetime:
     if isinstance(value, datetime):
         if value.tzinfo is None:
             tz = pendulum.timezone(default_tz)
-            value = value.replace(tzinfo=tz)  # type: ignore[arg-type]
+            value = value.replace(tzinfo=tz)
         return value
 
     value_str = value.strip()
 
     parsed = pendulum.parse(value_str, tz=default_tz, strict=False)
-    if not isinstance(parsed, pendulum.DateTime):
-        # pendulum.parse returns Date for date-only strings
-        parsed = pendulum.datetime(
-            parsed.year, parsed.month, parsed.day, tz=default_tz  # type: ignore[union-attr]
-        )
-    return parsed  # type: ignore[return-value]
+    if isinstance(parsed, pendulum.DateTime):
+        return parsed
+    if not isinstance(parsed, pendulum.Date):
+        msg = f"Cannot parse date from: {value_str}"
+        raise ValueError(msg)
+    # pendulum.parse returns Date for date-only strings
+    return pendulum.datetime(parsed.year, parsed.month, parsed.day, tz=default_tz)
 
 
 def format_datetime(dt: datetime) -> str:
@@ -51,17 +48,17 @@ def format_datetime(dt: datetime) -> str:
     Output: YYYY-MM-DD HH:MM:SS.ffffff+HH:MM
     """
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
     return dt.strftime(STRICT_FORMAT)
 
 
 def now_utc() -> datetime:
     """Return the current UTC datetime."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def format_iso(dt: datetime) -> str:
     """Format datetime as ISO 8601 for JSON serialization."""
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
     return dt.isoformat()

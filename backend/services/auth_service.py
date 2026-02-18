@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 import bcrypt
@@ -29,19 +29,15 @@ def hash_password(password: str) -> str:
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against its hash."""
-    return bcrypt.checkpw(
-        plain_password.encode("utf-8"), hashed_password.encode("utf-8")
-    )
+    return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
 
 
-def create_access_token(
-    data: dict[str, Any], secret_key: str, expires_minutes: int = 15
-) -> str:
+def create_access_token(data: dict[str, Any], secret_key: str, expires_minutes: int = 15) -> str:
     """Create a JWT access token."""
     to_encode = data.copy()
-    expire = datetime.now(timezone.utc) + timedelta(minutes=expires_minutes)
+    expire = datetime.now(UTC) + timedelta(minutes=expires_minutes)
     to_encode.update({"exp": expire, "type": "access"})
-    return jwt.encode(to_encode, secret_key, algorithm=ALGORITHM)
+    return str(jwt.encode(to_encode, secret_key, algorithm=ALGORITHM))
 
 
 def create_refresh_token_value() -> str:
@@ -65,9 +61,7 @@ def decode_access_token(token: str, secret_key: str) -> dict[str, Any] | None:
         return None
 
 
-async def authenticate_user(
-    session: AsyncSession, username: str, password: str
-) -> User | None:
+async def authenticate_user(session: AsyncSession, username: str, password: str) -> User | None:
     """Authenticate a user by username and password."""
     stmt = select(User).where(User.username == username)
     result = await session.execute(stmt)
@@ -77,9 +71,7 @@ async def authenticate_user(
     return user
 
 
-async def create_tokens(
-    session: AsyncSession, user: User, settings: Settings
-) -> tuple[str, str]:
+async def create_tokens(session: AsyncSession, user: User, settings: Settings) -> tuple[str, str]:
     """Create access and refresh token pair for a user."""
     access_token = create_access_token(
         {"sub": str(user.id), "username": user.username, "is_admin": user.is_admin},
@@ -121,7 +113,7 @@ async def refresh_tokens(
 
     # Check expiration
     expires = datetime.fromisoformat(stored_token.expires_at)
-    if expires < datetime.now(timezone.utc):
+    if expires < datetime.now(UTC):
         await session.delete(stored_token)
         await session.commit()
         return None

@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from backend.api.deps import (
     get_content_manager,
@@ -15,7 +14,6 @@ from backend.api.deps import (
 from backend.filesystem.content_manager import ContentManager, hash_content
 from backend.filesystem.frontmatter import parse_post
 from backend.models.post import PostCache
-from backend.models.user import User
 from backend.pandoc.renderer import render_markdown
 from backend.schemas.post import (
     PostCreate,
@@ -26,6 +24,11 @@ from backend.schemas.post import (
 )
 from backend.services.datetime_service import format_datetime, now_utc
 from backend.services.post_service import get_post, list_posts, search_posts
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from backend.models.user import User
 
 router = APIRouter(prefix="/api/posts", tags=["posts"])
 
@@ -123,7 +126,7 @@ async def create_post_endpoint(
         content_manager.write_post(body.file_path, post_data)
     except Exception:
         await session.rollback()
-        raise HTTPException(status_code=500, detail="Failed to write post file")
+        raise HTTPException(status_code=500, detail="Failed to write post file") from None
 
     await session.commit()
     await session.refresh(post)
@@ -183,7 +186,7 @@ async def update_post_endpoint(
         content_manager.write_post(file_path, post_data)
     except Exception:
         await session.rollback()
-        raise HTTPException(status_code=500, detail="Failed to write post file")
+        raise HTTPException(status_code=500, detail="Failed to write post file") from None
 
     await session.commit()
     await session.refresh(existing)

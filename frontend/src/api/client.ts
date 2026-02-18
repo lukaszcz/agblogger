@@ -12,7 +12,7 @@ const api = ky.create({
       },
     ],
     afterResponse: [
-      async (_request, _options, response) => {
+      (_request, _options, response) => {
         if (response.status === 401) {
           localStorage.removeItem('access_token')
           localStorage.removeItem('refresh_token')

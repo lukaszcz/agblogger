@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.deps import (
     get_content_manager,
@@ -13,9 +12,6 @@ from backend.api.deps import (
     get_settings,
     require_auth,
 )
-from backend.config import Settings
-from backend.filesystem.content_manager import ContentManager
-from backend.models.user import User
 from backend.schemas.crosspost import (
     CrossPostHistoryResponse,
     CrossPostRequest,
@@ -30,6 +26,13 @@ from backend.services.crosspost_service import (
     get_crosspost_history,
     get_social_accounts,
 )
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from backend.config import Settings
+    from backend.filesystem.content_manager import ContentManager
+    from backend.models.user import User
 
 router = APIRouter(prefix="/api/crosspost", tags=["crosspost"])
 

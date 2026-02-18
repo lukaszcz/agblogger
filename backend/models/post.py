@@ -1,9 +1,16 @@
 """Post cache models."""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from sqlalchemy import Boolean, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.models.base import Base
+
+if TYPE_CHECKING:
+    from backend.models.label import PostLabelCache
 
 
 class PostCache(Base):
@@ -22,7 +29,7 @@ class PostCache(Base):
     excerpt: Mapped[str | None] = mapped_column(Text, nullable=True)
     rendered_html: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    labels: Mapped[list["PostLabelCache"]] = relationship(  # type: ignore[name-defined]  # noqa: F821
+    labels: Mapped[list[PostLabelCache]] = relationship(
         back_populates="post", cascade="all, delete-orphan"
     )
 
@@ -40,7 +47,7 @@ class PostsFTS(Base):
     """
 
     __tablename__ = "posts_fts"
-    __table_args__ = {"info": {"is_virtual": True}}
+    __table_args__ = {"info": {"is_virtual": True}}  # noqa: RUF012
 
     rowid: Mapped[int] = mapped_column(Integer, primary_key=True)
     title: Mapped[str] = mapped_column(Text)

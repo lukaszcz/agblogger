@@ -89,9 +89,7 @@ async def list_posts(
 
             stmt = stmt.where(
                 PostCache.id.in_(
-                    select(PostLabelCache.post_id).where(
-                        PostLabelCache.label_id.in_(all_label_ids)
-                    )
+                    select(PostLabelCache.post_id).where(PostLabelCache.label_id.in_(all_label_ids))
                 )
             )
 
@@ -105,10 +103,7 @@ async def list_posts(
     if sort not in allowed_sorts:
         sort = "created_at"
     sort_col = getattr(PostCache, sort, PostCache.created_at)
-    if order == "asc":
-        stmt = stmt.order_by(sort_col.asc())
-    else:
-        stmt = stmt.order_by(sort_col.desc())
+    stmt = stmt.order_by(sort_col.asc()) if order == "asc" else stmt.order_by(sort_col.desc())
 
     # Paginate
     offset = (page - 1) * per_page
@@ -183,9 +178,7 @@ async def get_post(
     )
 
 
-async def search_posts(
-    session: AsyncSession, query: str, *, limit: int = 20
-) -> list[SearchResult]:
+async def search_posts(session: AsyncSession, query: str, *, limit: int = 20) -> list[SearchResult]:
     """Full-text search for posts."""
     stmt = text("""
         SELECT p.id, p.file_path, p.title, p.excerpt, p.created_at,

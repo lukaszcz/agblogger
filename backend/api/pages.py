@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 
 from backend.api.deps import get_content_manager
-from backend.filesystem.content_manager import ContentManager
 from backend.schemas.page import PageResponse, SiteConfigResponse
 from backend.services.page_service import get_page, get_site_config
+
+if TYPE_CHECKING:
+    from backend.filesystem.content_manager import ContentManager
 
 router = APIRouter(prefix="/api/pages", tags=["pages"])
 

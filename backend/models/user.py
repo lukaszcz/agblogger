@@ -1,9 +1,16 @@
 """User and authentication models."""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from sqlalchemy import Boolean, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.models.base import Base
+
+if TYPE_CHECKING:
+    from backend.models.crosspost import SocialAccount
 
 
 class User(Base):
@@ -20,10 +27,10 @@ class User(Base):
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[str] = mapped_column(Text, nullable=False)
 
-    refresh_tokens: Mapped[list["RefreshToken"]] = relationship(
+    refresh_tokens: Mapped[list[RefreshToken]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
-    social_accounts: Mapped[list["SocialAccount"]] = relationship(  # type: ignore[name-defined]  # noqa: F821
+    social_accounts: Mapped[list[SocialAccount]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
 
@@ -41,4 +48,4 @@ class RefreshToken(Base):
     expires_at: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
 
-    user: Mapped["User"] = relationship(back_populates="refresh_tokens")
+    user: Mapped[User] = relationship(back_populates="refresh_tokens")

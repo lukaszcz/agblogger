@@ -9,9 +9,7 @@ class SocialAccountCreate(BaseModel):
     """Request to connect a social media account."""
 
     platform: str = Field(description="Platform name, e.g. 'bluesky' or 'mastodon'")
-    account_name: str | None = Field(
-        default=None, description="Display name for the account"
-    )
+    account_name: str | None = Field(default=None, description="Display name for the account")
     credentials: dict[str, str] = Field(
         description="Platform-specific credentials (stored encrypted)"
     )
@@ -30,9 +28,7 @@ class CrossPostRequest(BaseModel):
     """Request to cross-post a blog post."""
 
     post_path: str = Field(description="Relative file path of the post to cross-post")
-    platforms: list[str] = Field(
-        description="List of platform names to post to"
-    )
+    platforms: list[str] = Field(description="List of platform names to post to")
 
 
 class CrossPostResponse(BaseModel):

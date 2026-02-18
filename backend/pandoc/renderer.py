@@ -17,7 +17,7 @@ def render_markdown(markdown: str) -> str:
     """
     try:
         result = subprocess.run(
-            [
+            [  # noqa: S607
                 "pandoc",
                 "-f",
                 "gfm+tex_math_dollars+footnotes+raw_html",
@@ -48,6 +48,7 @@ def render_markdown(markdown: str) -> str:
 
 def _add_heading_anchors(html: str) -> str:
     """Add id attributes to headings for anchor links."""
+
     def _add_id(match: re.Match[str]) -> str:
         tag = match.group(1)
         attrs = match.group(2)
@@ -56,7 +57,7 @@ def _add_heading_anchors(html: str) -> str:
             return match.group(0)
         slug = re.sub(r"[^\w\s-]", "", content.lower())
         slug = re.sub(r"[\s]+", "-", slug).strip("-")
-        return f"<{tag}{attrs} id=\"{slug}\">{content}</{tag}>"
+        return f'<{tag}{attrs} id="{slug}">{content}</{tag}>'
 
     return re.sub(
         r"<(h[1-6])([^>]*)>(.*?)</\1>",

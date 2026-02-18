@@ -10,13 +10,17 @@ export default function PageViewPage() {
 
   useEffect(() => {
     if (!pageId) return
-    setLoading(true)
-    api
-      .get(`pages/${pageId}`)
-      .json<PageResponse>()
-      .then(setPage)
-      .catch(console.error)
-      .finally(() => setLoading(false))
+    void (async () => {
+      setLoading(true)
+      try {
+        const p = await api.get(`pages/${pageId}`).json<PageResponse>()
+        setPage(p)
+      } catch (err) {
+        console.error(err)
+      } finally {
+        setLoading(false)
+      }
+    })()
   }, [pageId])
 
   if (loading) {

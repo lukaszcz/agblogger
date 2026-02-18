@@ -16,11 +16,17 @@ export default function PostPage() {
 
   useEffect(() => {
     if (!filePath) return
-    setLoading(true)
-    fetchPost(filePath)
-      .then(setPost)
-      .catch(() => setError('Post not found'))
-      .finally(() => setLoading(false))
+    void (async () => {
+      setLoading(true)
+      try {
+        const p = await fetchPost(filePath)
+        setPost(p)
+      } catch {
+        setError('Post not found')
+      } finally {
+        setLoading(false)
+      }
+    })()
   }, [filePath])
 
   if (loading) {

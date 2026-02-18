@@ -12,11 +12,17 @@ export default function SearchPage() {
 
   useEffect(() => {
     if (!query.trim()) return
-    setLoading(true)
-    searchPosts(query)
-      .then(setResults)
-      .catch(console.error)
-      .finally(() => setLoading(false))
+    void (async () => {
+      setLoading(true)
+      try {
+        const r = await searchPosts(query)
+        setResults(r)
+      } catch (err) {
+        console.error(err)
+      } finally {
+        setLoading(false)
+      }
+    })()
   }, [query])
 
   return (

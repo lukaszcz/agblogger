@@ -32,7 +32,7 @@ async def get_poster(platform: str, credentials: dict[str, str]) -> CrossPoster:
         msg = f"Failed to authenticate with {platform}"
         raise ValueError(msg)
 
-    return poster  # type: ignore[return-value]
+    return poster
 
 
 def list_platforms() -> list[str]:

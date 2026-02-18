@@ -2,16 +2,18 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.deps import get_session
 from backend.schemas.label import LabelGraphResponse, LabelResponse
 from backend.schemas.post import PostListResponse
 from backend.services.label_service import get_all_labels, get_label, get_label_graph
 from backend.services.post_service import get_posts_by_label
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/api/labels", tags=["labels"])
 

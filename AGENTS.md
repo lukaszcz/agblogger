@@ -35,7 +35,7 @@ cd frontend && npm run test:coverage
 - Classes: `PascalCase` (e.g., `PostCache`, `TokenResponse`)
 - Async: all database and I/O operations use `async def`
 - Imports: `from __future__ import annotations` at the top of every module; isort ordering (stdlib, third-party, first-party)
-- Type hints: strict typing discipline; modern union syntax (`str | None`, `dict[str, Any]`, `list[str]`); `Annotated` for FastAPI dependencies
+- Typing: strict typing discipline; avoid `type: ignore` comments; modern union syntax (`str | None`, `dict[str, Any]`, `list[str]`); `Annotated` for FastAPI dependencies
 - Pydantic models: inherit `BaseModel`, snake_case fields, `Field()` for validation, docstrings on every model
 - SQLAlchemy models: inherit `Base`, `__tablename__` in snake_case, `Mapped[type]` + `mapped_column()` syntax
 - FastAPI routes: `APIRouter` with prefix/tags, `response_model` on decorators, dependencies via `Annotated[Type, Depends(...)]`
@@ -44,7 +44,7 @@ cd frontend && npm run test:coverage
 
 ### TypeScript (frontend/src/)
 
-- Formatting: ESLint with typescript-eslint (type-checked rules)
+- Formatting: ESLint with typescript-eslint (type-checked rules); avoid `eslint-disable-line`
 - Component files: `PascalCase.tsx` (e.g., `TimelinePage.tsx`, `PostCard.tsx`)
 - Utility/store/API files: `camelCase.ts` (e.g., `authStore.ts`, `client.ts`)
 - Components: functional, using arrow or function syntax; default export for page components

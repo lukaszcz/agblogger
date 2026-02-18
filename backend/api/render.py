@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel
-
 from fastapi import APIRouter
+from pydantic import BaseModel
 
 from backend.pandoc.renderer import render_markdown
 

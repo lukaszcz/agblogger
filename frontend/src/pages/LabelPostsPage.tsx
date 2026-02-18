@@ -13,14 +13,18 @@ export default function LabelPostsPage() {
 
   useEffect(() => {
     if (!labelId) return
-    setLoading(true)
-    Promise.all([fetchLabel(labelId), fetchLabelPosts(labelId)])
-      .then(([l, d]) => {
+    void (async () => {
+      setLoading(true)
+      try {
+        const [l, d] = await Promise.all([fetchLabel(labelId), fetchLabelPosts(labelId)])
         setLabel(l)
         setData(d)
-      })
-      .catch(console.error)
-      .finally(() => setLoading(false))
+      } catch (err) {
+        console.error(err)
+      } finally {
+        setLoading(false)
+      }
+    })()
   }, [labelId])
 
   if (loading) {

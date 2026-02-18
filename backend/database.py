@@ -1,6 +1,5 @@
 """Database engine and session management."""
 
-
 from typing import TYPE_CHECKING
 
 from sqlalchemy.ext.asyncio import (
@@ -16,7 +15,9 @@ if TYPE_CHECKING:
     from backend.config import Settings
 
 
-def create_engine(settings: Settings) -> tuple[
+def create_engine(
+    settings: Settings,
+) -> tuple[
     AsyncEngine,
     async_sessionmaker[AsyncSession],
 ]:

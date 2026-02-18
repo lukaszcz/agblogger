@@ -62,9 +62,7 @@ def load_manifest(content_dir: Path) -> dict[str, FileEntry]:
     if not manifest_path.exists():
         return {}
     data = json.loads(manifest_path.read_text())
-    return {
-        k: FileEntry(**v) for k, v in data.items()
-    }
+    return {k: FileEntry(**v) for k, v in data.items()}
 
 
 def save_manifest(content_dir: Path, entries: dict[str, FileEntry]) -> None:
@@ -93,7 +91,8 @@ class SyncClient:
             json={"username": username, "password": password},
         )
         resp.raise_for_status()
-        return resp.json()["access_token"]
+        result: str = resp.json()["access_token"]
+        return result
 
     def status(self) -> dict[str, Any]:
         """Show what would change without syncing."""
@@ -105,7 +104,8 @@ class SyncClient:
             json={"client_manifest": manifest},
         )
         resp.raise_for_status()
-        return resp.json()
+        result: dict[str, Any] = resp.json()
+        return result
 
     def push(self) -> None:
         """Push local changes to server."""
@@ -241,7 +241,8 @@ def load_config(dir_path: Path) -> dict[str, str]:
     config_path = dir_path / CONFIG_FILE
     if not config_path.exists():
         return {}
-    return json.loads(config_path.read_text())
+    config: dict[str, str] = json.loads(config_path.read_text())
+    return config
 
 
 def save_config(dir_path: Path, config: dict[str, str]) -> None:
@@ -256,9 +257,7 @@ def main() -> None:
         prog="agblogger-sync",
         description="Sync local content with AgBlogger server",
     )
-    parser.add_argument(
-        "--dir", "-d", default=".", help="Content directory (default: current)"
-    )
+    parser.add_argument("--dir", "-d", default=".", help="Content directory (default: current)")
     parser.add_argument("--server", "-s", help="Server URL")
     parser.add_argument("--username", "-u", help="Username for authentication")
     parser.add_argument("--password", "-p", help="Password for authentication")

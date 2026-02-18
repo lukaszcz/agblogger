@@ -11,13 +11,13 @@ from sqlalchemy import select
 from backend.crosspost.base import CrossPostContent, CrossPostResult
 from backend.crosspost.registry import get_poster, list_platforms
 from backend.models.crosspost import CrossPost, SocialAccount
-from backend.schemas.crosspost import SocialAccountCreate
 from backend.services.datetime_service import format_datetime, now_utc
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from backend.filesystem.content_manager import ContentManager
+    from backend.schemas.crosspost import SocialAccountCreate
 
 logger = logging.getLogger(__name__)
 

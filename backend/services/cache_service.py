@@ -57,9 +57,7 @@ async def rebuild_cache(session: AsyncSession, content_manager: ContentManager) 
         for parent_id in label_def.parents:
             # Ensure parent exists
             if parent_id not in labels_config:
-                parent_label = LabelCache(
-                    id=parent_id, names="[]", is_implicit=True
-                )
+                parent_label = LabelCache(id=parent_id, names="[]", is_implicit=True)
                 session.add(parent_label)
                 await session.flush()
             edge = LabelParentCache(label_id=label_id, parent_id=parent_id)
@@ -111,9 +109,7 @@ async def rebuild_cache(session: AsyncSession, content_manager: ContentManager) 
             # Ensure label exists
             existing = await session.get(LabelCache, label_id)
             if not existing:
-                implicit_label = LabelCache(
-                    id=label_id, names="[]", is_implicit=True
-                )
+                implicit_label = LabelCache(id=label_id, names="[]", is_implicit=True)
                 session.add(implicit_label)
                 await session.flush()
 
@@ -123,9 +119,7 @@ async def rebuild_cache(session: AsyncSession, content_manager: ContentManager) 
 
             dir_labels = get_directory_labels(post_data.file_path)
             if label_id in dir_labels and label_id not in [
-                lbl
-                for lbl in post_data.labels
-                if lbl not in dir_labels
+                lbl for lbl in post_data.labels if lbl not in dir_labels
             ]:
                 source = "directory"
 
@@ -147,9 +141,8 @@ async def ensure_tables(session: AsyncSession) -> None:
     """Create all tables if they don't exist (for development)."""
     from backend.models.base import Base
 
-    bind = session.get_bind()
-    async with bind.begin() as conn:  # type: ignore[union-attr]
-        await conn.run_sync(Base.metadata.create_all)
+    conn = await session.connection()
+    await conn.run_sync(Base.metadata.create_all)
 
     # Create FTS table
     await session.execute(

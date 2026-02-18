@@ -1,6 +1,6 @@
 """Tests for datetime parsing service."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from backend.services.datetime_service import format_datetime, now_utc, parse_datetime
 
@@ -28,7 +28,7 @@ class TestDatetimeParsing:
         assert result.hour == 10
 
     def test_parse_datetime_object(self) -> None:
-        dt = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+        dt = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
         result = parse_datetime(dt)
         assert result == dt
 
@@ -38,7 +38,7 @@ class TestDatetimeParsing:
         assert result.tzinfo is not None
 
     def test_format_datetime(self) -> None:
-        dt = datetime(2026, 2, 2, 22, 21, 29, 975359, tzinfo=timezone.utc)
+        dt = datetime(2026, 2, 2, 22, 21, 29, 975359, tzinfo=UTC)
         result = format_datetime(dt)
         assert "2026-02-02" in result
         assert "22:21:29" in result

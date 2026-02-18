@@ -38,14 +38,9 @@ async def get_all_labels(session: AsyncSession) -> list[LabelResponse]:
         children_map.setdefault(rel.parent_id, []).append(rel.label_id)
 
     # Batch: get all post counts in one query
-    count_stmt = (
-        select(PostLabelCache.label_id, func.count())
-        .group_by(PostLabelCache.label_id)
-    )
+    count_stmt = select(PostLabelCache.label_id, func.count()).group_by(PostLabelCache.label_id)
     count_result = await session.execute(count_stmt)
-    post_counts: dict[str, int] = {
-        row[0]: row[1] for row in count_result.all()
-    }
+    post_counts: dict[str, int] = {row[0]: row[1] for row in count_result.all()}
 
     responses: list[LabelResponse] = []
     for label in labels:
@@ -69,20 +64,16 @@ async def get_label(session: AsyncSession, label_id: str) -> LabelResponse | Non
     if label is None:
         return None
 
-    parent_stmt = select(LabelParentCache.parent_id).where(
-        LabelParentCache.label_id == label_id
-    )
+    parent_stmt = select(LabelParentCache.parent_id).where(LabelParentCache.label_id == label_id)
     parent_result = await session.execute(parent_stmt)
     parents = [r[0] for r in parent_result.all()]
 
-    child_stmt = select(LabelParentCache.label_id).where(
-        LabelParentCache.parent_id == label_id
-    )
+    child_stmt = select(LabelParentCache.label_id).where(LabelParentCache.parent_id == label_id)
     child_result = await session.execute(child_stmt)
     children = [r[0] for r in child_result.all()]
 
-    count_stmt = select(func.count()).select_from(PostLabelCache).where(
-        PostLabelCache.label_id == label_id
+    count_stmt = (
+        select(func.count()).select_from(PostLabelCache).where(PostLabelCache.label_id == label_id)
     )
     count_result = await session.execute(count_stmt)
     post_count = count_result.scalar() or 0
@@ -97,9 +88,7 @@ async def get_label(session: AsyncSession, label_id: str) -> LabelResponse | Non
     )
 
 
-async def get_label_descendant_ids(
-    session: AsyncSession, label_id: str
-) -> list[str]:
+async def get_label_descendant_ids(session: AsyncSession, label_id: str) -> list[str]:
     """Get all descendant label IDs using recursive CTE."""
     stmt = text("""
         WITH RECURSIVE descendants(id) AS (
@@ -131,8 +120,7 @@ async def get_label_graph(session: AsyncSession) -> LabelGraphResponse:
     edge_stmt = select(LabelParentCache)
     edge_result = await session.execute(edge_stmt)
     edges = [
-        LabelGraphEdge(source=e.label_id, target=e.parent_id)
-        for e in edge_result.scalars().all()
+        LabelGraphEdge(source=e.label_id, target=e.parent_id) for e in edge_result.scalars().all()
     ]
 
     return LabelGraphResponse(nodes=nodes, edges=edges)

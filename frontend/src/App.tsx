@@ -18,8 +18,8 @@ export default function App() {
   const checkAuth = useAuthStore((s) => s.checkAuth)
 
   useEffect(() => {
-    fetchConfig()
-    checkAuth()
+    void fetchConfig()
+    void checkAuth()
   }, [fetchConfig, checkAuth])
 
   return (

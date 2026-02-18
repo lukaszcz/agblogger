@@ -36,13 +36,13 @@ export default function EditorPage() {
     setSaving(true)
     setError(null)
     try {
-      const path = isNew ? newPath : filePath!
+      const path = isNew ? newPath : filePath
       if (isNew) {
         await createPost(path, content)
       } else {
         await updatePost(path, content)
       }
-      navigate(`/post/${path}`)
+      void navigate(`/post/${path}`)
     } catch {
       setError('Failed to save post')
     } finally {
@@ -68,7 +68,7 @@ export default function EditorPage() {
     <div className="animate-fade-in">
       <div className="flex items-center justify-between mb-6">
         <button
-          onClick={() => navigate(-1)}
+          onClick={() => void navigate(-1)}
           className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-ink transition-colors"
         >
           <ArrowLeft size={14} />
@@ -77,7 +77,7 @@ export default function EditorPage() {
 
         <div className="flex items-center gap-2">
           <button
-            onClick={handlePreview}
+            onClick={() => void handlePreview()}
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium
                      border border-border rounded-lg hover:bg-paper-warm transition-colors"
           >
@@ -85,7 +85,7 @@ export default function EditorPage() {
             Preview
           </button>
           <button
-            onClick={handleSave}
+            onClick={() => void handleSave()}
             disabled={saving}
             className="flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium
                      bg-accent text-white rounded-lg hover:bg-accent-light disabled:opacity-50 transition-colors"

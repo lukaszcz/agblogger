@@ -17,9 +17,7 @@ def get_site_config(content_manager: ContentManager) -> SiteConfigResponse:
     return SiteConfigResponse(
         title=cfg.title,
         description=cfg.description,
-        pages=[
-            PageConfig(id=p.id, title=p.title, file=p.file) for p in cfg.pages
-        ],
+        pages=[PageConfig(id=p.id, title=p.title, file=p.file) for p in cfg.pages],
     )
 
 

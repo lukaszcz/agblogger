@@ -7,11 +7,12 @@ import logging
 from typing import TYPE_CHECKING
 
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import Response, StreamingResponse
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Awaitable, Callable
+
+    from starlette.requests import Request
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,9 @@ class SEOMiddleware(BaseHTTPMiddleware):
     og:title, og:description, og:url, og:type, and twitter:card tags.
     """
 
-    async def dispatch(self, request: Request, call_next: Callable) -> Response:  # type: ignore[type-arg]
+    async def dispatch(
+        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
         response = await call_next(request)
 
         # Only process HTML responses for post pages
@@ -33,9 +36,10 @@ class SEOMiddleware(BaseHTTPMiddleware):
         if not path.startswith("/post/") or "text/html" not in content_type:
             return response
 
-        # Read the response body
+        # Read the response body (call_next always returns StreamingResponse)
+        assert isinstance(response, StreamingResponse)
         body = b""
-        async for chunk in response.body_iterator:  # type: ignore[union-attr]
+        async for chunk in response.body_iterator:
             if isinstance(chunk, str):
                 body += chunk.encode("utf-8")
             else:
