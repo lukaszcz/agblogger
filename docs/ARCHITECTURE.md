@@ -119,7 +119,7 @@ Content here...
 
 ### Label DAG
 
-Labels form a Directed Acyclic Graph where edges point from child to parent (subcategory to supercategory). They are defined in `content/labels.toml`:
+Labels form a Directed Acyclic Graph where edges point from child to parent (subcategory to supercategory). Labels can have **multiple parents**. They are defined in `content/labels.toml`:
 
 ```toml
 [labels.cs]
@@ -128,9 +128,19 @@ names = ["computer science"]
 [labels.swe]
 names = ["software engineering", "programming"]
 parent = "#cs"
+
+[labels.quantum]
+names = ["quantum mechanics"]
+parents = ["#math", "#physics"]
 ```
 
-Descendant queries use recursive CTEs in SQLite, enabling a "show me all posts in #cs including subcategories" pattern. The graph is visualized in the frontend using React Flow with Dagre auto-layout.
+Single parent uses `parent = "#id"`, multiple parents use `parents = ["#id1", "#id2"]`. The TOML parser accepts both forms; the writer intelligently chooses singular vs plural.
+
+**Cycle enforcement** operates at two levels:
+- **Cache rebuild / sync** (batch): DFS with back-edge detection in O(V+E). Cycles in `labels.toml` are automatically broken by dropping edges, with warnings returned in the sync response and logged at startup.
+- **API (single-edge additions)**: Recursive CTE checks if the proposed parent is already a descendant of the label, returning 409 on cycle.
+
+Descendant queries use recursive CTEs in SQLite, enabling a "show me all posts in #cs including subcategories" pattern. The graph is visualized and editable in the frontend using React Flow with Dagre auto-layout.
 
 ### TOML Configuration
 
@@ -179,7 +189,7 @@ On startup, the lifespan handler:
 |--------|--------|---------|
 | `auth` | `/api/auth` | Login, register, refresh tokens, current user |
 | `posts` | `/api/posts` | CRUD, search, listing with pagination/filtering, structured editor data |
-| `labels` | `/api/labels` | Label CRUD, listing, graph data, posts by label |
+| `labels` | `/api/labels` | Label CRUD (create, update, delete), listing, graph data, posts by label |
 | `pages` | `/api/pages` | Site config, rendered page content |
 | `sync` | `/api/sync` | Bidirectional sync protocol |
 | `crosspost` | `/api/crosspost` | Social account management, cross-posting |
@@ -311,8 +321,9 @@ A platform registry maps names to poster classes. Each cross-post attempt is rec
 | `/search` | SearchPage | Full-text search results |
 | `/login` | LoginPage | Login form |
 | `/labels` | LabelListPage | Label list with post counts |
-| `/labels/graph` | LabelGraphPage | Interactive DAG visualization |
+| `/labels/graph` | LabelGraphPage | Interactive DAG visualization (auth: edge create/delete) |
 | `/labels/:labelId` | LabelPostsPage | Posts filtered by label |
+| `/labels/:labelId/settings` | LabelSettingsPage | Label names, parents, delete (auth required) |
 | `/editor/*` | EditorPage | Structured metadata bar + split-pane markdown editor |
 
 ### State Management
