@@ -19,43 +19,47 @@ class PostSummary(BaseModel):
     labels: list[str] = Field(default_factory=list)
 
 
-class PostDetail(BaseModel):
+class PostDetail(PostSummary):
     """Full post detail with rendered HTML."""
 
-    id: int
-    file_path: str
-    title: str
-    author: str | None = None
-    created_at: str
-    modified_at: str
-    is_draft: bool = False
-    excerpt: str | None = None
-    labels: list[str] = Field(default_factory=list)
     rendered_html: str
-    content: str | None = None  # Raw markdown, only for authenticated users
+    content: str | None = None
 
 
 class PostCreate(BaseModel):
     """Request to create a new post."""
 
-    file_path: str = Field(description="Relative path under content/, e.g. posts/my-post.md")
-    content: str = Field(description="Full markdown content including front matter")
+    file_path: str = Field(
+        min_length=1,
+        max_length=500,
+        pattern=r"^posts/.*\.md$",
+        description="Relative path under content/, e.g. posts/my-post.md",
+    )
+    content: str = Field(
+        min_length=1,
+        max_length=500_000,
+        description="Full markdown content including front matter",
+    )
 
 
 class PostUpdate(BaseModel):
     """Request to update an existing post."""
 
-    content: str = Field(description="Full markdown content including front matter")
+    content: str = Field(
+        min_length=1,
+        max_length=500_000,
+        description="Full markdown content including front matter",
+    )
 
 
 class PostListResponse(BaseModel):
     """Paginated post list response."""
 
     posts: list[PostSummary]
-    total: int
-    page: int
-    per_page: int
-    total_pages: int
+    total: int = Field(ge=0)
+    page: int = Field(ge=1)
+    per_page: int = Field(ge=1)
+    total_pages: int = Field(ge=0)
 
 
 class SearchResult(BaseModel):

@@ -111,22 +111,17 @@ async def refresh_tokens(
     if stored_token is None:
         return None
 
-    # Check expiration
     expires = datetime.fromisoformat(stored_token.expires_at)
     if expires < datetime.now(UTC):
         await session.delete(stored_token)
         await session.commit()
         return None
 
-    # Get user
     user = await session.get(User, stored_token.user_id)
     if user is None:
         return None
 
-    # Revoke old token
     await session.delete(stored_token)
-
-    # Issue new tokens
     return await create_tokens(session, user, settings)
 
 

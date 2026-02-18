@@ -1,5 +1,7 @@
 """Alembic environment configuration for async SQLite."""
 
+from __future__ import annotations
+
 import asyncio
 from logging.config import fileConfig
 

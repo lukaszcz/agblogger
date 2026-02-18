@@ -53,16 +53,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     _configure_logging(settings.debug)
     logger.info("Starting AgBlogger (debug=%s)", settings.debug)
 
-    # Create database engine
     engine, session_factory = create_engine(settings)
     app.state.engine = engine
     app.state.session_factory = session_factory
 
-    # Create tables
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    # Create FTS table
     from sqlalchemy import text
 
     async with session_factory() as session:
@@ -74,17 +71,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         )
         await session.commit()
 
-    # Initialize content manager
     content_manager = ContentManager(content_dir=settings.content_dir)
     app.state.content_manager = content_manager
 
-    # Ensure admin user exists
     from backend.services.auth_service import ensure_admin_user
 
     async with session_factory() as session:
         await ensure_admin_user(session, settings)
 
-    # Rebuild cache from filesystem
     from backend.services.cache_service import rebuild_cache
 
     async with session_factory() as session:
@@ -93,7 +87,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
     yield
 
-    # Shutdown
     await engine.dispose()
     logger.info("AgBlogger stopped")
 
@@ -111,19 +104,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.settings = settings
 
-    # GZip compression for responses > 500 bytes
     app.add_middleware(GZipMiddleware, minimum_size=500)
 
-    # CORS
+    cors_origins = ["http://localhost:5173", "http://localhost:8000"] if settings.debug else []
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"] if settings.debug else [],
+        allow_origins=cors_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
 
-    # API routers
     app.include_router(health_router)
     app.include_router(auth_router)
     app.include_router(posts_router)
@@ -141,7 +132,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     return app
 
 
-# Default application instance
 app = create_app()
 
 

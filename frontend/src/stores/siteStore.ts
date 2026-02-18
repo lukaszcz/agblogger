@@ -5,20 +5,22 @@ import api from '@/api/client'
 interface SiteState {
   config: SiteConfigResponse | null
   isLoading: boolean
+  error: string | null
   fetchConfig: () => Promise<void>
 }
 
 export const useSiteStore = create<SiteState>((set) => ({
   config: null,
   isLoading: false,
+  error: null,
 
   fetchConfig: async () => {
-    set({ isLoading: true })
+    set({ isLoading: true, error: null })
     try {
       const config = await api.get('pages').json<SiteConfigResponse>()
       set({ config, isLoading: false })
     } catch {
-      set({ isLoading: false })
+      set({ isLoading: false, error: 'Failed to load site configuration' })
     }
   },
 }))

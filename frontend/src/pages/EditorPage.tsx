@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Save, Eye, ArrowLeft } from 'lucide-react'
 import { fetchPost, createPost, updatePost } from '@/api/posts'
+import { HTTPError } from '@/api/client'
 import api from '@/api/client'
 
 export default function EditorPage() {
@@ -12,6 +13,7 @@ export default function EditorPage() {
   const [content, setContent] = useState('')
   const [newPath, setNewPath] = useState('posts/')
   const [saving, setSaving] = useState(false)
+  const [previewing, setPreviewing] = useState(false)
   const [preview, setPreview] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -23,7 +25,13 @@ export default function EditorPage() {
           setContent(post.content ?? `# ${post.title}\n\n`)
           setNewPath(post.file_path)
         })
-        .catch(() => setError('Post not found'))
+        .catch((err) => {
+          if (err instanceof HTTPError && err.response.status === 404) {
+            setError('Post not found')
+          } else {
+            setError('Failed to load post')
+          }
+        })
     } else {
       const now = new Date().toISOString().split('T')[0]
       setContent(
@@ -43,8 +51,18 @@ export default function EditorPage() {
         await updatePost(path, content)
       }
       void navigate(`/post/${path}`)
-    } catch {
-      setError('Failed to save post')
+    } catch (err) {
+      if (err instanceof HTTPError) {
+        if (err.response.status === 401) {
+          setError('Session expired. Please log in again.')
+        } else if (err.response.status === 409) {
+          setError('Conflict: this post was modified elsewhere.')
+        } else {
+          setError('Failed to save post')
+        }
+      } else {
+        setError('Failed to save post')
+      }
     } finally {
       setSaving(false)
     }
@@ -54,6 +72,7 @@ export default function EditorPage() {
     // Strip frontmatter for preview
     const bodyMatch = content.match(/^---[\s\S]*?---\n([\s\S]*)$/)
     const body = bodyMatch ? bodyMatch[1] : content
+    setPreviewing(true)
     try {
       const resp = await api
         .post('render/preview', { json: { markdown: body } })
@@ -61,6 +80,8 @@ export default function EditorPage() {
       setPreview(resp.html)
     } catch {
       setError('Preview failed')
+    } finally {
+      setPreviewing(false)
     }
   }
 
@@ -78,11 +99,12 @@ export default function EditorPage() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => void handlePreview()}
+            disabled={previewing}
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium
-                     border border-border rounded-lg hover:bg-paper-warm transition-colors"
+                     border border-border rounded-lg hover:bg-paper-warm disabled:opacity-50 transition-colors"
           >
             <Eye size={14} />
-            Preview
+            {previewing ? 'Loading...' : 'Preview'}
           </button>
           <button
             onClick={() => void handleSave()}

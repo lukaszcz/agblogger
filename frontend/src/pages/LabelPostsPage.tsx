@@ -10,17 +10,19 @@ export default function LabelPostsPage() {
   const [label, setLabel] = useState<LabelResponse | null>(null)
   const [data, setData] = useState<PostListResponse | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!labelId) return
     void (async () => {
       setLoading(true)
+      setError(null)
       try {
         const [l, d] = await Promise.all([fetchLabel(labelId), fetchLabelPosts(labelId)])
         setLabel(l)
         setData(d)
-      } catch (err) {
-        console.error(err)
+      } catch {
+        setError('Failed to load label posts.')
       } finally {
         setLoading(false)
       }
@@ -31,6 +33,17 @@ export default function LabelPostsPage() {
     return (
       <div className="flex items-center justify-center py-24">
         <div className="w-6 h-6 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-24">
+        <p className="text-red-600">{error}</p>
+        <Link to="/labels" className="text-accent text-sm hover:underline mt-4 inline-block">
+          Back to labels
+        </Link>
       </div>
     )
   }

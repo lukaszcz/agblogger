@@ -7,11 +7,12 @@ import type { LabelResponse } from '@/api/client'
 export default function LabelListPage() {
   const [labels, setLabels] = useState<LabelResponse[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     fetchLabels()
       .then(setLabels)
-      .catch(console.error)
+      .catch(() => setError('Failed to load labels.'))
       .finally(() => setLoading(false))
   }, [])
 
@@ -19,6 +20,14 @@ export default function LabelListPage() {
     return (
       <div className="flex items-center justify-center py-24">
         <div className="w-6 h-6 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-24">
+        <p className="text-red-600">{error}</p>
       </div>
     )
   }

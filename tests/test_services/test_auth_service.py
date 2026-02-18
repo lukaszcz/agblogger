@@ -1,0 +1,180 @@
+"""Unit tests for the authentication service."""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+import pytest
+from jose import jwt
+from sqlalchemy import select
+
+from backend.models.base import Base
+from backend.models.user import RefreshToken, User
+from backend.services.auth_service import (
+    ALGORITHM,
+    authenticate_user,
+    create_access_token,
+    create_refresh_token_value,
+    create_tokens,
+    decode_access_token,
+    hash_password,
+    hash_token,
+    refresh_tokens,
+    verify_password,
+)
+from backend.services.datetime_service import format_iso, now_utc
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
+
+    from backend.config import Settings
+
+
+@pytest.fixture
+async def _create_tables(db_engine: AsyncEngine) -> None:
+    async with db_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+
+@pytest.fixture
+async def session(db_session: AsyncSession, _create_tables: None) -> AsyncSession:
+    return db_session
+
+
+_DEFAULT_PASSWORD = "correcthorse"
+
+
+async def _create_user(
+    session: AsyncSession,
+    username: str = "testuser",
+    password: str = _DEFAULT_PASSWORD,
+    is_admin: bool = False,
+) -> User:
+    now = format_iso(now_utc())
+    user = User(
+        username=username,
+        email=f"{username}@test.local",
+        password_hash=hash_password(password),
+        display_name=username,
+        is_admin=is_admin,
+        created_at=now,
+        updated_at=now,
+    )
+    session.add(user)
+    await session.commit()
+    await session.refresh(user)
+    return user
+
+
+class TestPasswordHashing:
+    def test_hash_password_returns_bcrypt_hash(self) -> None:
+        hashed = hash_password("mypassword")
+        assert hashed.startswith("$2b$")
+
+    def test_verify_password_correct(self) -> None:
+        hashed = hash_password("secret")
+        assert verify_password("secret", hashed) is True
+
+    def test_verify_password_incorrect(self) -> None:
+        hashed = hash_password("secret")
+        assert verify_password("wrong", hashed) is False
+
+
+class TestAccessTokens:
+    def test_create_access_token_contains_claims(self, test_settings: Settings) -> None:
+        token = create_access_token(
+            {"sub": "42", "username": "alice", "is_admin": True},
+            test_settings.secret_key,
+        )
+        payload = jwt.decode(token, test_settings.secret_key, algorithms=[ALGORITHM])
+        assert payload["sub"] == "42"
+        assert payload["username"] == "alice"
+        assert payload["is_admin"] is True
+        assert payload["type"] == "access"
+
+    def test_decode_access_token_valid(self, test_settings: Settings) -> None:
+        token = create_access_token(
+            {"sub": "1", "username": "bob", "is_admin": False},
+            test_settings.secret_key,
+        )
+        payload = decode_access_token(token, test_settings.secret_key)
+        assert payload is not None
+        assert payload["sub"] == "1"
+        assert payload["username"] == "bob"
+
+    def test_decode_access_token_rejects_expired(self, test_settings: Settings) -> None:
+        token = create_access_token(
+            {"sub": "1", "username": "bob", "is_admin": False},
+            test_settings.secret_key,
+            expires_minutes=-1,
+        )
+        assert decode_access_token(token, test_settings.secret_key) is None
+
+    def test_decode_access_token_rejects_wrong_type(self, test_settings: Settings) -> None:
+        payload = {"sub": "1", "username": "bob", "is_admin": False, "type": "refresh"}
+        token = jwt.encode(payload, test_settings.secret_key, algorithm=ALGORITHM)
+        assert decode_access_token(token, test_settings.secret_key) is None
+
+
+class TestRefreshTokenValue:
+    def test_create_refresh_token_value_is_unique(self) -> None:
+        a = create_refresh_token_value()
+        b = create_refresh_token_value()
+        assert a != b
+
+
+class TestAuthenticateUser:
+    async def test_authenticate_user_valid(self, session: AsyncSession) -> None:
+        await _create_user(session, username="valid", password="pass123")
+        user = await authenticate_user(session, "valid", "pass123")
+        assert user is not None
+        assert user.username == "valid"
+
+    async def test_authenticate_user_wrong_password(self, session: AsyncSession) -> None:
+        await _create_user(session, username="locked", password="realpass")
+        assert await authenticate_user(session, "locked", "wrongpass") is None
+
+
+class TestTokenLifecycle:
+    async def test_create_tokens_stores_refresh_in_db(
+        self, session: AsyncSession, test_settings: Settings
+    ) -> None:
+        user = await _create_user(session)
+        access, refresh = await create_tokens(session, user, test_settings)
+
+        assert access
+        assert refresh
+
+        token_hash = hash_token(refresh)
+        result = await session.execute(
+            select(RefreshToken).where(RefreshToken.token_hash == token_hash)
+        )
+        stored = result.scalar_one_or_none()
+        assert stored is not None
+        assert stored.user_id == user.id
+
+    async def test_refresh_tokens_rotates_token(
+        self, session: AsyncSession, test_settings: Settings
+    ) -> None:
+        user = await _create_user(session)
+        _, original_refresh = await create_tokens(session, user, test_settings)
+
+        new_pair = await refresh_tokens(session, original_refresh, test_settings)
+        assert new_pair is not None
+        new_access, new_refresh = new_pair
+
+        assert new_access
+        assert new_refresh
+        assert new_refresh != original_refresh
+
+        old_hash = hash_token(original_refresh)
+        result = await session.execute(
+            select(RefreshToken).where(RefreshToken.token_hash == old_hash)
+        )
+        assert result.scalar_one_or_none() is None
+
+        new_hash = hash_token(new_refresh)
+        result = await session.execute(
+            select(RefreshToken).where(RefreshToken.token_hash == new_hash)
+        )
+        assert result.scalar_one_or_none() is not None

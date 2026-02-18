@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, EmailStr, Field
 
 
 class LoginRequest(BaseModel):
     """Login request."""
 
-    username: str
-    password: str
+    username: str = Field(min_length=1, max_length=100)
+    password: str = Field(min_length=1, max_length=200)
 
 
 class RegisterRequest(BaseModel):
@@ -26,7 +28,7 @@ class TokenResponse(BaseModel):
 
     access_token: str
     refresh_token: str
-    token_type: str = "bearer"
+    token_type: Literal["bearer"] = "bearer"
 
 
 class RefreshRequest(BaseModel):

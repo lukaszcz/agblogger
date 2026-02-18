@@ -1,5 +1,7 @@
 """Tests for datetime parsing service."""
 
+from __future__ import annotations
+
 from datetime import UTC, datetime
 
 from backend.services.datetime_service import format_datetime, now_utc, parse_datetime

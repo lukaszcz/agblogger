@@ -13,7 +13,7 @@ def render_markdown(markdown: str) -> str:
     """Render markdown to HTML using pandoc.
 
     Uses GFM + KaTeX math + syntax highlighting.
-    Falls back to basic HTML conversion if pandoc is not available.
+    Raises RuntimeError if pandoc is not installed or fails.
     """
     try:
         result = subprocess.run(
@@ -37,13 +37,16 @@ def render_markdown(markdown: str) -> str:
             html = result.stdout
             html = _add_heading_anchors(html)
             return html
-        logger.warning("Pandoc error (rc=%d): %s", result.returncode, result.stderr)
+        logger.error("Pandoc failed (rc=%d): %s", result.returncode, result.stderr)
+        raise RuntimeError(
+            f"Pandoc rendering failed with return code {result.returncode}: {result.stderr[:200]}"
+        )
     except FileNotFoundError:
-        logger.warning("Pandoc not found, using fallback renderer")
+        raise RuntimeError(
+            "Pandoc is not installed. Install pandoc to enable markdown rendering."
+        ) from None
     except subprocess.TimeoutExpired:
-        logger.warning("Pandoc timed out")
-
-    return _fallback_render(markdown)
+        raise RuntimeError("Pandoc rendering timed out after 30 seconds") from None
 
 
 def _add_heading_anchors(html: str) -> str:

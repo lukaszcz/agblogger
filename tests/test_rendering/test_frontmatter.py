@@ -1,5 +1,7 @@
 """Tests for YAML front matter parsing."""
 
+from __future__ import annotations
+
 import datetime
 
 import frontmatter

@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { UserResponse } from '@/api/client'
+import { HTTPError } from '@/api/client'
 import { fetchMe, login as apiLogin, logout as apiLogout } from '@/api/auth'
 
 interface AuthState {
@@ -22,8 +23,12 @@ export const useAuthStore = create<AuthState>((set) => ({
       await apiLogin(username, password)
       const user = await fetchMe()
       set({ user, isLoading: false })
-    } catch {
-      set({ error: 'Invalid username or password', isLoading: false })
+    } catch (err) {
+      const message =
+        err instanceof HTTPError && err.response.status === 401
+          ? 'Invalid username or password'
+          : 'Login failed. Please try again.'
+      set({ error: message, isLoading: false })
       throw new Error('Login failed')
     }
   },
@@ -42,10 +47,12 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       const user = await fetchMe()
       set({ user })
-    } catch {
-      set({ user: null })
-      localStorage.removeItem('access_token')
-      localStorage.removeItem('refresh_token')
+    } catch (err) {
+      if (err instanceof HTTPError && err.response.status === 401) {
+        set({ user: null })
+        localStorage.removeItem('access_token')
+        localStorage.removeItem('refresh_token')
+      }
     }
   },
 }))

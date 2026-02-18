@@ -180,6 +180,8 @@ async def get_post(
 
 async def search_posts(session: AsyncSession, query: str, *, limit: int = 20) -> list[SearchResult]:
     """Full-text search for posts."""
+    # Escape FTS5 special characters by wrapping in double quotes
+    safe_query = '"' + query.replace('"', '""') + '"'
     stmt = text("""
         SELECT p.id, p.file_path, p.title, p.excerpt, p.created_at,
                rank
@@ -190,7 +192,7 @@ async def search_posts(session: AsyncSession, query: str, *, limit: int = 20) ->
         ORDER BY rank
         LIMIT :limit
     """)
-    result = await session.execute(stmt, {"query": query, "limit": limit})
+    result = await session.execute(stmt, {"query": safe_query, "limit": limit})
     return [
         SearchResult(
             id=r[0],

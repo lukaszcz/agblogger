@@ -1,4 +1,25 @@
-import ky from 'ky'
+import ky, { HTTPError } from 'ky'
+
+async function refreshAccessToken(): Promise<string | null> {
+  const refreshToken = localStorage.getItem('refresh_token')
+  if (!refreshToken) return null
+
+  try {
+    const resp = await ky
+      .post('api/auth/refresh', {
+        prefixUrl: '/',
+        json: { refresh_token: refreshToken },
+      })
+      .json<{ access_token: string; refresh_token: string; token_type: string }>()
+    localStorage.setItem('access_token', resp.access_token)
+    localStorage.setItem('refresh_token', resp.refresh_token)
+    return resp.access_token
+  } catch {
+    localStorage.removeItem('access_token')
+    localStorage.removeItem('refresh_token')
+    return null
+  }
+}
 
 const api = ky.create({
   prefixUrl: '/api',
@@ -12,17 +33,23 @@ const api = ky.create({
       },
     ],
     afterResponse: [
-      (_request, _options, response) => {
-        if (response.status === 401) {
-          localStorage.removeItem('access_token')
-          localStorage.removeItem('refresh_token')
+      async (request, options, response) => {
+        if (response.status === 401 && !request.url.includes('/auth/refresh')) {
+          const newToken = await refreshAccessToken()
+          if (newToken) {
+            request.headers.set('Authorization', `Bearer ${newToken}`)
+            return ky(request, options)
+          }
         }
+        return response
       },
     ],
   },
 })
 
 export default api
+
+export { HTTPError }
 
 // Type definitions
 export interface PostSummary {

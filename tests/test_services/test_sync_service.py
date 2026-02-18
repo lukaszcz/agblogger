@@ -1,5 +1,7 @@
 """Tests for the sync service."""
 
+from __future__ import annotations
+
 from backend.services.sync_service import (
     ChangeType,
     FileEntry,

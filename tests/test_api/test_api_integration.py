@@ -371,11 +371,235 @@ class TestCrosspost:
 class TestRender:
     @pytest.mark.asyncio
     async def test_render_preview(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+
         resp = await client.post(
             "/api/render/preview",
             json={"markdown": "# Hello\n\nWorld"},
+            headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 200
         data = resp.json()
         assert "html" in data
         assert "Hello" in data["html"]
+
+    @pytest.mark.asyncio
+    async def test_render_preview_unauthenticated(self, client: AsyncClient) -> None:
+        resp = await client.post(
+            "/api/render/preview",
+            json={"markdown": "# Hello\n\nWorld"},
+        )
+        assert resp.status_code == 401
+
+
+class TestPostCRUD:
+    @pytest.mark.asyncio
+    async def test_create_post_authenticated(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+
+        resp = await client.post(
+            "/api/posts",
+            json={
+                "file_path": "posts/new-test.md",
+                "content": (
+                    "---\ncreated_at: 2026-01-01 00:00:00+00\nauthor: Admin\n"
+                    "---\n# New Post\n\nContent here.\n"
+                ),
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 201
+        assert resp.json()["title"] == "New Post"
+
+    @pytest.mark.asyncio
+    async def test_create_post_requires_auth(self, client: AsyncClient) -> None:
+        resp = await client.post(
+            "/api/posts",
+            json={
+                "file_path": "posts/no-auth.md",
+                "content": "---\nauthor: Admin\n---\n# No Auth\n",
+            },
+        )
+        assert resp.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_update_post_authenticated(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+
+        resp = await client.put(
+            "/api/posts/posts/hello.md",
+            json={
+                "content": (
+                    "---\ncreated_at: 2026-02-02 22:21:29.975359+00\nauthor: Admin\n"
+                    "labels: ['#swe']\n---\n# Hello World Updated\n\nUpdated content.\n"
+                ),
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["title"] == "Hello World Updated"
+
+    @pytest.mark.asyncio
+    async def test_update_nonexistent_post_returns_404(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+
+        resp = await client.put(
+            "/api/posts/posts/nope.md",
+            json={"content": "---\nauthor: Admin\n---\n# Nope\n"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_delete_post_authenticated(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+
+        # Create a post to delete
+        await client.post(
+            "/api/posts",
+            json={
+                "file_path": "posts/to-delete.md",
+                "content": (
+                    "---\ncreated_at: 2026-01-01 00:00:00+00\nauthor: Admin\n---\n# Delete Me\n"
+                ),
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        resp = await client.delete(
+            "/api/posts/posts/to-delete.md",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 204
+
+    @pytest.mark.asyncio
+    async def test_delete_nonexistent_post_returns_404(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+
+        resp = await client.delete(
+            "/api/posts/posts/nope.md",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 404
+
+
+class TestSearch:
+    @pytest.mark.asyncio
+    async def test_search_returns_matching_posts(self, client: AsyncClient) -> None:
+        resp = await client.get("/api/posts/search", params={"q": "Hello"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) >= 1
+        assert "Hello" in data[0]["title"]
+
+    @pytest.mark.asyncio
+    async def test_search_no_results(self, client: AsyncClient) -> None:
+        resp = await client.get("/api/posts/search", params={"q": "xyznonexistent"})
+        assert resp.status_code == 200
+        assert resp.json() == []
+
+
+class TestRegistration:
+    @pytest.mark.asyncio
+    async def test_register_new_user_succeeds(self, client: AsyncClient) -> None:
+        resp = await client.post(
+            "/api/auth/register",
+            json={
+                "username": "newuser",
+                "email": "new@test.com",
+                "password": "password123",
+            },
+        )
+        assert resp.status_code == 201
+        assert resp.json()["username"] == "newuser"
+
+    @pytest.mark.asyncio
+    async def test_register_duplicate_username_returns_409(self, client: AsyncClient) -> None:
+        await client.post(
+            "/api/auth/register",
+            json={
+                "username": "dupuser",
+                "email": "dup1@test.com",
+                "password": "password123",
+            },
+        )
+        resp = await client.post(
+            "/api/auth/register",
+            json={
+                "username": "dupuser",
+                "email": "dup2@test.com",
+                "password": "password123",
+            },
+        )
+        assert resp.status_code == 409
+
+    @pytest.mark.asyncio
+    async def test_register_duplicate_email_returns_409(self, client: AsyncClient) -> None:
+        await client.post(
+            "/api/auth/register",
+            json={
+                "username": "emailuser1",
+                "email": "same@test.com",
+                "password": "password123",
+            },
+        )
+        resp = await client.post(
+            "/api/auth/register",
+            json={
+                "username": "emailuser2",
+                "email": "same@test.com",
+                "password": "password123",
+            },
+        )
+        assert resp.status_code == 409
+
+
+class TestSyncSecurity:
+    @pytest.mark.asyncio
+    async def test_sync_upload_path_traversal_rejected(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+
+        resp = await client.post(
+            "/api/sync/upload",
+            params={"file_path": "../../../etc/passwd"},
+            files={"file": ("passwd", b"malicious content", "text/plain")},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_sync_upload_requires_auth(self, client: AsyncClient) -> None:
+        resp = await client.post(
+            "/api/sync/upload",
+            params={"file_path": "posts/test.md"},
+            files={"file": ("test.md", b"content", "text/plain")},
+        )
+        assert resp.status_code == 401

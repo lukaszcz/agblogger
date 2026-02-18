@@ -9,16 +9,18 @@ export default function SearchPage() {
   const query = searchParams.get('q') ?? ''
   const [results, setResults] = useState<SearchResult[]>([])
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!query.trim()) return
     void (async () => {
       setLoading(true)
+      setError(null)
       try {
         const r = await searchPosts(query)
         setResults(r)
-      } catch (err) {
-        console.error(err)
+      } catch {
+        setError('Search failed. Please try again.')
       } finally {
         setLoading(false)
       }
@@ -44,6 +46,8 @@ export default function SearchPage() {
         <div className="flex items-center justify-center py-16">
           <div className="w-6 h-6 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
         </div>
+      ) : error ? (
+        <p className="text-red-600 text-center py-16">{error}</p>
       ) : results.length === 0 ? (
         <p className="text-muted text-center py-16">
           {query ? 'No results found.' : 'Enter a search query above.'}

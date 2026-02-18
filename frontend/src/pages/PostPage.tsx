@@ -4,6 +4,7 @@ import { ArrowLeft, Calendar, User, PenLine } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { fetchPost } from '@/api/posts'
 import { useAuthStore } from '@/stores/authStore'
+import { HTTPError } from '@/api/client'
 import LabelChip from '@/components/labels/LabelChip'
 import type { PostDetail } from '@/api/client'
 
@@ -18,11 +19,16 @@ export default function PostPage() {
     if (!filePath) return
     void (async () => {
       setLoading(true)
+      setError(null)
       try {
         const p = await fetchPost(filePath)
         setPost(p)
-      } catch {
-        setError('Post not found')
+      } catch (err) {
+        if (err instanceof HTTPError && err.response.status === 404) {
+          setError('Post not found')
+        } else {
+          setError('Failed to load post. Please try again later.')
+        }
       } finally {
         setLoading(false)
       }
@@ -40,7 +46,9 @@ export default function PostPage() {
   if (error || !post) {
     return (
       <div className="text-center py-24">
-        <p className="font-display text-3xl text-muted italic">404</p>
+        <p className="font-display text-3xl text-muted italic">
+          {error === 'Post not found' ? '404' : 'Error'}
+        </p>
         <p className="text-sm text-muted mt-2">{error ?? 'Post not found'}</p>
         <Link to="/" className="text-accent text-sm hover:underline mt-4 inline-block">
           Back to timeline
@@ -59,7 +67,6 @@ export default function PostPage() {
 
   return (
     <article className="animate-fade-in">
-      {/* Back link */}
       <Link
         to="/"
         className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-ink transition-colors mb-8"
@@ -68,7 +75,6 @@ export default function PostPage() {
         Back to posts
       </Link>
 
-      {/* Post header */}
       <header className="mb-10">
         <h1 className="font-display text-4xl md:text-5xl text-ink leading-tight tracking-tight">
           {post.title}
@@ -109,7 +115,6 @@ export default function PostPage() {
         <div className="mt-6 h-px bg-gradient-to-r from-accent/40 via-border to-transparent" />
       </header>
 
-      {/* Post content — strip the first h1 since we show it in the header */}
       <div
         className="prose max-w-none"
         dangerouslySetInnerHTML={{
@@ -117,7 +122,6 @@ export default function PostPage() {
         }}
       />
 
-      {/* Footer */}
       <footer className="mt-16 pt-8 border-t border-border">
         <Link
           to="/"

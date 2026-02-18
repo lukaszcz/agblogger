@@ -52,7 +52,6 @@ async def register(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> UserResponse:
     """Register a new user account."""
-    # Check uniqueness
     existing = await session.execute(
         select(User).where((User.username == body.username) | (User.email == body.email))
     )

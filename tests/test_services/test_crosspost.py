@@ -1,5 +1,7 @@
 """Tests for cross-posting base classes and formatting."""
 
+from __future__ import annotations
+
 from backend.crosspost.base import CrossPostContent
 from backend.crosspost.bluesky import _build_post_text, _find_facets
 from backend.crosspost.registry import list_platforms

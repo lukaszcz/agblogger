@@ -150,10 +150,12 @@ export default function LabelGraphPage() {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
 
+  const [error, setError] = useState<string | null>(null)
+
   useEffect(() => {
     fetchLabelGraph()
       .then(setGraphData)
-      .catch(console.error)
+      .catch(() => setError('Failed to load label graph.'))
       .finally(() => setLoading(false))
   }, [])
 
@@ -196,6 +198,14 @@ export default function LabelGraphPage() {
     return (
       <div className="flex items-center justify-center py-24">
         <div className="w-6 h-6 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-24 animate-fade-in">
+        <p className="text-red-600">{error}</p>
       </div>
     )
   }

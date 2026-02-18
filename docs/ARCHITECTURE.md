@@ -7,16 +7,15 @@ AgBlogger is a self-hosted, markdown-first blogging platform. Markdown files wit
 ```
 agblogger/
 ├── backend/            Python FastAPI backend
-│   ├── api/            Route handlers
+│   ├── api/            Route handlers + dependency injection
 │   ├── filesystem/     Markdown/TOML parsing, content management
 │   ├── middleware/      SEO meta tag injection
 │   ├── models/         SQLAlchemy ORM models
-│   ├── pandoc/         Pandoc rendering + Lua filters
+│   ├── pandoc/         Pandoc rendering
 │   ├── services/       Business logic layer
 │   ├── crosspost/      Cross-posting platform plugins
 │   ├── config.py       Pydantic settings (from .env)
 │   ├── database.py     Async SQLAlchemy engine
-│   ├── deps.py         FastAPI dependency injection
 │   └── main.py         Application factory + lifespan
 ├── frontend/           React 19 + TypeScript SPA
 │   └── src/
@@ -53,7 +52,7 @@ agblogger/
 | Date/time | pendulum |
 | Sync merging | merge3 |
 | HTTP client | httpx |
-| Cross-posting | tweepy, atproto, Mastodon.py (optional) |
+| Cross-posting | atproto, httpx (optional) |
 
 ### Frontend
 
@@ -162,7 +161,7 @@ On startup, the lifespan handler:
 ┌─────────────────────────────────────┐
 │  API Layer (backend/api/)           │  Route handlers, request/response
 ├─────────────────────────────────────┤
-│  Dependencies (backend/deps.py)     │  Auth, DB session, settings injection
+│  Dependencies (backend/api/deps.py)  │  Auth, DB session, settings injection
 ├─────────────────────────────────────┤
 │  Services (backend/services/)       │  Business logic
 ├─────────────────────────────────────┤
@@ -213,7 +212,7 @@ pandoc -f gfm+tex_math_dollars+footnotes+raw_html -t html5
 
 Features: GitHub Flavored Markdown (tables, task lists, strikethrough), KaTeX math, syntax highlighting (140+ languages), and heading anchor injection.
 
-Custom Lua filters in `backend/pandoc/filters/` provide callouts, tabsets, video embeds, and local link rewriting.
+Lua filter files exist in `backend/pandoc/filters/` as placeholders for future use (callouts, tabsets, video embeds, local link rewriting) but are not currently wired into the rendering pipeline.
 
 ## Authentication and Authorization
 
@@ -296,7 +295,7 @@ class CrossPoster(Protocol):
 ### Platforms
 
 - **Bluesky** — AT Protocol HTTP API. Builds rich text facets for URLs and hashtags. 300-character limit.
-- **Mastodon** — OAuth 2.0 via the Mastodon.py library.
+- **Mastodon** — HTTP API via httpx.
 
 A platform registry maps names to poster classes. Each cross-post attempt is recorded in the `cross_posts` table with status, platform ID, timestamp, and error message.
 

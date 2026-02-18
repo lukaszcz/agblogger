@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -26,6 +27,8 @@ from backend.schemas.post import (
 )
 from backend.services.datetime_service import format_datetime, now_utc
 from backend.services.post_service import get_post, list_posts, search_posts
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/posts", tags=["posts"])
 
@@ -121,9 +124,10 @@ async def create_post_endpoint(
 
     try:
         content_manager.write_post(body.file_path, post_data)
-    except Exception:
+    except Exception as exc:
+        logger.error("Failed to write post %s: %s", body.file_path, exc)
         await session.rollback()
-        raise HTTPException(status_code=500, detail="Failed to write post file") from None
+        raise HTTPException(status_code=500, detail="Failed to write post file") from exc
 
     await session.commit()
     await session.refresh(post)
@@ -181,9 +185,10 @@ async def update_post_endpoint(
 
     try:
         content_manager.write_post(file_path, post_data)
-    except Exception:
+    except Exception as exc:
+        logger.error("Failed to write post %s: %s", file_path, exc)
         await session.rollback()
-        raise HTTPException(status_code=500, detail="Failed to write post file") from None
+        raise HTTPException(status_code=500, detail="Failed to write post file") from exc
 
     await session.commit()
     await session.refresh(existing)
@@ -218,6 +223,9 @@ async def delete_post_endpoint(
     if existing is None:
         raise HTTPException(status_code=404, detail="Post not found")
 
-    content_manager.delete_post(file_path)
     await session.delete(existing)
     await session.commit()
+    try:
+        content_manager.delete_post(file_path)
+    except OSError as exc:
+        logger.error("Failed to delete post file %s: %s", file_path, exc)

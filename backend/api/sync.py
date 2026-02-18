@@ -27,6 +27,8 @@ router = APIRouter(prefix="/api/sync", tags=["sync"])
 
 
 class ManifestEntry(BaseModel):
+    """Single file entry in a sync manifest."""
+
     file_path: str
     content_hash: str
     file_size: int
@@ -34,15 +36,21 @@ class ManifestEntry(BaseModel):
 
 
 class SyncInitRequest(BaseModel):
+    """Request to initialize a sync session with the client manifest."""
+
     client_manifest: list[ManifestEntry]
 
 
 class SyncPlanItem(BaseModel):
+    """Single item in a sync plan describing a conflict."""
+
     file_path: str
-    action: str  # "upload", "download", "delete_local", "delete_remote", "conflict"
+    action: str
 
 
 class SyncPlanResponse(BaseModel):
+    """Response containing the computed sync plan."""
+
     to_upload: list[str]
     to_download: list[str]
     to_delete_local: list[str]
@@ -53,10 +61,12 @@ class SyncPlanResponse(BaseModel):
 class SyncCommitRequest(BaseModel):
     """Resolution decisions for conflicts."""
 
-    resolutions: dict[str, str]  # file_path -> "keep_local" | "keep_remote" | "merge"
+    resolutions: dict[str, str]
 
 
 class SyncCommitResponse(BaseModel):
+    """Response after finalizing a sync commit."""
+
     status: str
     files_synced: int
 
@@ -72,7 +82,6 @@ async def sync_init(
     user: Annotated[User, Depends(require_auth)],
 ) -> SyncPlanResponse:
     """Exchange manifests and compute sync plan."""
-    # Build client manifest dict
     client_manifest: dict[str, FileEntry] = {}
     for entry in body.client_manifest:
         client_manifest[entry.file_path] = FileEntry(
@@ -82,11 +91,8 @@ async def sync_init(
             file_mtime=entry.file_mtime,
         )
 
-    # Get server state
     server_manifest = await get_server_manifest(session)
     server_current = scan_content_files(content_manager.content_dir)
-
-    # Compute plan
     plan = compute_sync_plan(client_manifest, server_manifest, server_current)
 
     conflicts = [SyncPlanItem(file_path=c.file_path, action=c.action) for c in plan.conflicts]

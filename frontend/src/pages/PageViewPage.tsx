@@ -7,16 +7,18 @@ export default function PageViewPage() {
   const { pageId } = useParams()
   const [page, setPage] = useState<PageResponse | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!pageId) return
     void (async () => {
       setLoading(true)
+      setError(null)
       try {
         const p = await api.get(`pages/${pageId}`).json<PageResponse>()
         setPage(p)
-      } catch (err) {
-        console.error(err)
+      } catch {
+        setError('Failed to load page.')
       } finally {
         setLoading(false)
       }
@@ -31,10 +33,10 @@ export default function PageViewPage() {
     )
   }
 
-  if (!page) {
+  if (error || !page) {
     return (
       <div className="text-center py-24">
-        <p className="font-display text-2xl text-muted italic">Page not found</p>
+        <p className="text-red-600">{error ?? 'Page not found'}</p>
       </div>
     )
   }

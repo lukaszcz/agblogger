@@ -13,7 +13,7 @@ class LabelResponse(BaseModel):
     is_implicit: bool = False
     parents: list[str] = Field(default_factory=list)
     children: list[str] = Field(default_factory=list)
-    post_count: int = 0
+    post_count: int = Field(default=0, ge=0)
 
 
 class LabelGraphNode(BaseModel):
@@ -21,7 +21,7 @@ class LabelGraphNode(BaseModel):
 
     id: str
     names: list[str] = Field(default_factory=list)
-    post_count: int = 0
+    post_count: int = Field(default=0, ge=0)
 
 
 class LabelGraphEdge(BaseModel):
@@ -41,6 +41,6 @@ class LabelGraphResponse(BaseModel):
 class LabelCreate(BaseModel):
     """Request to create or update a label."""
 
-    id: str
+    id: str = Field(min_length=1)
     names: list[str] = Field(default_factory=list)
     parents: list[str] = Field(default_factory=list)

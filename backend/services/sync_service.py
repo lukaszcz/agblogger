@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import delete, select
 
 from backend.models.sync import SyncManifest
+from backend.services.datetime_service import format_iso, now_utc
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -215,7 +216,7 @@ async def update_server_manifest(
                 content_hash=entry.content_hash,
                 file_size=entry.file_size,
                 file_mtime=entry.file_mtime,
-                synced_at="",  # Will be set properly
+                synced_at=format_iso(now_utc()),
             )
         )
     await session.commit()

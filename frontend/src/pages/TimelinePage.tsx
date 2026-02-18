@@ -10,6 +10,7 @@ export default function TimelinePage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [data, setData] = useState<PostListResponse | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   // Parse filter state from URL
   const page = Number(searchParams.get('page') ?? '1')
@@ -46,6 +47,7 @@ export default function TimelinePage() {
 
     void (async () => {
       setLoading(true)
+      setError(null)
       try {
         const d = await fetchPosts({
           page: currentPage,
@@ -57,8 +59,8 @@ export default function TimelinePage() {
           to: toDate || undefined,
         })
         setData(d)
-      } catch (err) {
-        console.error(err)
+      } catch {
+        setError('Failed to load posts. Please try again.')
       } finally {
         setLoading(false)
       }
@@ -73,12 +75,21 @@ export default function TimelinePage() {
 
   return (
     <div>
-      {/* Filter panel */}
       <FilterPanel value={filterState} onChange={setFilter} />
 
       {loading ? (
         <div className="flex items-center justify-center py-24">
           <div className="w-6 h-6 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
+        </div>
+      ) : error ? (
+        <div className="text-center py-24">
+          <p className="font-display text-2xl text-red-600">{error}</p>
+          <button
+            onClick={() => setSearchParams(searchParams)}
+            className="text-accent text-sm hover:underline mt-4"
+          >
+            Retry
+          </button>
         </div>
       ) : !data || data.posts.length === 0 ? (
         <div className="text-center py-24">
@@ -99,14 +110,12 @@ export default function TimelinePage() {
         </div>
       ) : (
         <>
-          {/* Post list */}
           <div className="divide-y divide-border/60">
             {data.posts.map((post, i) => (
               <PostCard key={post.id} post={post} index={i} />
             ))}
           </div>
 
-          {/* Pagination */}
           {data.total_pages > 1 && (
             <div className="flex items-center justify-center gap-2 mt-10 pt-6 border-t border-border">
               <button

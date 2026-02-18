@@ -1,4 +1,4 @@
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Search, LogIn, LogOut, PenLine } from 'lucide-react'
 import { useState } from 'react'
 import { useSiteStore } from '@/stores/siteStore'
@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/authStore'
 
 export default function Header() {
   const location = useLocation()
+  const navigate = useNavigate()
   const config = useSiteStore((s) => s.config)
   const user = useAuthStore((s) => s.user)
   const logout = useAuthStore((s) => s.logout)
@@ -18,7 +19,7 @@ export default function Header() {
   function handleSearch(e: React.FormEvent) {
     e.preventDefault()
     if (searchQuery.trim()) {
-      window.location.href = `/search?q=${encodeURIComponent(searchQuery.trim())}`
+      void navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`)
       setSearchOpen(false)
       setSearchQuery('')
     }

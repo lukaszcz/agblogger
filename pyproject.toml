@@ -66,7 +66,7 @@ dev = [
 
 [project.scripts]
 agblogger = "backend.main:cli_entry"
-agblogger-sync = "cli.main:cli_entry"
+agblogger-sync = "cli.sync_client:main"
 
 [build-system]
 requires = ["hatchling"]

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -17,7 +18,7 @@ from backend.filesystem.toml_manager import (
 if TYPE_CHECKING:
     from pathlib import Path
 
-    pass
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -94,13 +95,17 @@ class ContentManager:
         posts: list[PostData] = []
         for post_path in post_files:
             rel_path = str(post_path.relative_to(self.content_dir))
-            raw_content = post_path.read_text(encoding="utf-8")
-            post_data = parse_post(
-                raw_content,
-                file_path=rel_path,
-                default_tz=self.site_config.timezone,
-                default_author=self.site_config.default_author,
-            )
+            try:
+                raw_content = post_path.read_text(encoding="utf-8")
+                post_data = parse_post(
+                    raw_content,
+                    file_path=rel_path,
+                    default_tz=self.site_config.timezone,
+                    default_author=self.site_config.default_author,
+                )
+            except Exception:
+                logger.exception("Skipping post %s due to parse error", rel_path)
+                continue
             # Add directory-based implicit labels
             dir_labels = get_directory_labels(rel_path)
             for dl in dir_labels:
@@ -109,9 +114,19 @@ class ContentManager:
             posts.append(post_data)
         return posts
 
+    def _validate_path(self, rel_path: str) -> Path:
+        """Validate that a relative path stays within the content directory.
+
+        Raises ValueError if the resolved path escapes content_dir.
+        """
+        full_path = (self.content_dir / rel_path).resolve()
+        if not full_path.is_relative_to(self.content_dir.resolve()):
+            raise ValueError(f"Path traversal detected: {rel_path}")
+        return full_path
+
     def read_post(self, rel_path: str) -> PostData | None:
         """Read a single post by relative path."""
-        full_path = self.content_dir / rel_path
+        full_path = self._validate_path(rel_path)
         if not full_path.exists() or not full_path.is_file():
             return None
         raw_content = full_path.read_text(encoding="utf-8")
@@ -131,13 +146,13 @@ class ContentManager:
         """Write a post to disk."""
         from backend.filesystem.frontmatter import serialize_post
 
-        full_path = self.content_dir / rel_path
+        full_path = self._validate_path(rel_path)
         full_path.parent.mkdir(parents=True, exist_ok=True)
         full_path.write_text(serialize_post(post_data), encoding="utf-8")
 
     def delete_post(self, rel_path: str) -> bool:
         """Delete a post from disk. Returns True if file existed."""
-        full_path = self.content_dir / rel_path
+        full_path = self._validate_path(rel_path)
         if full_path.exists():
             full_path.unlink()
             return True
