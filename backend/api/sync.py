@@ -16,6 +16,7 @@ from backend.services.sync_service import (
     FileEntry,
     compute_sync_plan,
     get_server_manifest,
+    normalize_post_frontmatter,
     scan_content_files,
     update_server_manifest,
 )
@@ -62,6 +63,7 @@ class SyncCommitRequest(BaseModel):
     """Resolution decisions for conflicts."""
 
     resolutions: dict[str, str]
+    uploaded_files: list[str] = Field(default_factory=list)
 
 
 class SyncCommitResponse(BaseModel):
@@ -159,8 +161,19 @@ async def sync_commit(
     content_manager: Annotated[ContentManager, Depends(get_content_manager)],
     user: Annotated[User, Depends(require_auth)],
 ) -> SyncCommitResponse:
-    """Finalize sync: update manifest and regenerate caches."""
-    # Scan current server state after uploads/downloads
+    """Finalize sync: normalize front matter, update manifest and regenerate caches."""
+    # Load old manifest before updating (needed for new-vs-edit detection)
+    old_manifest = await get_server_manifest(session)
+
+    # Normalize front matter for uploaded post files
+    fm_warnings = normalize_post_frontmatter(
+        uploaded_files=body.uploaded_files,
+        old_manifest=old_manifest,
+        content_dir=content_manager.content_dir,
+        default_author=content_manager.site_config.default_author,
+    )
+
+    # Scan current server state after uploads/downloads + normalization
     current_files = scan_content_files(content_manager.content_dir)
 
     # Update manifest to match current state
@@ -172,10 +185,10 @@ async def sync_commit(
     # Rebuild caches
     from backend.services.cache_service import rebuild_cache
 
-    _post_count, warnings = await rebuild_cache(session, content_manager)
+    _post_count, cache_warnings = await rebuild_cache(session, content_manager)
 
     return SyncCommitResponse(
         status="ok",
         files_synced=len(current_files),
-        warnings=warnings,
+        warnings=fm_warnings + cache_warnings,
     )

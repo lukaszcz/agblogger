@@ -112,6 +112,7 @@ class SyncClient:
         plan = self.status()
 
         uploaded = 0
+        uploaded_files: list[str] = []
         for file_path in plan.get("to_upload", []):
             full_path = self.content_dir / file_path
             if not full_path.exists():
@@ -125,12 +126,13 @@ class SyncClient:
                 )
                 resp.raise_for_status()
             print(f"  Uploaded: {file_path}")
+            uploaded_files.append(file_path)
             uploaded += 1
 
         # Commit
         resp = self.client.post(
             "/api/sync/commit",
-            json={"resolutions": {}},
+            json={"resolutions": {}, "uploaded_files": uploaded_files},
         )
         resp.raise_for_status()
 
@@ -164,7 +166,7 @@ class SyncClient:
         # Commit to update server manifest
         resp = self.client.post(
             "/api/sync/commit",
-            json={"resolutions": {}},
+            json={"resolutions": {}, "uploaded_files": []},
         )
         resp.raise_for_status()
 
@@ -179,6 +181,7 @@ class SyncClient:
         plan = self.status()
 
         # Push local changes
+        uploaded_files: list[str] = []
         for file_path in plan.get("to_upload", []):
             full_path = self.content_dir / file_path
             if not full_path.exists():
@@ -191,6 +194,7 @@ class SyncClient:
                 )
                 resp.raise_for_status()
             print(f"  Pushed: {file_path}")
+            uploaded_files.append(file_path)
 
         # Pull remote changes
         for file_path in plan.get("to_download", []):
@@ -221,7 +225,7 @@ class SyncClient:
         # Commit
         resp = self.client.post(
             "/api/sync/commit",
-            json={"resolutions": resolutions},
+            json={"resolutions": resolutions, "uploaded_files": uploaded_files},
         )
         resp.raise_for_status()
 
