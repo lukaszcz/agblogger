@@ -200,7 +200,7 @@ On startup, the lifespan handler:
 
 The database serves as a **cache**, not the source of truth:
 
-- **`PostCache`** — Cached post metadata: file path, title, author, timestamps, draft status, content hash (SHA-256), excerpt, rendered HTML.
+- **`PostCache`** — Cached post metadata: file path, title, author, timestamps (`DateTime(timezone=True)`, stored as UTC), draft status, content hash (SHA-256), excerpt, rendered HTML.
 - **`PostsFTS`** — SQLite FTS5 virtual table for full-text search over title, excerpt, and content.
 - **`LabelCache`** — Label with ID, display names (JSON array), and implicit flag.
 - **`LabelParentCache`** — DAG edge table (label_id → parent_id).
@@ -267,7 +267,8 @@ Client                                   Server
   │   ◄──────────────── (file content)      │  Send files to client
   │                                         │
   │  4. POST /api/sync/commit               │
-  │     (finalize) ─────────────────────►   │  Update manifest,
+  │     (uploaded_files + resolutions) ──►  │  Normalize front matter,
+  │                                         │  update manifest,
   │                                         │  rebuild cache
 ```
 
@@ -284,9 +285,19 @@ Client                                   Server
 | Deleted | Same | Delete on server |
 | Same | Deleted | Delete on client |
 
+### Front Matter Normalization
+
+During `sync_commit`, before scanning files and updating the manifest, the server normalizes YAML front matter for uploaded `.md` files under `posts/`. The client sends `uploaded_files` in the commit request to identify which files were uploaded.
+
+- **New posts** (not in old server manifest): missing fields are filled with defaults — `created_at` and `modified_at` set to now, `author` from site config `default_author`.
+- **Edited posts** (in old server manifest): existing fields are preserved, except `modified_at` which is set to the current server time.
+- **Unrecognized fields** in front matter are preserved in the file but generate warnings in the commit response.
+
+Recognized front matter fields: `created_at`, `modified_at`, `author`, `labels`, `draft`.
+
 ### CLI Sync Client (`cli/sync_client.py`)
 
-A standalone Python script using httpx with subcommands: `init`, `status`, `push`, `pull`, `sync`. Stores config in `.agblogger-sync.json` and the local manifest in `.agblogger-manifest.json`. Conflicts default to "keep remote" with local backups saved as `.conflict-backup`.
+A standalone Python script using httpx with subcommands: `init`, `status`, `push`, `pull`, `sync`. Stores config in `.agblogger-sync.json` and the local manifest in `.agblogger-manifest.json`. Conflicts default to "keep remote" with local backups saved as `.conflict-backup`. The client sends `uploaded_files` in the commit request for front matter normalization.
 
 ## Cross-Posting
 
