@@ -12,13 +12,21 @@ from backend.api.deps import get_content_manager, get_session, require_auth
 from backend.filesystem.content_manager import ContentManager
 from backend.filesystem.toml_manager import LabelDef, write_labels_config
 from backend.models.user import User
-from backend.schemas.label import LabelCreate, LabelGraphResponse, LabelResponse
+from backend.schemas.label import (
+    LabelCreate,
+    LabelDeleteResponse,
+    LabelGraphResponse,
+    LabelResponse,
+    LabelUpdate,
+)
 from backend.schemas.post import PostListResponse
 from backend.services.label_service import (
     create_label,
+    delete_label,
     get_all_labels,
     get_label,
     get_label_graph,
+    update_label,
 )
 from backend.services.post_service import get_posts_by_label
 
@@ -51,26 +59,112 @@ async def create_label_endpoint(
     user: Annotated[User, Depends(require_auth)],
 ) -> LabelResponse:
     """Create a new label."""
-    result = await create_label(session, body.id)
+    # Validate parents exist
+    for parent_id in body.parents:
+        parent = await get_label(session, parent_id)
+        if parent is None:
+            raise HTTPException(status_code=404, detail=f"Parent label '{parent_id}' not found")
+
+    try:
+        result = await create_label(session, body.id, body.names or None, body.parents or None)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
     if result is None:
         raise HTTPException(status_code=409, detail="Label already exists")
 
     # Write to labels.toml so the label survives cache rebuilds (the DB is regenerable from disk)
     labels = dict(content_manager.labels)
-    if body.id not in labels:
-        labels[body.id] = LabelDef(id=body.id, names=[body.id])
-        try:
-            write_labels_config(content_manager.content_dir, labels)
-            content_manager.reload_config()
-        except Exception as exc:
-            logger.error("Failed to write labels.toml for label %s: %s", body.id, exc)
-            await session.rollback()
-            raise HTTPException(
-                status_code=500, detail="Failed to persist label to filesystem"
-            ) from exc
+    labels[body.id] = LabelDef(
+        id=body.id,
+        names=body.names if body.names else [body.id],
+        parents=body.parents,
+    )
+    try:
+        write_labels_config(content_manager.content_dir, labels)
+        content_manager.reload_config()
+    except Exception as exc:
+        logger.error("Failed to write labels.toml for label %s: %s", body.id, exc)
+        await session.rollback()
+        raise HTTPException(
+            status_code=500, detail="Failed to persist label to filesystem"
+        ) from exc
 
     await session.commit()
     return result
+
+
+@router.put("/{label_id}", response_model=LabelResponse)
+async def update_label_endpoint(
+    label_id: str,
+    body: LabelUpdate,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    content_manager: Annotated[ContentManager, Depends(get_content_manager)],
+    user: Annotated[User, Depends(require_auth)],
+) -> LabelResponse:
+    """Update a label's names and parents."""
+    existing = await get_label(session, label_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Label not found")
+
+    # Validate parents exist
+    for parent_id in body.parents:
+        parent = await get_label(session, parent_id)
+        if parent is None:
+            raise HTTPException(status_code=404, detail=f"Parent label '{parent_id}' not found")
+
+    try:
+        result = await update_label(session, label_id, body.names, body.parents)
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    assert result is not None  # already checked existence above
+
+    # Persist to labels.toml
+    labels = dict(content_manager.labels)
+    labels[label_id] = LabelDef(id=label_id, names=body.names, parents=body.parents)
+    try:
+        write_labels_config(content_manager.content_dir, labels)
+        content_manager.reload_config()
+    except Exception as exc:
+        logger.error("Failed to write labels.toml for label %s: %s", label_id, exc)
+        await session.rollback()
+        raise HTTPException(
+            status_code=500, detail="Failed to persist label to filesystem"
+        ) from exc
+
+    await session.commit()
+    return result
+
+
+@router.delete("/{label_id}", response_model=LabelDeleteResponse)
+async def delete_label_endpoint(
+    label_id: str,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    content_manager: Annotated[ContentManager, Depends(get_content_manager)],
+    user: Annotated[User, Depends(require_auth)],
+) -> LabelDeleteResponse:
+    """Delete a label."""
+    deleted = await delete_label(session, label_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Label not found")
+
+    # Remove from labels.toml
+    labels = dict(content_manager.labels)
+    labels.pop(label_id, None)
+    try:
+        write_labels_config(content_manager.content_dir, labels)
+        content_manager.reload_config()
+    except Exception as exc:
+        logger.error("Failed to update labels.toml after deleting %s: %s", label_id, exc)
+        await session.rollback()
+        raise HTTPException(
+            status_code=500, detail="Failed to persist deletion to filesystem"
+        ) from exc
+
+    await session.commit()
+    return LabelDeleteResponse(id=label_id)
 
 
 @router.get("/{label_id}", response_model=LabelResponse)

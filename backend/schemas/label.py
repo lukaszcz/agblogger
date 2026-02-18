@@ -42,3 +42,19 @@ class LabelCreate(BaseModel):
     """Request to create a new label."""
 
     id: str = Field(min_length=1, max_length=100, pattern=r"^[a-z0-9][a-z0-9-]*$")
+    names: list[str] = Field(default_factory=list)
+    parents: list[str] = Field(default_factory=list)
+
+
+class LabelUpdate(BaseModel):
+    """Request to update a label's names and parents."""
+
+    names: list[str] = Field(default_factory=list)
+    parents: list[str] = Field(default_factory=list)
+
+
+class LabelDeleteResponse(BaseModel):
+    """Response after deleting a label."""
+
+    id: str
+    deleted: bool = True

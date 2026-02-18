@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
-from sqlalchemy import func, select, text
+from sqlalchemy import delete, func, select, text
 
 from backend.models.label import LabelCache, LabelParentCache, PostLabelCache
 from backend.schemas.label import (
@@ -104,32 +104,90 @@ async def get_label_descendant_ids(session: AsyncSession, label_id: str) -> list
     return [r[0] for r in result.all()]
 
 
-async def create_label(session: AsyncSession, label_id: str) -> LabelResponse | None:
-    """Create a new label. Returns None if it already exists."""
+async def create_label(
+    session: AsyncSession,
+    label_id: str,
+    names: list[str] | None = None,
+    parents: list[str] | None = None,
+) -> LabelResponse | None:
+    """Create a new label. Returns None if it already exists.
+
+    Raises ValueError if adding a parent would create a cycle.
+    """
     existing = await session.get(LabelCache, label_id)
     if existing is not None:
         return None
 
+    display_names = names if names else [label_id]
     label = LabelCache(
         id=label_id,
-        names=json.dumps([label_id]),
+        names=json.dumps(display_names),
         is_implicit=False,
     )
     session.add(label)
     await session.flush()
 
-    return LabelResponse(
-        id=label_id,
-        names=[label_id],
-        is_implicit=False,
-        parents=[],
-        children=[],
-        post_count=0,
-    )
+    # Add parent edges with cycle detection
+    if parents:
+        for parent_id in parents:
+            if await would_create_cycle(session, label_id, parent_id):
+                raise ValueError(f"Adding parent '{parent_id}' would create a cycle")
+            edge = LabelParentCache(label_id=label_id, parent_id=parent_id)
+            session.add(edge)
+        await session.flush()
+
+    return await get_label(session, label_id)
+
+
+async def update_label(
+    session: AsyncSession,
+    label_id: str,
+    names: list[str],
+    parents: list[str],
+) -> LabelResponse | None:
+    """Update a label's names and parent edges.
+
+    Deletes existing parent edges, checks for cycles with each new parent,
+    then inserts new edges. Returns None if label not found.
+    Raises ValueError if adding a parent would create a cycle.
+    """
+    label = await session.get(LabelCache, label_id)
+    if label is None:
+        return None
+
+    # Update names
+    label.names = json.dumps(names)
+
+    # Delete existing parent edges
+    await session.execute(delete(LabelParentCache).where(LabelParentCache.label_id == label_id))
+    await session.flush()
+
+    # Check each proposed parent for cycles (edges are already removed)
+    for parent_id in parents:
+        if await would_create_cycle(session, label_id, parent_id):
+            raise ValueError(f"Adding parent '{parent_id}' would create a cycle")
+        edge = LabelParentCache(label_id=label_id, parent_id=parent_id)
+        session.add(edge)
+
+    await session.flush()
+    return await get_label(session, label_id)
+
+
+async def delete_label(session: AsyncSession, label_id: str) -> bool:
+    """Delete a label and all its edges. Returns False if not found."""
+    label = await session.get(LabelCache, label_id)
+    if label is None:
+        return False
+
+    await session.delete(label)
+    await session.flush()
+    return True
 
 
 async def would_create_cycle(
-    session: AsyncSession, label_id: str, proposed_parent_id: str,
+    session: AsyncSession,
+    label_id: str,
+    proposed_parent_id: str,
 ) -> bool:
     """Check if adding label_id -> proposed_parent_id would create a cycle.
 

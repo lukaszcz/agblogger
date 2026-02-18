@@ -7,7 +7,6 @@ from collections import defaultdict, deque
 from typing import TYPE_CHECKING
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.filesystem.content_manager import ContentManager
 from backend.models.label import LabelCache, LabelParentCache
@@ -16,6 +15,8 @@ from backend.services.dag import break_cycles
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class TestLabelParsing:
@@ -102,7 +103,7 @@ class TestCacheCycleEnforcement:
         )
         await ensure_tables(db_session)
         cm = ContentManager(tmp_content_dir)
-        post_count, warnings = await rebuild_cache(db_session, cm)
+        _post_count, warnings = await rebuild_cache(db_session, cm)
 
         # All 3 labels should exist
         result = await db_session.execute(select(LabelCache))
@@ -121,13 +122,11 @@ class TestCacheCycleEnforcement:
         tmp_content_dir: Path,
     ) -> None:
         (tmp_content_dir / "labels.toml").write_text(
-            "[labels]\n"
-            '[labels.cs]\nnames = ["CS"]\n'
-            '[labels.swe]\nnames = ["SWE"]\nparent = "#cs"\n'
+            '[labels]\n[labels.cs]\nnames = ["CS"]\n[labels.swe]\nnames = ["SWE"]\nparent = "#cs"\n'
         )
         await ensure_tables(db_session)
         cm = ContentManager(tmp_content_dir)
-        post_count, warnings = await rebuild_cache(db_session, cm)
+        _post_count, warnings = await rebuild_cache(db_session, cm)
         assert warnings == []
 
         edge_result = await db_session.execute(select(LabelParentCache))

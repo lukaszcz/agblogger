@@ -739,6 +739,171 @@ class TestLabelCRUD:
         )
         assert resp.status_code == 401
 
+    @pytest.mark.asyncio
+    async def test_create_label_with_parents(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        resp = await client.post(
+            "/api/labels",
+            json={"id": "new-child", "names": ["new child"], "parents": ["swe"]},
+            headers=headers,
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["parents"] == ["swe"]
+        assert data["names"] == ["new child"]
+
+    @pytest.mark.asyncio
+    async def test_create_label_nonexistent_parent_returns_404(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        resp = await client.post(
+            "/api/labels",
+            json={"id": "orphan-child", "parents": ["nonexistent"]},
+            headers=headers,
+        )
+        assert resp.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_update_label_parents(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # Create parent labels
+        await client.post("/api/labels", json={"id": "math"}, headers=headers)
+        await client.post("/api/labels", json={"id": "physics"}, headers=headers)
+
+        # Create child with one parent
+        await client.post(
+            "/api/labels",
+            json={"id": "quantum", "parents": ["math"]},
+            headers=headers,
+        )
+
+        # Update to have two parents
+        resp = await client.put(
+            "/api/labels/quantum",
+            json={"names": ["quantum mechanics"], "parents": ["math", "physics"]},
+            headers=headers,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert set(data["parents"]) == {"math", "physics"}
+        assert data["names"] == ["quantum mechanics"]
+
+    @pytest.mark.asyncio
+    async def test_update_label_cycle_returns_409(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        await client.post("/api/labels", json={"id": "top"}, headers=headers)
+        await client.post(
+            "/api/labels",
+            json={"id": "bottom", "parents": ["top"]},
+            headers=headers,
+        )
+
+        # Try to make top a child of bottom (cycle)
+        resp = await client.put(
+            "/api/labels/top",
+            json={"names": ["top"], "parents": ["bottom"]},
+            headers=headers,
+        )
+        assert resp.status_code == 409
+
+    @pytest.mark.asyncio
+    async def test_update_label_nonexistent_parent_returns_404(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        await client.post("/api/labels", json={"id": "orphan"}, headers=headers)
+        resp = await client.put(
+            "/api/labels/orphan",
+            json={"names": ["orphan"], "parents": ["nonexistent"]},
+            headers=headers,
+        )
+        assert resp.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_update_label_not_found_returns_404(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        resp = await client.put(
+            "/api/labels/nonexistent",
+            json={"names": ["nope"], "parents": []},
+            headers=headers,
+        )
+        assert resp.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_update_label_requires_auth(self, client: AsyncClient) -> None:
+        resp = await client.put(
+            "/api/labels/swe",
+            json={"names": ["swe"], "parents": []},
+        )
+        assert resp.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_delete_label(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        await client.post("/api/labels", json={"id": "temp"}, headers=headers)
+        resp = await client.delete("/api/labels/temp", headers=headers)
+        assert resp.status_code == 200
+        assert resp.json()["deleted"] is True
+
+        resp = await client.get("/api/labels/temp")
+        assert resp.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_delete_label_requires_auth(self, client: AsyncClient) -> None:
+        resp = await client.delete("/api/labels/swe")
+        assert resp.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_delete_nonexistent_label_returns_404(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        resp = await client.delete("/api/labels/nonexistent", headers=headers)
+        assert resp.status_code == 404
+
 
 class TestSearch:
     @pytest.mark.asyncio
