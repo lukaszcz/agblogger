@@ -11,6 +11,14 @@ import frontmatter
 
 from backend.services.datetime_service import format_datetime, parse_datetime
 
+RECOGNIZED_FIELDS: frozenset[str] = frozenset({
+    "created_at",
+    "modified_at",
+    "author",
+    "labels",
+    "draft",
+})
+
 
 @dataclass
 class PostData:
