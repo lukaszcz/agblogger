@@ -6,8 +6,20 @@ import datetime
 
 import frontmatter
 
-from backend.filesystem.frontmatter import PostData, parse_post, serialize_post
+from backend.filesystem.frontmatter import RECOGNIZED_FIELDS, PostData, parse_post, serialize_post
 from backend.services.datetime_service import now_utc
+
+
+class TestRecognizedFields:
+    def test_recognized_fields_contains_expected(self) -> None:
+        assert "created_at" in RECOGNIZED_FIELDS
+        assert "modified_at" in RECOGNIZED_FIELDS
+        assert "author" in RECOGNIZED_FIELDS
+        assert "labels" in RECOGNIZED_FIELDS
+        assert "draft" in RECOGNIZED_FIELDS
+
+    def test_recognized_fields_is_frozenset(self) -> None:
+        assert isinstance(RECOGNIZED_FIELDS, frozenset)
 
 
 class TestFrontmatterParsing:

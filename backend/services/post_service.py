@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import func, select, text
@@ -15,6 +16,7 @@ from backend.schemas.post import (
     PostSummary,
     SearchResult,
 )
+from backend.services.datetime_service import format_iso, parse_datetime
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -52,11 +54,12 @@ async def list_posts(
         stmt = stmt.where(PostCache.author == author)
 
     if from_date:
-        stmt = stmt.where(PostCache.created_at >= from_date)
+        from_dt = parse_datetime(from_date + " 00:00:00", default_tz="UTC")
+        stmt = stmt.where(PostCache.created_at >= from_dt)
 
     if to_date:
-        # Include the entire day by comparing against next day
-        stmt = stmt.where(PostCache.created_at < to_date + "T23:59:59")
+        to_dt = parse_datetime(to_date + " 23:59:59.999999", default_tz="UTC")
+        stmt = stmt.where(PostCache.created_at <= to_dt)
 
     # Label filtering
     label_ids: list[str] = []
@@ -131,8 +134,8 @@ async def list_posts(
                 file_path=post.file_path,
                 title=post.title,
                 author=post.author,
-                created_at=post.created_at,
-                modified_at=post.modified_at,
+                created_at=format_iso(post.created_at),
+                modified_at=format_iso(post.modified_at),
                 is_draft=post.is_draft,
                 excerpt=post.excerpt,
                 labels=labels_map.get(post.id, []),
@@ -168,8 +171,8 @@ async def get_post(
         file_path=post.file_path,
         title=post.title,
         author=post.author,
-        created_at=post.created_at,
-        modified_at=post.modified_at,
+        created_at=format_iso(post.created_at),
+        modified_at=format_iso(post.modified_at),
         is_draft=post.is_draft,
         excerpt=post.excerpt,
         labels=post_label_ids,
@@ -193,17 +196,25 @@ async def search_posts(session: AsyncSession, query: str, *, limit: int = 20) ->
         LIMIT :limit
     """)
     result = await session.execute(stmt, {"query": safe_query, "limit": limit})
-    return [
-        SearchResult(
-            id=r[0],
-            file_path=r[1],
-            title=r[2],
-            excerpt=r[3],
-            created_at=r[4],
-            rank=float(r[5]) if r[5] else 0.0,
+    rows = result.all()
+    results: list[SearchResult] = []
+    for r in rows:
+        created_at_val = r[4]
+        if isinstance(created_at_val, datetime):
+            created_at_str = format_iso(created_at_val)
+        else:
+            created_at_str = str(created_at_val)
+        results.append(
+            SearchResult(
+                id=r[0],
+                file_path=r[1],
+                title=r[2],
+                excerpt=r[3],
+                created_at=created_at_str,
+                rank=float(r[5]) if r[5] else 0.0,
+            )
         )
-        for r in result.all()
-    ]
+    return results
 
 
 async def get_posts_by_label(

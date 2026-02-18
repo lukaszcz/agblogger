@@ -13,7 +13,6 @@ from backend.models.label import LabelCache, LabelParentCache, PostLabelCache
 from backend.models.post import PostCache
 from backend.pandoc.renderer import render_markdown
 from backend.services.dag import break_cycles
-from backend.services.datetime_service import format_datetime
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -95,8 +94,8 @@ async def rebuild_cache(
             file_path=post_data.file_path,
             title=post_data.title,
             author=post_data.author,
-            created_at=format_datetime(post_data.created_at),
-            modified_at=format_datetime(post_data.modified_at),
+            created_at=post_data.created_at,
+            modified_at=post_data.modified_at,
             is_draft=post_data.is_draft,
             content_hash=content_h,
             excerpt=excerpt,

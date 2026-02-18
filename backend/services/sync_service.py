@@ -3,16 +3,22 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 from dataclasses import dataclass, field
+from datetime import date, datetime
 from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import frontmatter as fm
 from sqlalchemy import delete, select
 
+from backend.filesystem.frontmatter import RECOGNIZED_FIELDS
 from backend.models.sync import SyncManifest
-from backend.services.datetime_service import format_iso, now_utc
+from backend.services.datetime_service import format_datetime, format_iso, now_utc, parse_datetime
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -220,3 +226,78 @@ async def update_server_manifest(
             )
         )
     await session.commit()
+
+
+def normalize_post_frontmatter(
+    uploaded_files: list[str],
+    old_manifest: dict[str, FileEntry],
+    content_dir: Path,
+    default_author: str,
+) -> list[str]:
+    """Normalize YAML front matter for uploaded post files during sync.
+
+    Fills missing fields (timestamps, author) with defaults, normalizes existing
+    timestamps to strict format, and warns about unrecognized front matter fields.
+
+    Returns a list of warning strings.
+    """
+    warnings: list[str] = []
+    current_time = format_datetime(now_utc())
+
+    for file_path in uploaded_files:
+        # Skip non-post files
+        if not file_path.startswith("posts/") or not file_path.endswith(".md"):
+            continue
+
+        full_path = (content_dir / file_path).resolve()
+
+        # Validate path stays within content_dir
+        try:
+            full_path.relative_to(content_dir.resolve())
+        except ValueError:
+            logger.warning("Path traversal attempt: %s", file_path)
+            continue
+
+        # Skip if file doesn't exist on disk
+        if not full_path.is_file():
+            continue
+
+        raw = full_path.read_text(encoding="utf-8")
+        post = fm.loads(raw)
+
+        # Check for unrecognized fields
+        for key in post.metadata:
+            if key not in RECOGNIZED_FIELDS:
+                warnings.append(f"{file_path}: unrecognized front matter field '{key}'")
+
+        # Determine new vs edit
+        is_edit = file_path in old_manifest
+
+        # Normalize timestamps that already exist
+        for ts_field in ("created_at", "modified_at"):
+            raw_value = post.get(ts_field)
+            if raw_value is not None:
+                if isinstance(raw_value, date) and not isinstance(raw_value, datetime):
+                    raw_value = datetime(raw_value.year, raw_value.month, raw_value.day)
+                post[ts_field] = format_datetime(parse_datetime(raw_value))
+
+        if is_edit:
+            # Edited post: always update modified_at, fill missing fields
+            post["modified_at"] = current_time
+            if "created_at" not in post.metadata:
+                post["created_at"] = current_time
+            if "author" not in post.metadata and default_author:
+                post["author"] = default_author
+        else:
+            # New post: fill missing timestamps and author
+            if "created_at" not in post.metadata:
+                post["created_at"] = current_time
+            if "modified_at" not in post.metadata:
+                post["modified_at"] = post["created_at"]
+            if "author" not in post.metadata and default_author:
+                post["author"] = default_author
+
+        # Rewrite file on disk
+        full_path.write_text(fm.dumps(post) + "\n", encoding="utf-8")
+
+    return warnings

@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, Index, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.models.base import Base
@@ -22,8 +23,8 @@ class PostCache(Base):
     file_path: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     title: Mapped[str] = mapped_column(Text, nullable=False)
     author: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[str] = mapped_column(Text, nullable=False)
-    modified_at: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    modified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     is_draft: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     excerpt: Mapped[str | None] = mapped_column(Text, nullable=True)
