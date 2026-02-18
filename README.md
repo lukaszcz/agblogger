@@ -82,6 +82,29 @@ just check-backend
 just check-frontend
 ```
 
+## Sync Client
+
+The CLI sync client keeps a local content directory in sync with the server using SHA-256 hash-based three-way merge.
+
+```bash
+# Initialize a local directory for syncing
+python cli/sync_client.py --dir ./my-blog --server https://your-server.com init
+
+# Preview what would change
+python cli/sync_client.py --dir ./my-blog status
+
+# Push local changes to server
+python cli/sync_client.py --dir ./my-blog push
+
+# Pull server changes to local
+python cli/sync_client.py --dir ./my-blog pull
+
+# Full bidirectional sync
+python cli/sync_client.py --dir ./my-blog sync
+```
+
+Credentials default to `admin`/`admin` and can be overridden with `--username` and `--password`. Conflicts are resolved by keeping the server version; the local copy is saved as a `.conflict-backup` file.
+
 ## Deployment
 
 ### Docker (recommended)

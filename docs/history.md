@@ -22,4 +22,5 @@
   Review changes with `review-pr`, then fix the issues.
 10. Allow multiple parents for labels. Review with `/pr-review-toolkit:review-pr` and fix all issues.
 11. Auto-update YAML front matter on sync.
-12. Improve frontend test coverage.
+12. Full codebase review with CodeRabbit (42 issues, ran > 20min) and Codex (4 issues).
+13. Improve frontend test coverage.
