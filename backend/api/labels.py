@@ -7,10 +7,18 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.api.deps import get_session
-from backend.schemas.label import LabelGraphResponse, LabelResponse
+from backend.api.deps import get_content_manager, get_session, require_auth
+from backend.filesystem.content_manager import ContentManager
+from backend.filesystem.toml_manager import LabelDef, write_labels_config
+from backend.models.user import User
+from backend.schemas.label import LabelCreate, LabelGraphResponse, LabelResponse
 from backend.schemas.post import PostListResponse
-from backend.services.label_service import get_all_labels, get_label, get_label_graph
+from backend.services.label_service import (
+    create_label,
+    get_all_labels,
+    get_label,
+    get_label_graph,
+)
 from backend.services.post_service import get_posts_by_label
 
 router = APIRouter(prefix="/api/labels", tags=["labels"])
@@ -30,6 +38,28 @@ async def label_graph(
 ) -> LabelGraphResponse:
     """Get the full label DAG for graph visualization."""
     return await get_label_graph(session)
+
+
+@router.post("", response_model=LabelResponse, status_code=201)
+async def create_label_endpoint(
+    body: LabelCreate,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    content_manager: Annotated[ContentManager, Depends(get_content_manager)],
+    user: Annotated[User, Depends(require_auth)],
+) -> LabelResponse:
+    """Create a new label."""
+    result = await create_label(session, body.id)
+    if result is None:
+        raise HTTPException(status_code=409, detail="Label already exists")
+
+    # Also write to labels.toml so it persists across restarts
+    labels = content_manager.labels
+    if body.id not in labels:
+        labels[body.id] = LabelDef(id=body.id, names=[body.id])
+        write_labels_config(content_manager.content_dir, labels)
+        content_manager.reload_config()
+
+    return result
 
 
 @router.get("/{label_id}", response_model=LabelResponse)

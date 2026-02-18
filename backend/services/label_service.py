@@ -104,6 +104,30 @@ async def get_label_descendant_ids(session: AsyncSession, label_id: str) -> list
     return [r[0] for r in result.all()]
 
 
+async def create_label(session: AsyncSession, label_id: str) -> LabelResponse | None:
+    """Create a new label. Returns None if it already exists."""
+    existing = await session.get(LabelCache, label_id)
+    if existing is not None:
+        return None
+
+    label = LabelCache(
+        id=label_id,
+        names=json.dumps([label_id]),
+        is_implicit=False,
+    )
+    session.add(label)
+    await session.commit()
+
+    return LabelResponse(
+        id=label_id,
+        names=[label_id],
+        is_implicit=False,
+        parents=[],
+        children=[],
+        post_count=0,
+    )
+
+
 async def get_label_graph(session: AsyncSession) -> LabelGraphResponse:
     """Get the full label DAG for visualization."""
     labels = await get_all_labels(session)

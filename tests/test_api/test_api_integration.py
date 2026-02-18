@@ -409,10 +409,9 @@ class TestPostCRUD:
             "/api/posts",
             json={
                 "file_path": "posts/new-test.md",
-                "content": (
-                    "---\ncreated_at: 2026-01-01 00:00:00+00\nauthor: Admin\n"
-                    "---\n# New Post\n\nContent here.\n"
-                ),
+                "body": "# New Post\n\nContent here.\n",
+                "labels": [],
+                "is_draft": False,
             },
             headers={"Authorization": f"Bearer {token}"},
         )
@@ -425,7 +424,9 @@ class TestPostCRUD:
             "/api/posts",
             json={
                 "file_path": "posts/no-auth.md",
-                "content": "---\nauthor: Admin\n---\n# No Auth\n",
+                "body": "# No Auth\n",
+                "labels": [],
+                "is_draft": False,
             },
         )
         assert resp.status_code == 401
@@ -441,10 +442,9 @@ class TestPostCRUD:
         resp = await client.put(
             "/api/posts/posts/hello.md",
             json={
-                "content": (
-                    "---\ncreated_at: 2026-02-02 22:21:29.975359+00\nauthor: Admin\n"
-                    "labels: ['#swe']\n---\n# Hello World Updated\n\nUpdated content.\n"
-                ),
+                "body": "# Hello World Updated\n\nUpdated content.\n",
+                "labels": ["swe"],
+                "is_draft": False,
             },
             headers={"Authorization": f"Bearer {token}"},
         )
@@ -461,7 +461,11 @@ class TestPostCRUD:
 
         resp = await client.put(
             "/api/posts/posts/nope.md",
-            json={"content": "---\nauthor: Admin\n---\n# Nope\n"},
+            json={
+                "body": "# Nope\n",
+                "labels": [],
+                "is_draft": False,
+            },
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 404
@@ -479,9 +483,9 @@ class TestPostCRUD:
             "/api/posts",
             json={
                 "file_path": "posts/to-delete.md",
-                "content": (
-                    "---\ncreated_at: 2026-01-01 00:00:00+00\nauthor: Admin\n---\n# Delete Me\n"
-                ),
+                "body": "# Delete Me\n",
+                "labels": [],
+                "is_draft": False,
             },
             headers={"Authorization": f"Bearer {token}"},
         )
@@ -505,6 +509,137 @@ class TestPostCRUD:
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_get_post_for_edit(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+
+        resp = await client.get(
+            "/api/posts/posts/hello.md/edit",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["file_path"] == "posts/hello.md"
+        assert "# Hello World" in data["body"]
+        assert data["labels"] == ["swe"]
+        assert "created_at" in data
+        assert "modified_at" in data
+        assert data["author"] == "Admin"
+
+    @pytest.mark.asyncio
+    async def test_get_post_for_edit_requires_auth(self, client: AsyncClient) -> None:
+        resp = await client.get("/api/posts/posts/hello.md/edit")
+        assert resp.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_get_post_for_edit_not_found(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+
+        resp = await client.get(
+            "/api/posts/posts/nonexistent.md/edit",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_create_post_structured(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+
+        resp = await client.post(
+            "/api/posts",
+            json={
+                "file_path": "posts/structured-new.md",
+                "body": "# Structured Post\n\nContent here.",
+                "labels": ["swe"],
+                "is_draft": False,
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["title"] == "Structured Post"
+        assert data["labels"] == ["swe"]
+        assert data["is_draft"] is False
+        assert data["author"] == "Admin"
+
+    @pytest.mark.asyncio
+    async def test_update_post_structured(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+
+        resp = await client.put(
+            "/api/posts/posts/hello.md",
+            json={
+                "body": "# Hello World Structured\n\nUpdated structured content.\n",
+                "labels": ["swe"],
+                "is_draft": False,
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["title"] == "Hello World Structured"
+        assert data["labels"] == ["swe"]
+
+
+class TestLabelCRUD:
+    @pytest.mark.asyncio
+    async def test_create_label(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+
+        resp = await client.post(
+            "/api/labels",
+            json={"id": "cooking"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["id"] == "cooking"
+        assert data["names"] == ["cooking"]
+
+    @pytest.mark.asyncio
+    async def test_create_label_duplicate_returns_409(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+
+        # swe already exists from fixture
+        resp = await client.post(
+            "/api/labels",
+            json={"id": "swe"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 409
+
+    @pytest.mark.asyncio
+    async def test_create_label_requires_auth(self, client: AsyncClient) -> None:
+        resp = await client.post(
+            "/api/labels",
+            json={"id": "nope"},
+        )
+        assert resp.status_code == 401
 
 
 class TestSearch:

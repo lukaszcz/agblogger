@@ -14,13 +14,14 @@ from backend.api.deps import (
     require_auth,
 )
 from backend.filesystem.content_manager import ContentManager, hash_content
-from backend.filesystem.frontmatter import parse_post
+from backend.filesystem.frontmatter import PostData, extract_title, generate_excerpt, serialize_post
 from backend.models.post import PostCache
 from backend.models.user import User
 from backend.pandoc.renderer import render_markdown
 from backend.schemas.post import (
     PostCreate,
     PostDetail,
+    PostEditResponse,
     PostListResponse,
     PostUpdate,
     SearchResult,
@@ -74,6 +75,27 @@ async def search_endpoint(
     return await search_posts(session, q, limit=limit)
 
 
+@router.get("/{file_path:path}/edit", response_model=PostEditResponse)
+async def get_post_for_edit(
+    file_path: str,
+    content_manager: Annotated[ContentManager, Depends(get_content_manager)],
+    user: Annotated[User, Depends(require_auth)],
+) -> PostEditResponse:
+    """Get structured post data for the editor."""
+    post_data = content_manager.read_post(file_path)
+    if post_data is None:
+        raise HTTPException(status_code=404, detail="Post not found")
+    return PostEditResponse(
+        file_path=file_path,
+        body=post_data.content,
+        labels=post_data.labels,
+        is_draft=post_data.is_draft,
+        created_at=format_datetime(post_data.created_at),
+        modified_at=format_datetime(post_data.modified_at),
+        author=post_data.author,
+    )
+
+
 @router.get("/{file_path:path}", response_model=PostDetail)
 async def get_post_endpoint(
     file_path: str,
@@ -94,20 +116,25 @@ async def create_post_endpoint(
     user: Annotated[User, Depends(require_auth)],
 ) -> PostDetail:
     """Create a new post."""
-    # Parse the content
-    post_data = parse_post(
-        body.content,
-        file_path=body.file_path,
-        default_tz=content_manager.site_config.timezone,
-        default_author=content_manager.site_config.default_author,
-    )
+    now = now_utc()
+    author = user.display_name or user.username
 
-    from backend.filesystem.frontmatter import generate_excerpt
+    post_data = PostData(
+        title=extract_title(body.body, body.file_path),
+        content=body.body,
+        raw_content="",
+        created_at=now,
+        modified_at=now,
+        author=author,
+        labels=body.labels,
+        is_draft=body.is_draft,
+        file_path=body.file_path,
+    )
 
     excerpt = generate_excerpt(post_data.content)
     rendered_html = render_markdown(post_data.content)
 
-    # DB first, then filesystem — rollback DB on filesystem failure
+    serialized = serialize_post(post_data)
     post = PostCache(
         file_path=body.file_path,
         title=post_data.title,
@@ -115,7 +142,7 @@ async def create_post_endpoint(
         created_at=format_datetime(post_data.created_at),
         modified_at=format_datetime(post_data.modified_at),
         is_draft=post_data.is_draft,
-        content_hash=hash_content(body.content),
+        content_hash=hash_content(serialized),
         excerpt=excerpt,
         rendered_html=rendered_html,
     )
@@ -163,23 +190,39 @@ async def update_post_endpoint(
     if existing is None:
         raise HTTPException(status_code=404, detail="Post not found")
 
-    post_data = parse_post(
-        body.content,
-        file_path=file_path,
-        default_tz=content_manager.site_config.timezone,
-        default_author=content_manager.site_config.default_author,
+    # Read existing post to preserve created_at and author
+    existing_post_data = content_manager.read_post(file_path)
+    created_at = existing_post_data.created_at if existing_post_data else now_utc()
+    author = (
+        existing_post_data.author if existing_post_data else (user.display_name or user.username)
     )
-    post_data.modified_at = now_utc()
 
-    from backend.filesystem.frontmatter import generate_excerpt
+    now = now_utc()
+    title = extract_title(body.body, file_path)
 
-    existing.title = post_data.title
-    existing.author = post_data.author
-    existing.modified_at = format_datetime(post_data.modified_at)
-    existing.is_draft = post_data.is_draft
-    existing.content_hash = hash_content(body.content)
-    existing.excerpt = generate_excerpt(post_data.content)
-    existing.rendered_html = render_markdown(post_data.content)
+    post_data = PostData(
+        title=title,
+        content=body.body,
+        raw_content="",
+        created_at=created_at,
+        modified_at=now,
+        author=author,
+        labels=body.labels,
+        is_draft=body.is_draft,
+        file_path=file_path,
+    )
+
+    serialized = serialize_post(post_data)
+    excerpt = generate_excerpt(post_data.content)
+    rendered_html = render_markdown(post_data.content)
+
+    existing.title = title
+    existing.author = author
+    existing.modified_at = format_datetime(now)
+    existing.is_draft = body.is_draft
+    existing.content_hash = hash_content(serialized)
+    existing.excerpt = excerpt
+    existing.rendered_html = rendered_html
 
     await session.flush()
 

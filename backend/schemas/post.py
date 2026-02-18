@@ -26,6 +26,18 @@ class PostDetail(PostSummary):
     content: str | None = None
 
 
+class PostEditResponse(BaseModel):
+    """Structured post data for the editor."""
+
+    file_path: str
+    body: str
+    labels: list[str] = Field(default_factory=list)
+    is_draft: bool = False
+    created_at: str
+    modified_at: str
+    author: str | None = None
+
+
 class PostCreate(BaseModel):
     """Request to create a new post."""
 
@@ -35,21 +47,23 @@ class PostCreate(BaseModel):
         pattern=r"^posts/.*\.md$",
         description="Relative path under content/, e.g. posts/my-post.md",
     )
-    content: str = Field(
-        min_length=1,
+    body: str = Field(
         max_length=500_000,
-        description="Full markdown content including front matter",
+        description="Markdown body without front matter",
     )
+    labels: list[str] = Field(default_factory=list)
+    is_draft: bool = False
 
 
 class PostUpdate(BaseModel):
     """Request to update an existing post."""
 
-    content: str = Field(
-        min_length=1,
+    body: str = Field(
         max_length=500_000,
-        description="Full markdown content including front matter",
+        description="Markdown body without front matter",
     )
+    labels: list[str] = Field(default_factory=list)
+    is_draft: bool = False
 
 
 class PostListResponse(BaseModel):
