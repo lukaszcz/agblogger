@@ -15,13 +15,12 @@ export default function LabelInput({ value, onChange, disabled }: LabelInputProp
   const [allLabels, setAllLabels] = useState<LabelResponse[]>([])
   const [open, setOpen] = useState(false)
   const [creating, setCreating] = useState(false)
+  const [activeIndex, setActiveIndex] = useState(-1)
   const inputRef = useRef<HTMLInputElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    fetchLabels()
-      .then(setAllLabels)
-      .catch(() => {})
+    fetchLabels().then(setAllLabels).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -42,12 +41,17 @@ export default function LabelInput({ value, onChange, disabled }: LabelInputProp
   const exactMatch = allLabels.some((l) => l.id === trimmed)
   const showCreate = trimmed.length > 0 && !exactMatch && !value.includes(trimmed)
 
+  // Total options: filtered labels + optional create option
+  const totalOptions = filtered.length + (showCreate ? 1 : 0)
+  const isDropdownOpen = open && totalOptions > 0
+
   function addLabel(id: string) {
     if (!value.includes(id)) {
       onChange([...value, id])
     }
     setQuery('')
     setOpen(false)
+    setActiveIndex(-1)
     inputRef.current?.focus()
   }
 
@@ -74,9 +78,28 @@ export default function LabelInput({ value, onChange, disabled }: LabelInputProp
     if (e.key === 'Backspace' && query === '' && value.length > 0) {
       removeLabel(value[value.length - 1])
     }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      if (!open) {
+        setOpen(true)
+        setActiveIndex(0)
+      } else {
+        setActiveIndex((prev) => (prev + 1) % totalOptions)
+      }
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      if (open) {
+        setActiveIndex((prev) => (prev <= 0 ? totalOptions - 1 : prev - 1))
+      }
+    }
     if (e.key === 'Enter') {
       e.preventDefault()
-      if (showCreate) {
+      if (activeIndex >= 0 && activeIndex < filtered.length) {
+        addLabel(filtered[activeIndex].id)
+      } else if (activeIndex === filtered.length && showCreate) {
+        void handleCreate()
+      } else if (showCreate) {
         void handleCreate()
       } else if (filtered.length > 0) {
         addLabel(filtered[0].id)
@@ -84,8 +107,14 @@ export default function LabelInput({ value, onChange, disabled }: LabelInputProp
     }
     if (e.key === 'Escape') {
       setOpen(false)
+      setActiveIndex(-1)
     }
   }
+
+  // Reset active index when query changes
+  useEffect(() => {
+    setActiveIndex(-1)
+  }, [query])
 
   return (
     <div ref={containerRef} className="relative">
@@ -105,6 +134,7 @@ export default function LabelInput({ value, onChange, disabled }: LabelInputProp
               <button
                 type="button"
                 onClick={() => removeLabel(id)}
+                aria-label={`Remove label ${id}`}
                 className="hover:text-accent-light"
               >
                 <X size={12} />
@@ -115,6 +145,11 @@ export default function LabelInput({ value, onChange, disabled }: LabelInputProp
         <input
           ref={inputRef}
           type="text"
+          role="combobox"
+          aria-expanded={isDropdownOpen}
+          aria-autocomplete="list"
+          aria-controls="label-listbox"
+          aria-activedescendant={activeIndex >= 0 ? `label-option-${activeIndex}` : undefined}
           value={query}
           onChange={(e) => {
             setQuery(e.target.value)
@@ -129,17 +164,24 @@ export default function LabelInput({ value, onChange, disabled }: LabelInputProp
         />
       </div>
 
-      {open && (filtered.length > 0 || showCreate) && (
+      {isDropdownOpen && (
         <div
+          id="label-listbox"
+          role="listbox"
           className="absolute z-10 mt-1 w-full bg-paper border border-border rounded-lg
                       shadow-lg max-h-48 overflow-y-auto"
         >
-          {filtered.map((label) => (
+          {filtered.map((label, index) => (
             <button
               key={label.id}
+              id={`label-option-${index}`}
+              role="option"
+              aria-selected={index === activeIndex}
               type="button"
               onClick={() => addLabel(label.id)}
-              className="w-full text-left px-3 py-2 text-sm hover:bg-paper-warm transition-colors"
+              className={`w-full text-left px-3 py-2 text-sm transition-colors ${
+                index === activeIndex ? 'bg-paper-warm' : 'hover:bg-paper-warm'
+              }`}
             >
               <span className="font-medium">#{label.id}</span>
               {label.names.length > 0 && label.names[0] !== label.id && (
@@ -149,11 +191,16 @@ export default function LabelInput({ value, onChange, disabled }: LabelInputProp
           ))}
           {showCreate && (
             <button
+              id={`label-option-${filtered.length}`}
+              role="option"
+              aria-selected={activeIndex === filtered.length}
               type="button"
               onClick={() => void handleCreate()}
               disabled={creating}
-              className="w-full text-left px-3 py-2 text-sm text-accent hover:bg-paper-warm
-                         transition-colors border-t border-border disabled:opacity-50"
+              className={`w-full text-left px-3 py-2 text-sm text-accent transition-colors
+                         border-t border-border disabled:opacity-50 ${
+                           activeIndex === filtered.length ? 'bg-paper-warm' : 'hover:bg-paper-warm'
+                         }`}
             >
               {creating ? 'Creating...' : `Create #${trimmed}`}
             </button>

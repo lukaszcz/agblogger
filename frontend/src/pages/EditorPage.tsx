@@ -223,7 +223,7 @@ export default function EditorPage() {
         </div>
 
         {preview && (
-          <div className="p-6 bg-white border border-border rounded-lg overflow-y-auto">
+          <div className="p-6 bg-paper border border-border rounded-lg overflow-y-auto">
             <div
               className="prose max-w-none"
               dangerouslySetInnerHTML={{ __html: renderedPreview }}
