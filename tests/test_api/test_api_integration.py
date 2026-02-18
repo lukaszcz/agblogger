@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 from typing import TYPE_CHECKING
 
 import pytest
@@ -808,6 +809,62 @@ class TestRegistration:
             },
         )
         assert resp.status_code == 409
+
+
+class TestSyncCycleWarnings:
+    @pytest.mark.asyncio
+    async def test_sync_commit_returns_cycle_warnings(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # Upload a labels.toml with a cycle
+        cyclic_toml = (
+            "[labels]\n"
+            '[labels.a]\nnames = ["A"]\nparents = ["#b"]\n'
+            '[labels.b]\nnames = ["B"]\nparents = ["#a"]\n'
+        )
+
+        resp = await client.post(
+            "/api/sync/upload",
+            params={"file_path": "labels.toml"},
+            files={"file": ("labels.toml", io.BytesIO(cyclic_toml.encode()), "text/plain")},
+            headers=headers,
+        )
+        assert resp.status_code == 200
+
+        # Commit sync — should return warnings about dropped edges
+        resp = await client.post(
+            "/api/sync/commit",
+            json={"resolutions": {}},
+            headers=headers,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "warnings" in data
+        assert len(data["warnings"]) == 1
+        assert "Cycle detected" in data["warnings"][0]
+
+    @pytest.mark.asyncio
+    async def test_sync_commit_no_warnings_without_cycles(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        resp = await client.post(
+            "/api/sync/commit",
+            json={"resolutions": {}},
+            headers=headers,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["warnings"] == []
 
 
 class TestSyncSecurity:

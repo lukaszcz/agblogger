@@ -6,7 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.deps import get_content_manager, get_session, require_auth
@@ -69,6 +69,7 @@ class SyncCommitResponse(BaseModel):
 
     status: str
     files_synced: int
+    warnings: list[str] = Field(default_factory=list)
 
 
 # ── Endpoints ────────────────────────────────────────
@@ -165,12 +166,16 @@ async def sync_commit(
     # Update manifest to match current state
     await update_server_manifest(session, current_files)
 
+    # Reload config so newly uploaded labels/config are picked up
+    content_manager.reload_config()
+
     # Rebuild caches
     from backend.services.cache_service import rebuild_cache
 
-    _post_count, _warnings = await rebuild_cache(session, content_manager)
+    _post_count, warnings = await rebuild_cache(session, content_manager)
 
     return SyncCommitResponse(
         status="ok",
         files_synced=len(current_files),
+        warnings=warnings,
     )
