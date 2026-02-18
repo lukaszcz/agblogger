@@ -102,6 +102,17 @@ export interface LabelGraphResponse {
   edges: LabelGraphEdge[]
 }
 
+export interface LabelCreateRequest {
+  id: string
+  names?: string[]
+  parents?: string[]
+}
+
+export interface LabelUpdateRequest {
+  names: string[]
+  parents: string[]
+}
+
 export interface LabelDeleteResponse {
   id: string
   deleted: boolean

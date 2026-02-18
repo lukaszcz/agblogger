@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { ArrowLeft, X, Settings, Trash2 } from 'lucide-react'
 
@@ -65,15 +65,21 @@ export default function LabelSettingsPage() {
         setNames([...l.names])
         setParents([...l.parents])
       })
-      .catch(() => {
-        setError('Failed to load label data.')
+      .catch((err) => {
+        if (err instanceof HTTPError && err.response.status === 404) {
+          setError('Label not found.')
+        } else if (err instanceof HTTPError && err.response.status === 401) {
+          setError('Session expired. Please log in again.')
+        } else {
+          setError('Failed to load label data. Please try again later.')
+        }
       })
       .finally(() => {
         setLoading(false)
       })
   }, [labelId])
 
-  const excludedIds = useCallback(() => {
+  const excludedIds = useMemo(() => {
     if (!labelId) return new Set<string>()
     const labelsById = new Map(allLabels.map((l) => [l.id, l]))
     const descendants = computeDescendants(labelId, labelsById)
@@ -81,7 +87,7 @@ export default function LabelSettingsPage() {
     return descendants
   }, [labelId, allLabels])
 
-  const availableParents = allLabels.filter((l) => !excludedIds().has(l.id))
+  const availableParents = allLabels.filter((l) => !excludedIds.has(l.id))
 
   function handleRemoveName(index: number) {
     if (names.length <= 1) return

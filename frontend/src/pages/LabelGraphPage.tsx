@@ -20,12 +20,22 @@ import Dagre from '@dagrejs/dagre'
 import { Search, GitFork } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 import { fetchLabel, fetchLabelGraph, updateLabel } from '@/api/labels'
+import { HTTPError } from '@/api/client'
 import type { LabelGraphResponse } from '@/api/client'
+
+/* ── Types ─────────────────────────────────────────── */
+
+interface LabelNodeData {
+  label: string
+  names: string[]
+  postCount: number
+  depth: number
+}
 
 /* ── Custom node ────────────────────────────────────── */
 
 function LabelNode({ data }: NodeProps) {
-  const d = data as { label: string; names: string[]; postCount: number; depth: number }
+  const d = data as unknown as LabelNodeData
   const depthColors = [
     'border-accent bg-accent/8 text-accent',
     'border-amber-600 bg-amber-50 text-amber-800',
@@ -199,7 +209,13 @@ export default function LabelGraphPage() {
   useEffect(() => {
     fetchLabelGraph()
       .then(setGraphData)
-      .catch(() => setError('Failed to load label graph.'))
+      .catch((err) => {
+        if (err instanceof HTTPError && err.response.status === 401) {
+          setError('Session expired. Please log in to view the graph.')
+        } else {
+          setError('Failed to load label graph. Please try again later.')
+        }
+      })
       .finally(() => setLoading(false))
   }, [])
 
@@ -220,7 +236,7 @@ export default function LabelGraphPage() {
     if (!search.trim()) return nodes
     const q = search.toLowerCase()
     return nodes.map((n) => {
-      const d = n.data as { label: string; names: string[] }
+      const d = n.data as unknown as LabelNodeData
       const match =
         d.label.toLowerCase().includes(q) ||
         d.names.some((name: string) => name.toLowerCase().includes(q))
@@ -285,13 +301,14 @@ export default function LabelGraphPage() {
       const childId = edge.target
       const parentId = edge.source
 
+      if (!window.confirm(`Remove parent #${parentId} from #${childId}?`)) return
+
       setMutating(true)
       setEditError(null)
       try {
         const childLabel = await fetchLabel(childId)
         const newParents = childLabel.parents.filter((p) => p !== parentId)
         await updateLabel(childId, { names: childLabel.names, parents: newParents })
-        // Refetch graph
         const newGraphData = await fetchLabelGraph()
         setGraphData(newGraphData)
       } catch {
@@ -374,7 +391,7 @@ export default function LabelGraphPage() {
           isValidConnection={user ? isValidConnection : undefined}
           onConnect={user ? (conn) => void onConnect(conn) : undefined}
           onEdgeClick={user ? (e, edge) => void onEdgeClick(e, edge) : undefined}
-          edgesUpdatable={!!user}
+          edgesReconnectable={!!user}
           connectOnClick={false}
           fitView
           fitViewOptions={{ padding: 0.3 }}

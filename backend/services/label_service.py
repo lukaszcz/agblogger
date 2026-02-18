@@ -191,8 +191,9 @@ async def would_create_cycle(
 ) -> bool:
     """Check if adding label_id -> proposed_parent_id would create a cycle.
 
-    Returns True if proposed_parent_id is already a descendant of label_id
-    (or is label_id itself), meaning the edge would close a cycle.
+    Walks ancestors of proposed_parent_id via recursive CTE. If label_id
+    is found among those ancestors, the new edge would close a cycle.
+    Also returns True for self-loops (label_id == proposed_parent_id).
     """
     if label_id == proposed_parent_id:
         return True

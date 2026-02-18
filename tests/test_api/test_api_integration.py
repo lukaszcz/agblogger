@@ -888,6 +888,77 @@ class TestLabelCRUD:
         assert resp.status_code == 404
 
     @pytest.mark.asyncio
+    async def test_delete_label_with_edges_cleans_up(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # Create A -> B -> C
+        await client.post("/api/labels", json={"id": "chain-a"}, headers=headers)
+        await client.post(
+            "/api/labels",
+            json={"id": "chain-b", "parents": ["chain-a"]},
+            headers=headers,
+        )
+        await client.post(
+            "/api/labels",
+            json={"id": "chain-c", "parents": ["chain-b"]},
+            headers=headers,
+        )
+
+        # Delete the middle label
+        resp = await client.delete("/api/labels/chain-b", headers=headers)
+        assert resp.status_code == 200
+
+        # Verify chain-a no longer lists chain-b as child
+        resp = await client.get("/api/labels/chain-a")
+        assert resp.status_code == 200
+        assert "chain-b" not in resp.json()["children"]
+
+        # Verify chain-c no longer lists chain-b as parent
+        resp = await client.get("/api/labels/chain-c")
+        assert resp.status_code == 200
+        assert "chain-b" not in resp.json()["parents"]
+
+        # Graph should not contain chain-b or 500 error
+        resp = await client.get("/api/labels/graph")
+        assert resp.status_code == 200
+        node_ids = [n["id"] for n in resp.json()["nodes"]]
+        assert "chain-b" not in node_ids
+
+    @pytest.mark.asyncio
+    async def test_create_label_cycle_returns_409(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        await client.post("/api/labels", json={"id": "cyc-a"}, headers=headers)
+        await client.post(
+            "/api/labels",
+            json={"id": "cyc-b", "parents": ["cyc-a"]},
+            headers=headers,
+        )
+
+        # Create cyc-c with parent cyc-b, then try to make cyc-a's parent cyc-c
+        await client.post(
+            "/api/labels",
+            json={"id": "cyc-c", "parents": ["cyc-b"]},
+            headers=headers,
+        )
+        resp = await client.put(
+            "/api/labels/cyc-a",
+            json={"names": ["A"], "parents": ["cyc-c"]},
+            headers=headers,
+        )
+        assert resp.status_code == 409
+
+    @pytest.mark.asyncio
     async def test_delete_label_requires_auth(self, client: AsyncClient) -> None:
         resp = await client.delete("/api/labels/swe")
         assert resp.status_code == 401

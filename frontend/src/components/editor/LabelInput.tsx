@@ -67,7 +67,7 @@ export default function LabelInput({ value, onChange, disabled }: LabelInputProp
     if (!trimmed || creating) return
     setCreating(true)
     try {
-      const label = await createLabel(trimmed)
+      const label = await createLabel({ id: trimmed })
       setAllLabels((prev) => [...prev, label])
       addLabel(label.id)
     } catch (err) {

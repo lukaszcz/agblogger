@@ -119,11 +119,16 @@ async def update_label_endpoint(
         await session.rollback()
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
-    assert result is not None  # already checked existence above
+    if result is None:
+        raise HTTPException(status_code=404, detail="Label was deleted during update")
 
     # Persist to labels.toml
     labels = dict(content_manager.labels)
-    labels[label_id] = LabelDef(id=label_id, names=body.names, parents=body.parents)
+    labels[label_id] = LabelDef(
+        id=label_id,
+        names=body.names if body.names else [label_id],
+        parents=body.parents,
+    )
     try:
         write_labels_config(content_manager.content_dir, labels)
         content_manager.reload_config()
@@ -150,9 +155,12 @@ async def delete_label_endpoint(
     if not deleted:
         raise HTTPException(status_code=404, detail="Label not found")
 
-    # Remove from labels.toml
+    # Remove from labels.toml and strip stale parent references from other labels
     labels = dict(content_manager.labels)
     labels.pop(label_id, None)
+    for label_def in labels.values():
+        if label_id in label_def.parents:
+            label_def.parents = [p for p in label_def.parents if p != label_id]
     try:
         write_labels_config(content_manager.content_dir, labels)
         content_manager.reload_config()

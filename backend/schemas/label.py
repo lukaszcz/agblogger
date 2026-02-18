@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+import re
+from typing import Annotated
+
+from pydantic import BaseModel, Field, field_validator
+
+LABEL_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+
+LabelIdRef = Annotated[str, Field(min_length=1, max_length=100, pattern=r"^[a-z0-9][a-z0-9-]*$")]
 
 
 class LabelResponse(BaseModel):
@@ -41,16 +48,25 @@ class LabelGraphResponse(BaseModel):
 class LabelCreate(BaseModel):
     """Request to create a new label."""
 
-    id: str = Field(min_length=1, max_length=100, pattern=r"^[a-z0-9][a-z0-9-]*$")
+    id: LabelIdRef
     names: list[str] = Field(default_factory=list)
-    parents: list[str] = Field(default_factory=list)
+    parents: list[LabelIdRef] = Field(default_factory=list)
 
 
 class LabelUpdate(BaseModel):
     """Request to update a label's names and parents."""
 
-    names: list[str] = Field(default_factory=list)
-    parents: list[str] = Field(default_factory=list)
+    names: list[str] = Field(min_length=1)
+    parents: list[LabelIdRef] = Field(default_factory=list)
+
+    @field_validator("names")
+    @classmethod
+    def names_must_be_nonempty_strings(cls, v: list[str]) -> list[str]:
+        """Reject empty or whitespace-only name strings."""
+        for name in v:
+            if not name.strip():
+                raise ValueError("Display names must not be empty or whitespace-only")
+        return v
 
 
 class LabelDeleteResponse(BaseModel):

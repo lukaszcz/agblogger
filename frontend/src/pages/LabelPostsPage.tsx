@@ -5,6 +5,7 @@ import { ArrowLeft, Tag, Settings } from 'lucide-react'
 import PostCard from '@/components/posts/PostCard'
 import { useAuthStore } from '@/stores/authStore'
 import { fetchLabelPosts, fetchLabel } from '@/api/labels'
+import { HTTPError } from '@/api/client'
 import type { LabelResponse, PostListResponse } from '@/api/client'
 
 export default function LabelPostsPage() {
@@ -24,8 +25,14 @@ export default function LabelPostsPage() {
         const [l, d] = await Promise.all([fetchLabel(labelId), fetchLabelPosts(labelId)])
         setLabel(l)
         setData(d)
-      } catch {
-        setError('Failed to load label posts.')
+      } catch (err) {
+        if (err instanceof HTTPError && err.response.status === 404) {
+          setError('Label not found.')
+        } else if (err instanceof HTTPError && err.response.status === 401) {
+          setError('Session expired. Please log in again.')
+        } else {
+          setError('Failed to load label posts. Please try again later.')
+        }
       } finally {
         setLoading(false)
       }

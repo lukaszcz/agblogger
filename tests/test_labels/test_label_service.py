@@ -63,6 +63,22 @@ class TestWouldCreateCycle:
         # c -> d is fine (diamond shape, no cycle)
         assert not await would_create_cycle(db_session, "c", "d")
 
+    async def test_multi_parent_cycle_through_one_branch(self, db_session: AsyncSession) -> None:
+        """Cycle exists through one parent branch but not the other."""
+        await ensure_tables(db_session)
+        for lid in ["a", "b", "c", "d"]:
+            db_session.add(LabelCache(id=lid, names="[]"))
+        # A has parents B and C. B has parent D.
+        db_session.add(LabelParentCache(label_id="a", parent_id="b"))
+        db_session.add(LabelParentCache(label_id="a", parent_id="c"))
+        db_session.add(LabelParentCache(label_id="b", parent_id="d"))
+        await db_session.flush()
+
+        # D -> A would create cycle (A -> B -> D exists)
+        assert await would_create_cycle(db_session, "d", "a")
+        # C -> D is fine (no cycle path)
+        assert not await would_create_cycle(db_session, "c", "d")
+
     async def test_no_existing_edges(self, db_session: AsyncSession) -> None:
         await ensure_tables(db_session)
         db_session.add(LabelCache(id="x", names="[]"))

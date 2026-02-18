@@ -4,6 +4,7 @@ import { Tag, Settings } from 'lucide-react'
 
 import { useAuthStore } from '@/stores/authStore'
 import { fetchLabels } from '@/api/labels'
+import { HTTPError } from '@/api/client'
 import type { LabelResponse } from '@/api/client'
 
 export default function LabelListPage() {
@@ -15,7 +16,13 @@ export default function LabelListPage() {
   useEffect(() => {
     fetchLabels()
       .then(setLabels)
-      .catch(() => setError('Failed to load labels.'))
+      .catch((err) => {
+        if (err instanceof HTTPError && err.response.status === 401) {
+          setError('Session expired. Please log in again.')
+        } else {
+          setError('Failed to load labels. Please try again later.')
+        }
+      })
       .finally(() => setLoading(false))
   }, [])
 
