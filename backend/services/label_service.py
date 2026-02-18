@@ -128,6 +128,33 @@ async def create_label(session: AsyncSession, label_id: str) -> LabelResponse | 
     )
 
 
+async def would_create_cycle(
+    session: AsyncSession, label_id: str, proposed_parent_id: str,
+) -> bool:
+    """Check if adding label_id -> proposed_parent_id would create a cycle.
+
+    Returns True if proposed_parent_id is already a descendant of label_id
+    (or is label_id itself), meaning the edge would close a cycle.
+    """
+    if label_id == proposed_parent_id:
+        return True
+
+    stmt = text("""
+        WITH RECURSIVE ancestors(id) AS (
+            SELECT :proposed_parent_id
+            UNION ALL
+            SELECT lp.parent_id
+            FROM label_parents_cache lp
+            JOIN ancestors a ON lp.label_id = a.id
+        )
+        SELECT 1 FROM ancestors WHERE id = :label_id LIMIT 1
+    """)
+    result = await session.execute(
+        stmt, {"proposed_parent_id": proposed_parent_id, "label_id": label_id}
+    )
+    return result.first() is not None
+
+
 async def get_label_graph(session: AsyncSession) -> LabelGraphResponse:
     """Get the full label DAG for visualization."""
     labels = await get_all_labels(session)
