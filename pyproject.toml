@@ -104,7 +104,7 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "cli/**" = ["T201"]                # CLI tools need print statements
 "backend/api/**" = ["TC", "B008"]  # FastAPI needs runtime type imports and Depends() defaults
-"backend/models/**" = ["RUF012"]   # SQLAlchemy DeclarativeBase conflicts with ClassVar
+"backend/models/**" = ["RUF012", "TC003"]  # SQLAlchemy needs runtime types for Mapped[]
 "backend/pandoc/**" = ["S607"]     # pandoc is invoked by name
 
 [tool.ruff.lint.isort]

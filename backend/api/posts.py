@@ -26,7 +26,7 @@ from backend.schemas.post import (
     PostUpdate,
     SearchResult,
 )
-from backend.services.datetime_service import format_datetime, now_utc, parse_datetime
+from backend.services.datetime_service import format_iso, now_utc
 from backend.services.post_service import get_post, list_posts, search_posts
 
 logger = logging.getLogger(__name__)
@@ -90,8 +90,8 @@ async def get_post_for_edit(
         body=post_data.content,
         labels=post_data.labels,
         is_draft=post_data.is_draft,
-        created_at=format_datetime(post_data.created_at),
-        modified_at=format_datetime(post_data.modified_at),
+        created_at=format_iso(post_data.created_at),
+        modified_at=format_iso(post_data.modified_at),
         author=post_data.author,
     )
 
@@ -139,8 +139,8 @@ async def create_post_endpoint(
         file_path=body.file_path,
         title=post_data.title,
         author=post_data.author,
-        created_at=format_datetime(post_data.created_at),
-        modified_at=format_datetime(post_data.modified_at),
+        created_at=post_data.created_at,
+        modified_at=post_data.modified_at,
         is_draft=post_data.is_draft,
         content_hash=hash_content(serialized),
         excerpt=excerpt,
@@ -164,8 +164,8 @@ async def create_post_endpoint(
         file_path=post.file_path,
         title=post.title,
         author=post.author,
-        created_at=post.created_at,
-        modified_at=post.modified_at,
+        created_at=format_iso(post.created_at),
+        modified_at=format_iso(post.modified_at),
         is_draft=post.is_draft,
         excerpt=post.excerpt,
         labels=post_data.labels,
@@ -200,7 +200,7 @@ async def update_post_endpoint(
         logger.warning(
             "Post %s exists in DB cache but not on filesystem; using cached metadata", file_path
         )
-        created_at = parse_datetime(existing.created_at) if existing.created_at else now_utc()
+        created_at = existing.created_at if existing.created_at else now_utc()
         author = existing.author or user.display_name or user.username
 
     now = now_utc()
@@ -224,7 +224,7 @@ async def update_post_endpoint(
 
     existing.title = title
     existing.author = author
-    existing.modified_at = format_datetime(now)
+    existing.modified_at = now
     existing.is_draft = body.is_draft
     existing.content_hash = hash_content(serialized)
     existing.excerpt = excerpt
@@ -247,8 +247,8 @@ async def update_post_endpoint(
         file_path=existing.file_path,
         title=existing.title,
         author=existing.author,
-        created_at=existing.created_at,
-        modified_at=existing.modified_at,
+        created_at=format_iso(existing.created_at),
+        modified_at=format_iso(existing.modified_at),
         is_draft=existing.is_draft,
         excerpt=existing.excerpt,
         labels=post_data.labels,
