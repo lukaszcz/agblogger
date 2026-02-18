@@ -178,8 +178,8 @@ On startup, the lifespan handler:
 | Router | Prefix | Purpose |
 |--------|--------|---------|
 | `auth` | `/api/auth` | Login, register, refresh tokens, current user |
-| `posts` | `/api/posts` | CRUD, search, listing with pagination/filtering |
-| `labels` | `/api/labels` | Label listing, graph data, posts by label |
+| `posts` | `/api/posts` | CRUD, search, listing with pagination/filtering, structured editor data |
+| `labels` | `/api/labels` | Label CRUD, listing, graph data, posts by label |
 | `pages` | `/api/pages` | Site config, rendered page content |
 | `sync` | `/api/sync` | Bidirectional sync protocol |
 | `crosspost` | `/api/crosspost` | Social account management, cross-posting |
@@ -313,7 +313,7 @@ A platform registry maps names to poster classes. Each cross-post attempt is rec
 | `/labels` | LabelListPage | Label list with post counts |
 | `/labels/graph` | LabelGraphPage | Interactive DAG visualization |
 | `/labels/:labelId` | LabelPostsPage | Posts filtered by label |
-| `/editor/*` | EditorPage | Split-pane markdown editor |
+| `/editor/*` | EditorPage | Structured metadata bar + split-pane markdown editor |
 
 ### State Management
 
@@ -398,7 +398,20 @@ The `Caddyfile` configures automatic Let's Encrypt TLS, reverse proxy to the bac
 
 ## Data Flow
 
-### Publishing a Post
+### Creating/Updating a Post (Editor)
+
+```
+Frontend sends structured data: { body, labels, is_draft }
+    → POST /api/posts or PUT /api/posts/{path}
+        → Backend sets author from authenticated user
+        → Backend sets timestamps (created_at, modified_at)
+        → Constructs PostData from structured fields
+        → serialize_post() assembles YAML front matter + body
+        → write to content/ directory
+        → render HTML via Pandoc, store in PostCache
+```
+
+### Publishing a Post (Filesystem)
 
 ```
 Write .md file → ContentManager.write_post()
@@ -410,6 +423,15 @@ Write .md file → ContentManager.write_post()
         → populate PostCache + PostsFTS
         → parse labels.toml
         → populate LabelCache + PostLabelCache
+```
+
+### Editing a Post (Loading)
+
+```
+GET /api/posts/{path}/edit (auth required)
+    → ContentManager.read_post()
+        → parse .md file from filesystem
+        → return structured JSON: body, labels, is_draft, timestamps, author
 ```
 
 ### Reading a Post
