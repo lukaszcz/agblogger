@@ -1,5 +1,10 @@
 import api from './client'
-import type { LabelGraphResponse, LabelResponse, PostListResponse } from './client'
+import type {
+  LabelDeleteResponse,
+  LabelGraphResponse,
+  LabelResponse,
+  PostListResponse,
+} from './client'
 
 export async function fetchLabels(): Promise<LabelResponse[]> {
   return api.get('labels').json<LabelResponse[]>()
@@ -25,6 +30,25 @@ export async function fetchLabelPosts(
     .json<PostListResponse>()
 }
 
-export async function createLabel(id: string): Promise<LabelResponse> {
-  return api.post('labels', { json: { id } }).json<LabelResponse>()
+export async function createLabel(
+  id: string,
+  names?: string[],
+  parents?: string[],
+): Promise<LabelResponse> {
+  return api
+    .post('labels', {
+      json: { id, ...(names && { names }), ...(parents && { parents }) },
+    })
+    .json<LabelResponse>()
+}
+
+export async function updateLabel(
+  labelId: string,
+  data: { names: string[]; parents: string[] },
+): Promise<LabelResponse> {
+  return api.put(`labels/${labelId}`, { json: data }).json<LabelResponse>()
+}
+
+export async function deleteLabel(labelId: string): Promise<LabelDeleteResponse> {
+  return api.delete(`labels/${labelId}`).json<LabelDeleteResponse>()
 }

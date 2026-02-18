@@ -102,6 +102,11 @@ export interface LabelGraphResponse {
   edges: LabelGraphEdge[]
 }
 
+export interface LabelDeleteResponse {
+  id: string
+  deleted: boolean
+}
+
 export interface PageConfig {
   id: string
   title: string
