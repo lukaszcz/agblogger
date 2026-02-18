@@ -6,6 +6,7 @@ import { fetchPost } from '@/api/posts'
 import { useAuthStore } from '@/stores/authStore'
 import { HTTPError } from '@/api/client'
 import LabelChip from '@/components/labels/LabelChip'
+import { useRenderedHtml } from '@/hooks/useKatex'
 import type { PostDetail } from '@/api/client'
 
 export default function PostPage() {
@@ -14,6 +15,7 @@ export default function PostPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const user = useAuthStore((s) => s.user)
+  const renderedHtml = useRenderedHtml(post?.rendered_html)
 
   useEffect(() => {
     if (!filePath) return
@@ -118,7 +120,7 @@ export default function PostPage() {
       <div
         className="prose max-w-none"
         dangerouslySetInnerHTML={{
-          __html: post.rendered_html.replace(/<h1[^>]*>.*?<\/h1>\s*/i, ''),
+          __html: renderedHtml.replace(/<h1[^>]*>.*?<\/h1>\s*/i, ''),
         }}
       />
 

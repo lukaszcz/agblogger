@@ -87,6 +87,37 @@ html {
   margin: 1.5rem 0;
 }
 
+/* Pandoc syntax highlighting (Catppuccin Mocha palette on #1e1e2e) */
+.prose pre .kw { color: #cba6f7; font-weight: 500; } /* keyword — mauve */
+.prose pre .dt { color: #f9e2af; }                    /* data type — yellow */
+.prose pre .dv { color: #fab387; }                    /* decimal value — peach */
+.prose pre .bn { color: #fab387; }                    /* base-N integer — peach */
+.prose pre .fl { color: #fab387; }                    /* float — peach */
+.prose pre .ch { color: #a6e3a1; }                    /* char — green */
+.prose pre .st { color: #a6e3a1; }                    /* string — green */
+.prose pre .vs { color: #a6e3a1; }                    /* verbatim string — green */
+.prose pre .ss { color: #a6e3a1; }                    /* special string — green */
+.prose pre .co { color: #6c7086; font-style: italic; } /* comment — overlay0 */
+.prose pre .ot { color: #89dceb; }                    /* other token — sky */
+.prose pre .fu { color: #89b4fa; }                    /* function — blue */
+.prose pre .bu { color: #89dceb; }                    /* built-in — sky */
+.prose pre .al { color: #f38ba8; font-weight: 500; }  /* alert — red */
+.prose pre .er { color: #f38ba8; font-weight: 500; }  /* error — red */
+.prose pre .wa { color: #f9e2af; font-style: italic; } /* warning — yellow */
+.prose pre .cn { color: #fab387; }                    /* constant — peach */
+.prose pre .sc { color: #a6e3a1; }                    /* special char — green */
+.prose pre .im { color: #cba6f7; }                    /* import — mauve */
+.prose pre .cf { color: #cba6f7; font-weight: 500; }  /* control flow — mauve */
+.prose pre .op { color: #89dceb; }                    /* operator — sky */
+.prose pre .pp { color: #f38ba8; }                    /* preprocessor — red */
+.prose pre .at { color: #f9e2af; }                    /* attribute — yellow */
+.prose pre .do { color: #6c7086; font-style: italic; } /* documentation — overlay0 */
+.prose pre .an { color: #6c7086; font-style: italic; } /* annotation — overlay0 */
+.prose pre .cv { color: #6c7086; font-style: italic; } /* comment var — overlay0 */
+.prose pre .in { color: #6c7086; font-style: italic; } /* information — overlay0 */
+.prose pre .va { color: #cdd6f4; }                    /* variable — text */
+.prose pre .re { color: #f2cdcd; }                    /* region marker — flamingo */
+
 .prose code {
   font-family: var(--font-mono);
   font-size: 0.9em;

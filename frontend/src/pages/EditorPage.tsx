@@ -4,6 +4,7 @@ import { Save, Eye, ArrowLeft } from 'lucide-react'
 import { fetchPost, createPost, updatePost } from '@/api/posts'
 import { HTTPError } from '@/api/client'
 import api from '@/api/client'
+import { useRenderedHtml } from '@/hooks/useKatex'
 
 export default function EditorPage() {
   const { '*': filePath } = useParams()
@@ -16,6 +17,7 @@ export default function EditorPage() {
   const [previewing, setPreviewing] = useState(false)
   const [preview, setPreview] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const renderedPreview = useRenderedHtml(preview)
 
   useEffect(() => {
     if (!isNew && filePath) {
@@ -161,7 +163,7 @@ export default function EditorPage() {
           <div className="p-6 bg-white border border-border rounded-lg overflow-y-auto">
             <div
               className="prose max-w-none"
-              dangerouslySetInnerHTML={{ __html: preview }}
+              dangerouslySetInnerHTML={{ __html: renderedPreview }}
             />
           </div>
         )}

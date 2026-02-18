@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import api from '@/api/client'
+import { useRenderedHtml } from '@/hooks/useKatex'
 import type { PageResponse } from '@/api/client'
 
 export default function PageViewPage() {
@@ -8,6 +9,7 @@ export default function PageViewPage() {
   const [page, setPage] = useState<PageResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const renderedHtml = useRenderedHtml(page?.rendered_html)
 
   useEffect(() => {
     if (!pageId) return
@@ -46,7 +48,9 @@ export default function PageViewPage() {
       <h1 className="font-display text-4xl text-ink mb-8">{page.title}</h1>
       <div
         className="prose max-w-none"
-        dangerouslySetInnerHTML={{ __html: page.rendered_html }}
+        dangerouslySetInnerHTML={{
+          __html: renderedHtml.replace(/<h1[^>]*>.*?<\/h1>\s*/i, ''),
+        }}
       />
     </div>
   )
