@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 class TestSettings:
     def test_default_settings(self) -> None:
-        s = Settings()
+        s = Settings(_env_file=None)
         assert s.secret_key == "change-me-in-production"
         assert s.debug is False
         assert s.port == 8000
