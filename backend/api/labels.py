@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -20,6 +21,8 @@ from backend.services.label_service import (
     get_label_graph,
 )
 from backend.services.post_service import get_posts_by_label
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/labels", tags=["labels"])
 
@@ -52,12 +55,19 @@ async def create_label_endpoint(
     if result is None:
         raise HTTPException(status_code=409, detail="Label already exists")
 
-    # Also write to labels.toml so it persists across restarts
-    labels = content_manager.labels
+    # Write to labels.toml so the label survives cache rebuilds (the DB is regenerable from disk)
+    labels = dict(content_manager.labels)
     if body.id not in labels:
         labels[body.id] = LabelDef(id=body.id, names=[body.id])
-        write_labels_config(content_manager.content_dir, labels)
-        content_manager.reload_config()
+        try:
+            write_labels_config(content_manager.content_dir, labels)
+            content_manager.reload_config()
+        except Exception as exc:
+            logger.error("Failed to write labels.toml for label %s: %s", body.id, exc)
+            await session.rollback()
+            raise HTTPException(
+                status_code=500, detail="Failed to persist label to filesystem"
+            ) from exc
 
     await session.commit()
     return result

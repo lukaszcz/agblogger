@@ -26,7 +26,7 @@ from backend.schemas.post import (
     PostUpdate,
     SearchResult,
 )
-from backend.services.datetime_service import format_datetime, now_utc
+from backend.services.datetime_service import format_datetime, now_utc, parse_datetime
 from backend.services.post_service import get_post, list_posts, search_posts
 
 logger = logging.getLogger(__name__)
@@ -190,12 +190,18 @@ async def update_post_endpoint(
     if existing is None:
         raise HTTPException(status_code=404, detail="Post not found")
 
-    # Read existing post to preserve created_at and author
+    # Read existing post to preserve created_at and author;
+    # falls back to DB cache if file is missing
     existing_post_data = content_manager.read_post(file_path)
-    created_at = existing_post_data.created_at if existing_post_data else now_utc()
-    author = (
-        existing_post_data.author if existing_post_data else (user.display_name or user.username)
-    )
+    if existing_post_data:
+        created_at = existing_post_data.created_at
+        author = existing_post_data.author
+    else:
+        logger.warning(
+            "Post %s exists in DB cache but not on filesystem; using cached metadata", file_path
+        )
+        created_at = parse_datetime(existing.created_at) if existing.created_at else now_utc()
+        author = existing.author or user.display_name or user.username
 
     now = now_utc()
     title = extract_title(body.body, file_path)

@@ -65,7 +65,7 @@ agblogger/
 | Routing | react-router-dom v7 |
 | State management | Zustand 5 |
 | HTTP client | ky |
-| Markdown editor | @uiw/react-md-editor |
+| Markdown editor | Plain textarea + server-side Pandoc preview |
 | Graph visualization | @xyflow/react + @dagrejs/dagre |
 | Math rendering | KaTeX |
 
@@ -398,17 +398,30 @@ The `Caddyfile` configures automatic Let's Encrypt TLS, reverse proxy to the bac
 
 ## Data Flow
 
-### Creating/Updating a Post (Editor)
+### Creating a Post (Editor)
 
 ```
-Frontend sends structured data: { body, labels, is_draft }
-    → POST /api/posts or PUT /api/posts/{path}
+Frontend sends structured data: { file_path, body, labels, is_draft }
+    → POST /api/posts
         → Backend sets author from authenticated user
-        → Backend sets timestamps (created_at, modified_at)
+        → Backend sets created_at and modified_at to now
         → Constructs PostData from structured fields
         → serialize_post() assembles YAML front matter + body
         → write to content/ directory
         → render HTML via Pandoc, store in PostCache
+```
+
+### Updating a Post (Editor)
+
+```
+Frontend sends structured data: { body, labels, is_draft }
+    → PUT /api/posts/{path}
+        → Backend preserves original author and created_at from filesystem
+        → Backend sets modified_at to now
+        → Constructs PostData from structured fields
+        → serialize_post() assembles YAML front matter + body
+        → write to content/ directory
+        → render HTML via Pandoc, update PostCache
 ```
 
 ### Publishing a Post (Filesystem)

@@ -597,6 +597,71 @@ class TestPostCRUD:
         assert data["title"] == "Hello World Structured"
         assert data["labels"] == ["swe"]
 
+    @pytest.mark.asyncio
+    async def test_create_and_edit_roundtrip(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+
+        # Create a post with labels and draft
+        await client.post(
+            "/api/posts",
+            json={
+                "file_path": "posts/roundtrip-test.md",
+                "body": "# Roundtrip\n\nVerify all fields survive.",
+                "labels": ["swe"],
+                "is_draft": True,
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        # Retrieve via /edit and verify all fields round-tripped
+        resp = await client.get(
+            "/api/posts/posts/roundtrip-test.md/edit",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["file_path"] == "posts/roundtrip-test.md"
+        assert "# Roundtrip" in data["body"]
+        assert data["labels"] == ["swe"]
+        assert data["is_draft"] is True
+        assert data["author"] == "Admin"
+        assert data["created_at"] is not None
+        assert data["modified_at"] is not None
+
+    @pytest.mark.asyncio
+    async def test_create_draft_post(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+
+        resp = await client.post(
+            "/api/posts",
+            json={
+                "file_path": "posts/draft-test.md",
+                "body": "# Draft Post\n\nThis is a draft.",
+                "labels": [],
+                "is_draft": True,
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["is_draft"] is True
+
+        # Verify via /edit endpoint
+        edit_resp = await client.get(
+            "/api/posts/posts/draft-test.md/edit",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert edit_resp.status_code == 200
+        assert edit_resp.json()["is_draft"] is True
+
 
 class TestLabelCRUD:
     @pytest.mark.asyncio
@@ -632,6 +697,38 @@ class TestLabelCRUD:
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 409
+
+    @pytest.mark.asyncio
+    async def test_create_label_invalid_id_returns_422(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+
+        # Uppercase not allowed
+        resp = await client.post(
+            "/api/labels",
+            json={"id": "UPPER"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 422
+
+        # Leading hyphen not allowed
+        resp = await client.post(
+            "/api/labels",
+            json={"id": "-starts-bad"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 422
+
+        # Spaces not allowed
+        resp = await client.post(
+            "/api/labels",
+            json={"id": "has spaces"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 422
 
     @pytest.mark.asyncio
     async def test_create_label_requires_auth(self, client: AsyncClient) -> None:

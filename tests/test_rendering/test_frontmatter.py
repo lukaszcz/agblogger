@@ -6,6 +6,9 @@ import datetime
 
 import frontmatter
 
+from backend.filesystem.frontmatter import PostData, parse_post, serialize_post
+from backend.services.datetime_service import now_utc
+
 
 class TestFrontmatterParsing:
     def test_parse_basic_post(self) -> None:
@@ -80,3 +83,111 @@ Content follows the title.
         assert reparsed["created_at"] == "2026-02-02 22:21:29.975359+00"
         assert reparsed["labels"] == ["#swe"]
         assert "# Title" in reparsed.content
+
+
+class TestSerializePost:
+    def test_labels_serialized_with_hash_prefix(self) -> None:
+        now = now_utc()
+        post_data = PostData(
+            title="Test",
+            content="# Test\n\nBody",
+            raw_content="",
+            created_at=now,
+            modified_at=now,
+            labels=["swe", "ai"],
+        )
+        result = serialize_post(post_data)
+        parsed = frontmatter.loads(result)
+        assert parsed["labels"] == ["#swe", "#ai"]
+
+    def test_draft_flag_present_when_true(self) -> None:
+        now = now_utc()
+        post_data = PostData(
+            title="Draft",
+            content="# Draft\n\nContent",
+            raw_content="",
+            created_at=now,
+            modified_at=now,
+            is_draft=True,
+        )
+        result = serialize_post(post_data)
+        parsed = frontmatter.loads(result)
+        assert parsed["draft"] is True
+
+    def test_draft_flag_absent_when_false(self) -> None:
+        now = now_utc()
+        post_data = PostData(
+            title="Published",
+            content="# Published\n\nContent",
+            raw_content="",
+            created_at=now,
+            modified_at=now,
+            is_draft=False,
+        )
+        result = serialize_post(post_data)
+        parsed = frontmatter.loads(result)
+        assert "draft" not in parsed.metadata
+
+    def test_author_included_when_present(self) -> None:
+        now = now_utc()
+        post_data = PostData(
+            title="Test",
+            content="# Test\n\nBody",
+            raw_content="",
+            created_at=now,
+            modified_at=now,
+            author="Alice",
+        )
+        result = serialize_post(post_data)
+        parsed = frontmatter.loads(result)
+        assert parsed["author"] == "Alice"
+
+    def test_author_omitted_when_none(self) -> None:
+        now = now_utc()
+        post_data = PostData(
+            title="Test",
+            content="# Test\n\nBody",
+            raw_content="",
+            created_at=now,
+            modified_at=now,
+            author=None,
+        )
+        result = serialize_post(post_data)
+        parsed = frontmatter.loads(result)
+        assert "author" not in parsed.metadata
+
+    def test_timestamps_roundtrip(self) -> None:
+        now = now_utc()
+        post_data = PostData(
+            title="Test",
+            content="# Test\n\nBody",
+            raw_content="",
+            created_at=now,
+            modified_at=now,
+        )
+        result = serialize_post(post_data)
+        reparsed = parse_post(result)
+        assert reparsed.created_at.year == now.year
+        assert reparsed.created_at.month == now.month
+        assert reparsed.created_at.day == now.day
+
+    def test_full_roundtrip_through_parse(self) -> None:
+        now = now_utc()
+        original = PostData(
+            title="Round Trip",
+            content="# Round Trip\n\nFull content here.",
+            raw_content="",
+            created_at=now,
+            modified_at=now,
+            author="Admin",
+            labels=["swe", "ai"],
+            is_draft=True,
+            file_path="posts/roundtrip.md",
+        )
+        serialized = serialize_post(original)
+        reparsed = parse_post(serialized, file_path="posts/roundtrip.md")
+        assert reparsed.title == "Round Trip"
+        assert reparsed.labels == ["swe", "ai"]
+        assert reparsed.is_draft is True
+        assert reparsed.author == "Admin"
+        assert "Full content here." in reparsed.content

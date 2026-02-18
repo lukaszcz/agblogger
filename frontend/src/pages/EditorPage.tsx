@@ -14,6 +14,7 @@ export default function EditorPage() {
   const navigate = useNavigate()
   const isNew = !filePath || filePath === 'new'
   const user = useAuthStore((s) => s.user)
+  const initialAuthor = user?.display_name || user?.username || null
 
   const [body, setBody] = useState('')
   const [labels, setLabels] = useState<string[]>([])
@@ -53,9 +54,10 @@ export default function EditorPage() {
         .finally(() => setLoading(false))
     } else {
       setBody('# New Post\n\nStart writing here...\n')
-      setAuthor(user?.display_name || user?.username || null)
+      setAuthor(initialAuthor)
     }
-  }, [filePath, isNew, user])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filePath, isNew])
 
   async function handleSave() {
     setSaving(true)
@@ -70,15 +72,43 @@ export default function EditorPage() {
       void navigate(`/post/${path}`)
     } catch (err) {
       if (err instanceof HTTPError) {
-        if (err.response.status === 401) {
+        const status = err.response.status
+        if (status === 401) {
           setError('Session expired. Please log in again.')
-        } else if (err.response.status === 409) {
+        } else if (status === 409) {
           setError('Conflict: this post was modified elsewhere.')
+        } else if (status === 404) {
+          setError('Post not found. It may have been deleted.')
+        } else if (status === 422) {
+          try {
+            const text = await err.response.text()
+            const parsed: unknown = JSON.parse(text)
+            const detail =
+              parsed && typeof parsed === 'object' && 'detail' in parsed
+                ? (parsed as { detail: unknown }).detail
+                : undefined
+            if (Array.isArray(detail)) {
+              setError(
+                detail
+                  .map((d: unknown) => {
+                    const item = d as { msg?: string }
+                    return item.msg ?? 'Unknown error'
+                  })
+                  .join(', '),
+              )
+            } else if (typeof detail === 'string') {
+              setError(detail || 'Validation error. Check your input.')
+            } else {
+              setError('Validation error. Check your input.')
+            }
+          } catch {
+            setError('Validation error. Check your input.')
+          }
         } else {
-          setError('Failed to save post')
+          setError('Failed to save post. Please try again.')
         }
       } else {
-        setError('Failed to save post')
+        setError('Failed to save post. The server may be unavailable.')
       }
     } finally {
       setSaving(false)
@@ -92,8 +122,12 @@ export default function EditorPage() {
         .post('render/preview', { json: { markdown: body } })
         .json<{ html: string }>()
       setPreview(resp.html)
-    } catch {
-      setError('Preview failed')
+    } catch (err) {
+      if (err instanceof HTTPError && err.response.status === 401) {
+        setError('Session expired. Please log in again.')
+      } else {
+        setError('Preview failed. The server may be unavailable.')
+      }
     } finally {
       setPreviewing(false)
     }

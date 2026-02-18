@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 
 import { createLabel, fetchLabels } from '@/api/labels'
+import { HTTPError } from '@/api/client'
 import type { LabelResponse } from '@/api/client'
 
 interface LabelInputProps {
@@ -15,12 +16,15 @@ export default function LabelInput({ value, onChange, disabled }: LabelInputProp
   const [allLabels, setAllLabels] = useState<LabelResponse[]>([])
   const [open, setOpen] = useState(false)
   const [creating, setCreating] = useState(false)
+  const [loadError, setLoadError] = useState(false)
   const [activeIndex, setActiveIndex] = useState(-1)
   const inputRef = useRef<HTMLInputElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    fetchLabels().then(setAllLabels).catch(() => {})
+    fetchLabels()
+      .then(setAllLabels)
+      .catch(() => setLoadError(true))
   }, [])
 
   useEffect(() => {
@@ -66,9 +70,12 @@ export default function LabelInput({ value, onChange, disabled }: LabelInputProp
       const label = await createLabel(trimmed)
       setAllLabels((prev) => [...prev, label])
       addLabel(label.id)
-    } catch {
-      // 409 = already exists, just add it
-      addLabel(trimmed)
+    } catch (err) {
+      if (err instanceof HTTPError && err.response.status === 409) {
+        addLabel(trimmed)
+      } else {
+        setLoadError(true)
+      }
     } finally {
       setCreating(false)
     }
@@ -158,11 +165,17 @@ export default function LabelInput({ value, onChange, disabled }: LabelInputProp
           onFocus={() => setOpen(true)}
           onKeyDown={handleKeyDown}
           disabled={disabled}
-          placeholder={value.length === 0 ? 'Add labels...' : ''}
+          placeholder={value.length === 0 ? (loadError ? 'Failed to load labels' : 'Add labels...') : ''}
           className="flex-1 min-w-[80px] bg-transparent text-sm text-ink outline-none
                      placeholder:text-muted disabled:opacity-50"
         />
       </div>
+
+      {loadError && (
+        <p className="mt-1 text-xs text-red-600">
+          Failed to load labels. Type to create new ones.
+        </p>
+      )}
 
       {isDropdownOpen && (
         <div
