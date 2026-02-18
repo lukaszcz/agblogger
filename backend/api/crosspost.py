@@ -38,11 +38,12 @@ router = APIRouter(prefix="/api/crosspost", tags=["crosspost"])
 async def create_account_endpoint(
     body: SocialAccountCreate,
     session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
     user: Annotated[User, Depends(require_auth)],
 ) -> SocialAccountResponse:
     """Connect a social media account for cross-posting."""
     try:
-        account = await create_social_account(session, user.id, body)
+        account = await create_social_account(session, user.id, body, settings.secret_key)
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -111,6 +112,7 @@ async def crosspost_endpoint(
             body.platforms,
             user.id,
             site_url,
+            secret_key=settings.secret_key,
         )
     except ValueError as exc:
         raise HTTPException(
@@ -136,6 +138,7 @@ async def crosspost_endpoint(
 async def history_endpoint(
     post_path: str,
     session: Annotated[AsyncSession, Depends(get_session)],
+    user: Annotated[User, Depends(require_auth)],
 ) -> CrossPostHistoryResponse:
     """Get cross-posting history for a blog post."""
     records = await get_crosspost_history(session, post_path)

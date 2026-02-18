@@ -111,7 +111,14 @@ async def refresh_tokens(
     if stored_token is None:
         return None
 
-    expires = datetime.fromisoformat(stored_token.expires_at)
+    try:
+        expires = datetime.fromisoformat(stored_token.expires_at)
+    except ValueError:
+        await session.delete(stored_token)
+        await session.commit()
+        return None
+    if expires.tzinfo is None:
+        expires = expires.replace(tzinfo=UTC)
     if expires < datetime.now(UTC):
         await session.delete(stored_token)
         await session.commit()

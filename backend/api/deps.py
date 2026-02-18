@@ -54,6 +54,9 @@ async def get_current_user(
     if user_id is None:
         return None
 
+    if not isinstance(user_id, (str, int)) or (isinstance(user_id, str) and not user_id.isdigit()):
+        return None
+
     user = await session.get(User, int(user_id))
     return user
 

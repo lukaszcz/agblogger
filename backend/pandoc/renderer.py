@@ -2,19 +2,26 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import subprocess
+import urllib.parse
 
 logger = logging.getLogger(__name__)
 
 
-def render_markdown(markdown: str) -> str:
+async def render_markdown(markdown: str) -> str:
     """Render markdown to HTML using pandoc.
 
     Uses GFM + KaTeX math + syntax highlighting.
     Raises RuntimeError if pandoc is not installed or fails.
     """
+    return await asyncio.to_thread(_render_markdown_sync, markdown)
+
+
+def _render_markdown_sync(markdown: str) -> str:
+    """Synchronous pandoc rendering (runs in thread pool)."""
     try:
         result = subprocess.run(
             [
@@ -42,9 +49,8 @@ def render_markdown(markdown: str) -> str:
             f"Pandoc rendering failed with return code {result.returncode}: {result.stderr[:200]}"
         )
     except FileNotFoundError:
-        raise RuntimeError(
-            "Pandoc is not installed. Install pandoc to enable markdown rendering."
-        ) from None
+        logger.warning("Pandoc not installed, using fallback renderer")
+        return _fallback_render(markdown)
     except subprocess.TimeoutExpired:
         raise RuntimeError("Pandoc rendering timed out after 30 seconds") from None
 
@@ -148,6 +154,14 @@ def _inline_format(text: str) -> str:
     text = re.sub(r"_(.+?)_", r"<em>\1</em>", text)
     # Inline code
     text = re.sub(r"`(.+?)`", r"<code>\1</code>", text)
-    # Links
-    text = re.sub(r"\[(.+?)\]\((.+?)\)", r'<a href="\2">\1</a>', text)
+
+    # Links (with scheme validation to prevent XSS)
+    def _safe_link(m: re.Match[str]) -> str:
+        href = m.group(2)
+        parsed = urllib.parse.urlparse(href)
+        if parsed.scheme and parsed.scheme not in ("http", "https", "mailto"):
+            return m.group(1)
+        return f'<a href="{href}">{m.group(1)}</a>'
+
+    text = re.sub(r"\[(.+?)\]\((.+?)\)", _safe_link, text)
     return text

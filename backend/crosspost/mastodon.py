@@ -30,7 +30,9 @@ def _build_status_text(content: CrossPostContent) -> str:
     available = MASTODON_CHAR_LIMIT - len(suffix)
 
     excerpt = content.excerpt
-    if len(excerpt) > available:
+    if available <= 3:
+        excerpt = excerpt[: max(available, 0)]
+    elif len(excerpt) > available:
         excerpt = excerpt[: available - 3].rsplit(" ", maxsplit=1)[0] + "..."
 
     return excerpt + suffix

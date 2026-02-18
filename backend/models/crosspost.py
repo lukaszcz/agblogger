@@ -23,7 +23,7 @@ class SocialAccount(Base):
         Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     platform: Mapped[str] = mapped_column(String, nullable=False)
-    account_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    account_name: Mapped[str] = mapped_column(String, nullable=False, default="")
     credentials: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[str] = mapped_column(Text, nullable=False)

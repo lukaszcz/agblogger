@@ -132,7 +132,7 @@ async def create_post_endpoint(
     )
 
     excerpt = generate_excerpt(post_data.content)
-    rendered_html = render_markdown(post_data.content)
+    rendered_html = await render_markdown(post_data.content)
 
     serialized = serialize_post(post_data)
     post = PostCache(
@@ -220,7 +220,7 @@ async def update_post_endpoint(
 
     serialized = serialize_post(post_data)
     excerpt = generate_excerpt(post_data.content)
-    rendered_html = render_markdown(post_data.content)
+    rendered_html = await render_markdown(post_data.content)
 
     existing.title = title
     existing.author = author
@@ -272,9 +272,11 @@ async def delete_post_endpoint(
     if existing is None:
         raise HTTPException(status_code=404, detail="Post not found")
 
-    await session.delete(existing)
-    await session.commit()
     try:
         content_manager.delete_post(file_path)
     except OSError as exc:
         logger.error("Failed to delete post file %s: %s", file_path, exc)
+        raise HTTPException(status_code=500, detail="Failed to delete post file") from exc
+
+    await session.delete(existing)
+    await session.commit()

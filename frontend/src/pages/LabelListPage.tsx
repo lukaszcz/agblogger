@@ -60,7 +60,7 @@ export default function LabelListPage() {
                         hover:border-accent/40 hover:shadow-sm transition-all
                         opacity-0 animate-slide-up stagger-${Math.min(i + 1, 8)}`}
             >
-              <Link to={`/labels/${label.id}`} className="absolute inset-0 rounded-xl" />
+              <Link to={`/labels/${label.id}`} className="absolute inset-0 rounded-xl" aria-label={`Open label #${label.id}`} />
               <div className="relative pointer-events-none">
                 <div className="flex items-start justify-between">
                   <div>

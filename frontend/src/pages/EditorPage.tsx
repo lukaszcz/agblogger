@@ -14,7 +14,6 @@ export default function EditorPage() {
   const navigate = useNavigate()
   const isNew = !filePath || filePath === 'new'
   const user = useAuthStore((s) => s.user)
-  const initialAuthor = user?.display_name || user?.username || null
 
   const [body, setBody] = useState('')
   const [labels, setLabels] = useState<string[]>([])
@@ -54,10 +53,9 @@ export default function EditorPage() {
         .finally(() => setLoading(false))
     } else {
       setBody('# New Post\n\nStart writing here...\n')
-      setAuthor(initialAuthor)
+      setAuthor(user?.display_name || user?.username || null)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filePath, isNew])
+  }, [filePath, isNew, user])
 
   async function handleSave() {
     setSaving(true)

@@ -32,5 +32,5 @@ async def preview(
     _user: Annotated[User, Depends(require_auth)],
 ) -> RenderResponse:
     """Render markdown to HTML for preview."""
-    html = render_markdown(body.markdown)
+    html = await render_markdown(body.markdown)
     return RenderResponse(html=html)

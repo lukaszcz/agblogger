@@ -20,7 +20,8 @@
     ```
   - Questions: label UI, API endpoint for raw content, draft toggle UI.
   Review changes with `review-pr`, then fix the issues.
-10. Allow multiple parents for labels. Review with `/pr-review-toolkit:review-pr` and fix all issues.
-11. Auto-update YAML front matter on sync.
-12. Full codebase review with CodeRabbit (42 issues, ran > 20min) and Codex (4 issues).
-13. Improve frontend test coverage.
+9. Allow multiple parents for labels. Review with `/pr-review-toolkit:review-pr` and fix all issues.
+10. Auto-update YAML front matter on sync.
+11. Full codebase review with CodeRabbit (42 issues, ran > 20min) and Codex (4 issues). Improve frontend test coverage.
+12. Proper sync conflict resolution (three-way merge).
+13. Actually look at the code, particularly auth logic. Ask Claude about the codebase.

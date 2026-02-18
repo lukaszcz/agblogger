@@ -10,7 +10,7 @@ from pydantic import BaseModel, EmailStr, Field
 class LoginRequest(BaseModel):
     """Login request."""
 
-    username: str = Field(min_length=1, max_length=100)
+    username: str = Field(min_length=1, max_length=50)
     password: str = Field(min_length=1, max_length=200)
 
 

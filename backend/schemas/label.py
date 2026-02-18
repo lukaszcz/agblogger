@@ -49,8 +49,17 @@ class LabelCreate(BaseModel):
     """Request to create a new label."""
 
     id: LabelIdRef
-    names: list[str] = Field(default_factory=list)
+    names: list[str] = Field(default_factory=list, min_length=1)
     parents: list[LabelIdRef] = Field(default_factory=list)
+
+    @field_validator("names")
+    @classmethod
+    def names_must_be_nonempty_strings(cls, v: list[str]) -> list[str]:
+        """Reject empty or whitespace-only name strings."""
+        for name in v:
+            if not name.strip():
+                raise ValueError("Display names must not be empty or whitespace-only")
+        return v
 
 
 class LabelUpdate(BaseModel):

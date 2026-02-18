@@ -21,7 +21,7 @@ def get_site_config(content_manager: ContentManager) -> SiteConfigResponse:
     )
 
 
-def get_page(content_manager: ContentManager, page_id: str) -> PageResponse | None:
+async def get_page(content_manager: ContentManager, page_id: str) -> PageResponse | None:
     """Get a top-level page with rendered HTML."""
     cfg = content_manager.site_config
     page_cfg = next((p for p in cfg.pages if p.id == page_id), None)
@@ -39,7 +39,7 @@ def get_page(content_manager: ContentManager, page_id: str) -> PageResponse | No
     if raw_content is None:
         return None
 
-    rendered_html = render_markdown(raw_content)
+    rendered_html = await render_markdown(raw_content)
     return PageResponse(
         id=page_id,
         title=page_cfg.title,

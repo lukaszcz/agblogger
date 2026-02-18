@@ -35,7 +35,9 @@ def _build_post_text(content: CrossPostContent) -> str:
     available = BSKY_CHAR_LIMIT - len(suffix)
 
     excerpt = content.excerpt
-    if len(excerpt) > available:
+    if available <= 3:
+        excerpt = excerpt[: max(available, 0)]
+    elif len(excerpt) > available:
         excerpt = excerpt[: available - 3].rsplit(" ", maxsplit=1)[0] + "..."
 
     return excerpt + suffix
@@ -63,10 +65,10 @@ def _find_facets(text: str, content: CrossPostContent) -> list[dict[str, Any]]:
             }
         )
 
-    # Hashtag facets
+    # Hashtag facets (rfind to match tags in suffix, not in excerpt)
     for label in content.labels[:5]:
         tag_text = f"#{label}"
-        tag_start = text.find(tag_text)
+        tag_start = text.rfind(tag_text)
         if tag_start >= 0:
             byte_start = len(text[:tag_start].encode("utf-8"))
             byte_end = byte_start + len(tag_text.encode("utf-8"))

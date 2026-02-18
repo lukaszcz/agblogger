@@ -127,11 +127,12 @@ async def create_label(
     session.add(label)
     await session.flush()
 
-    # Add parent edges with cycle detection
+    # Add parent edges with cycle detection (validate all before inserting any)
     if parents:
         for parent_id in parents:
             if await would_create_cycle(session, label_id, parent_id):
                 raise ValueError(f"Adding parent '{parent_id}' would create a cycle")
+        for parent_id in parents:
             edge = LabelParentCache(label_id=label_id, parent_id=parent_id)
             session.add(edge)
         await session.flush()
@@ -162,10 +163,11 @@ async def update_label(
     await session.execute(delete(LabelParentCache).where(LabelParentCache.label_id == label_id))
     await session.flush()
 
-    # Check each proposed parent for cycles (edges are already removed)
+    # Check all proposed parents for cycles before inserting any edges
     for parent_id in parents:
         if await would_create_cycle(session, label_id, parent_id):
             raise ValueError(f"Adding parent '{parent_id}' would create a cycle")
+    for parent_id in parents:
         edge = LabelParentCache(label_id=label_id, parent_id=parent_id)
         session.add(edge)
 

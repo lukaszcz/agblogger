@@ -54,11 +54,13 @@ async def list_posts(
         stmt = stmt.where(PostCache.author == author)
 
     if from_date:
-        from_dt = parse_datetime(from_date + " 00:00:00", default_tz="UTC")
+        date_part = from_date.split("T")[0].split(" ")[0]
+        from_dt = parse_datetime(date_part + " 00:00:00", default_tz="UTC")
         stmt = stmt.where(PostCache.created_at >= from_dt)
 
     if to_date:
-        to_dt = parse_datetime(to_date + " 23:59:59.999999", default_tz="UTC")
+        date_part = to_date.split("T")[0].split(" ")[0]
+        to_dt = parse_datetime(date_part + " 23:59:59.999999", default_tz="UTC")
         stmt = stmt.where(PostCache.created_at <= to_dt)
 
     # Label filtering

@@ -12,14 +12,19 @@ export default function SearchPage() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!query.trim()) return
+    if (!query.trim()) {
+      setResults([])
+      setError(null)
+      return
+    }
     void (async () => {
       setLoading(true)
       setError(null)
       try {
         const r = await searchPosts(query)
         setResults(r)
-      } catch {
+      } catch (err) {
+        console.error('Search failed:', err)
         setError('Search failed. Please try again.')
       } finally {
         setLoading(false)

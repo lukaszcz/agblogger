@@ -269,6 +269,7 @@ export default function LabelGraphPage() {
     async (connection: Connection) => {
       if (!graphData || mutating) return
       if (!user) return
+      if (!connection.source || !connection.target) return
 
       // connection.source = parent (React Flow source), connection.target = child (React Flow target)
       const childId = connection.target

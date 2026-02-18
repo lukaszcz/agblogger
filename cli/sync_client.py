@@ -84,6 +84,16 @@ class SyncClient:
             timeout=60.0,
         )
 
+    def close(self) -> None:
+        """Close the HTTP client."""
+        self.client.close()
+
+    def __enter__(self) -> SyncClient:
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        self.close()
+
     def login(self, username: str, password: str) -> str:
         """Login and return access token."""
         resp = self.client.post(
@@ -148,6 +158,9 @@ class SyncClient:
 
         downloaded = 0
         for file_path in plan.get("to_download", []):
+            if ".." in file_path or file_path.startswith("/"):
+                print(f"  Skip (invalid path): {file_path}")
+                continue
             resp = self.client.get(f"/api/sync/download/{file_path}")
             resp.raise_for_status()
 
@@ -198,6 +211,9 @@ class SyncClient:
 
         # Pull remote changes
         for file_path in plan.get("to_download", []):
+            if ".." in file_path or file_path.startswith("/"):
+                print(f"  Skip (invalid path): {file_path}")
+                continue
             resp = self.client.get(f"/api/sync/download/{file_path}")
             resp.raise_for_status()
             local_path = self.content_dir / file_path
@@ -297,8 +313,11 @@ def main() -> None:
         print("Error: No server configured. Run 'agblogger-sync init --server <url>' first.")
         sys.exit(1)
 
-    username = args.username or config.get("username", "admin")
-    password = args.password or config.get("password", "admin")
+    username = args.username or config.get("username")
+    password = args.password or config.get("password")
+    if not username or not password:
+        print("Error: Username and password required. Use --username/--password or set in config.")
+        sys.exit(1)
 
     # Create client and login
     temp_client = httpx.Client(base_url=server_url, timeout=30.0)
@@ -312,32 +331,31 @@ def main() -> None:
     token = login_resp.json()["access_token"]
     temp_client.close()
 
-    client = SyncClient(server_url, content_dir, token)
+    with SyncClient(server_url, content_dir, token) as client:
+        if args.command == "status":
+            plan = client.status()
+            print("Sync Status:")
+            print(f"  To upload:       {len(plan.get('to_upload', []))}")
+            print(f"  To download:     {len(plan.get('to_download', []))}")
+            print(f"  To delete local: {len(plan.get('to_delete_local', []))}")
+            print(f"  To delete remote:{len(plan.get('to_delete_remote', []))}")
+            print(f"  Conflicts:       {len(plan.get('conflicts', []))}")
 
-    if args.command == "status":
-        plan = client.status()
-        print("Sync Status:")
-        print(f"  To upload:       {len(plan.get('to_upload', []))}")
-        print(f"  To download:     {len(plan.get('to_download', []))}")
-        print(f"  To delete local: {len(plan.get('to_delete_local', []))}")
-        print(f"  To delete remote:{len(plan.get('to_delete_remote', []))}")
-        print(f"  Conflicts:       {len(plan.get('conflicts', []))}")
+            for f in plan.get("to_upload", []):
+                print(f"    + {f} (upload)")
+            for f in plan.get("to_download", []):
+                print(f"    < {f} (download)")
+            for c in plan.get("conflicts", []):
+                print(f"    ! {c['file_path']} (conflict)")
 
-        for f in plan.get("to_upload", []):
-            print(f"    + {f} (upload)")
-        for f in plan.get("to_download", []):
-            print(f"    < {f} (download)")
-        for c in plan.get("conflicts", []):
-            print(f"    ! {c['file_path']} (conflict)")
-
-    elif args.command == "push":
-        client.push()
-    elif args.command == "pull":
-        client.pull()
-    elif args.command == "sync":
-        client.sync()
-    else:
-        parser.print_help()
+        elif args.command == "push":
+            client.push()
+        elif args.command == "pull":
+            client.pull()
+        elif args.command == "sync":
+            client.sync()
+        else:
+            parser.print_help()
 
 
 if __name__ == "__main__":

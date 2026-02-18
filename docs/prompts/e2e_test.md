@@ -1,0 +1,1 @@
+Use the playwright mcp to test the app end-to-end. Be methodical and take your time. Test all screens and controls. Test user workflows and edge cases. Use the frontend-design skill to assess the visual aesthetics of the UI. Assess user-friendliness and accessibility. Fix all bugs and provide suggestions for UI improvements.

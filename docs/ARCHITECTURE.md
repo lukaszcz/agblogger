@@ -52,7 +52,7 @@ agblogger/
 | Date/time | pendulum |
 | Sync merging | merge3 |
 | HTTP client | httpx |
-| Cross-posting | atproto, httpx (optional) |
+| Cross-posting | httpx |
 
 ### Frontend
 

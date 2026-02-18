@@ -55,7 +55,7 @@ I want to create a web blogging platform AgBlogger with the following features /
 	- The local directory may contain subdirectories. All blog post markdown files in all subdirectories recursively should be considered as blog posts. Directory structure provides implicit label hierarchy (in addition to any other labels).
 	- Sync is on demand (live sync not needed). Sync re-generates DB caches.
 - Web rendering of markdown blog posts.
-	- Crucial: rendering of KeTeX math enclosed by single dollar sings, e.g., `$\alpha$` in markdown rendered as greek letter alpha
+	- Crucial: rendering of KaTeX math enclosed by single dollar signs, e.g., `$\alpha$` in markdown rendered as greek letter alpha
 	- Support for syntax highlighting for multiple programming languages with markdown code blocks. Ability to extend with custom language syntax highlighting rules for new / rare languages.
 	- Rendering of inline images.
 	- Embedding of inline videos.

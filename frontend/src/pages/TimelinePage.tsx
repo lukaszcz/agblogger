@@ -11,6 +11,7 @@ export default function TimelinePage() {
   const [data, setData] = useState<PostListResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [retryCount, setRetryCount] = useState(0)
 
   // Parse filter state from URL
   const page = Number(searchParams.get('page') ?? '1')
@@ -59,13 +60,14 @@ export default function TimelinePage() {
           to: toDate || undefined,
         })
         setData(d)
-      } catch {
+      } catch (err) {
+        console.error('Failed to fetch posts:', err)
         setError('Failed to load posts. Please try again.')
       } finally {
         setLoading(false)
       }
     })()
-  }, [searchParams])
+  }, [searchParams, retryCount])
 
   function goToPage(p: number) {
     const params = new URLSearchParams(searchParams)
@@ -85,7 +87,7 @@ export default function TimelinePage() {
         <div className="text-center py-24">
           <p className="font-display text-2xl text-red-600">{error}</p>
           <button
-            onClick={() => setSearchParams(searchParams)}
+            onClick={() => setRetryCount((c) => c + 1)}
             className="text-accent text-sm hover:underline mt-4"
           >
             Retry

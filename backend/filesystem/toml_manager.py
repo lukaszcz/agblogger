@@ -53,6 +53,9 @@ def parse_site_config(content_dir: Path) -> SiteConfig:
 
     pages: list[PageConfig] = []
     for page_data in data.get("pages", []):
+        if "id" not in page_data:
+            msg = f"Page entry missing required 'id' field: {page_data}"
+            raise ValueError(msg)
         pages.append(
             PageConfig(
                 id=page_data["id"],

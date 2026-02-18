@@ -446,7 +446,15 @@ class TestCrosspost:
 
     @pytest.mark.asyncio
     async def test_crosspost_history_empty(self, client: AsyncClient) -> None:
-        resp = await client.get("/api/crosspost/history/posts/hello.md")
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+        resp = await client.get(
+            "/api/crosspost/history/posts/hello.md",
+            headers={"Authorization": f"Bearer {token}"},
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert data["items"] == []

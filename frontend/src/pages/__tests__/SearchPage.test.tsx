@@ -1,0 +1,100 @@
+import { render, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter, Routes, Route } from 'react-router-dom'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+
+import { searchPosts } from '@/api/posts'
+import type { SearchResult } from '@/api/client'
+
+vi.mock('@/api/posts', () => ({
+  searchPosts: vi.fn(),
+}))
+
+import SearchPage from '../SearchPage'
+
+const mockSearchPosts = vi.mocked(searchPosts)
+
+function renderSearch(query = '') {
+  const path = query ? `/search?q=${encodeURIComponent(query)}` : '/search'
+  return render(
+    <MemoryRouter initialEntries={[path]}>
+      <Routes>
+        <Route path="/search" element={<SearchPage />} />
+      </Routes>
+    </MemoryRouter>,
+  )
+}
+
+const mockResults: SearchResult[] = [
+  { id: 1, file_path: 'posts/hello.md', title: 'Hello World', excerpt: 'A first post', created_at: '2026-02-01 12:00:00+00:00', rank: 1.0 },
+  { id: 2, file_path: 'posts/react.md', title: 'React Guide', excerpt: 'Learn React', created_at: '2026-02-02 12:00:00+00:00', rank: 0.9 },
+]
+
+describe('SearchPage', () => {
+  beforeEach(() => {
+    mockSearchPosts.mockReset()
+  })
+
+  it('no query shows placeholder', () => {
+    renderSearch()
+    expect(screen.getByText('Enter a search query above.')).toBeInTheDocument()
+    expect(mockSearchPosts).not.toHaveBeenCalled()
+  })
+
+  it('empty query string does not fetch', () => {
+    renderSearch('')
+    expect(mockSearchPosts).not.toHaveBeenCalled()
+  })
+
+  it('displays results', async () => {
+    mockSearchPosts.mockResolvedValue(mockResults)
+    renderSearch('react')
+
+    await waitFor(() => {
+      expect(screen.getByText('Hello World')).toBeInTheDocument()
+    })
+    expect(screen.getByText('React Guide')).toBeInTheDocument()
+    const links = screen.getAllByRole('link')
+    expect(links.some((l) => l.getAttribute('href') === '/post/posts/hello.md')).toBe(true)
+  })
+
+  it('shows no results message', async () => {
+    mockSearchPosts.mockResolvedValue([])
+    renderSearch('nonexistent')
+
+    await waitFor(() => {
+      expect(screen.getByText('No results found.')).toBeInTheDocument()
+    })
+  })
+
+  it('shows error message on failure', async () => {
+    mockSearchPosts.mockRejectedValue(new Error('Server error'))
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    renderSearch('failing')
+
+    await waitFor(() => {
+      expect(screen.getByText('Search failed. Please try again.')).toBeInTheDocument()
+    })
+    consoleSpy.mockRestore()
+  })
+
+  it('logs error to console on failure', async () => {
+    const error = new Error('Server error')
+    mockSearchPosts.mockRejectedValue(error)
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    renderSearch('failing')
+
+    await waitFor(() => {
+      expect(consoleSpy).toHaveBeenCalledWith('Search failed:', error)
+    })
+    consoleSpy.mockRestore()
+  })
+
+  it('shows query in heading', async () => {
+    mockSearchPosts.mockResolvedValue([])
+    renderSearch('react')
+
+    await waitFor(() => {
+      expect(screen.getByText('"react"')).toBeInTheDocument()
+    })
+  })
+})

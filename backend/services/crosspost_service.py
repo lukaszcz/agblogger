@@ -11,6 +11,7 @@ from sqlalchemy import select
 from backend.crosspost.base import CrossPostContent, CrossPostResult
 from backend.crosspost.registry import get_poster, list_platforms
 from backend.models.crosspost import CrossPost, SocialAccount
+from backend.services.crypto_service import decrypt_value, encrypt_value
 from backend.services.datetime_service import format_datetime, now_utc
 
 if TYPE_CHECKING:
@@ -26,10 +27,11 @@ async def create_social_account(
     session: AsyncSession,
     user_id: int,
     data: SocialAccountCreate,
+    secret_key: str,
 ) -> SocialAccount:
     """Create a new social account connection.
 
-    Validates the platform name and stores credentials as JSON.
+    Validates the platform name and stores credentials encrypted at rest.
     """
     available = list_platforms()
     if data.platform not in available:
@@ -37,11 +39,12 @@ async def create_social_account(
         raise ValueError(msg)
 
     now = format_datetime(now_utc())
+    encrypted_creds = encrypt_value(json.dumps(data.credentials), secret_key)
     account = SocialAccount(
         user_id=user_id,
         platform=data.platform,
         account_name=data.account_name,
-        credentials=json.dumps(data.credentials),
+        credentials=encrypted_creds,
         created_at=now,
         updated_at=now,
     )
@@ -87,6 +90,7 @@ async def crosspost(
     platforms: list[str],
     user_id: int,
     site_url: str,
+    secret_key: str = "",
 ) -> list[CrossPostResult]:
     """Cross-post a blog post to the specified platforms.
 
@@ -151,7 +155,11 @@ async def crosspost(
             )
             continue
 
-        credentials = json.loads(account.credentials)
+        try:
+            credentials = json.loads(decrypt_value(account.credentials, secret_key))
+        except ValueError:
+            # Fall back to plaintext for pre-encryption credentials
+            credentials = json.loads(account.credentials)
         try:
             poster = await get_poster(platform_name, credentials)
             post_result = await poster.post(content)

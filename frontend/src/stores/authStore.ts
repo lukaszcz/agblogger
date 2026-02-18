@@ -52,6 +52,9 @@ export const useAuthStore = create<AuthState>((set) => ({
         set({ user: null })
         localStorage.removeItem('access_token')
         localStorage.removeItem('refresh_token')
+      } else {
+        console.error('Auth check failed:', err)
+        set({ user: null })
       }
     }
   },
