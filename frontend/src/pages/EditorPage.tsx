@@ -1,18 +1,28 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Save, Eye, ArrowLeft } from 'lucide-react'
-import { fetchPost, createPost, updatePost } from '@/api/posts'
+
+import { fetchPostForEdit, createPost, updatePost } from '@/api/posts'
 import { HTTPError } from '@/api/client'
 import api from '@/api/client'
 import { useRenderedHtml } from '@/hooks/useKatex'
+import { useAuthStore } from '@/stores/authStore'
+import LabelInput from '@/components/editor/LabelInput'
 
 export default function EditorPage() {
   const { '*': filePath } = useParams()
   const navigate = useNavigate()
   const isNew = !filePath || filePath === 'new'
+  const user = useAuthStore((s) => s.user)
 
-  const [content, setContent] = useState('')
+  const [body, setBody] = useState('')
+  const [labels, setLabels] = useState<string[]>([])
+  const [isDraft, setIsDraft] = useState(false)
   const [newPath, setNewPath] = useState('posts/')
+  const [author, setAuthor] = useState<string | null>(null)
+  const [createdAt, setCreatedAt] = useState<string | null>(null)
+  const [modifiedAt, setModifiedAt] = useState<string | null>(null)
+  const [loading, setLoading] = useState(!isNew)
   const [saving, setSaving] = useState(false)
   const [previewing, setPreviewing] = useState(false)
   const [preview, setPreview] = useState<string | null>(null)
@@ -21,11 +31,16 @@ export default function EditorPage() {
 
   useEffect(() => {
     if (!isNew && filePath) {
-      fetchPost(filePath)
-        .then((post) => {
-          // We need to fetch raw content - for now use a simple reconstruction
-          setContent(post.content ?? `# ${post.title}\n\n`)
-          setNewPath(post.file_path)
+      setLoading(true)
+      fetchPostForEdit(filePath)
+        .then((data) => {
+          setBody(data.body)
+          setLabels(data.labels)
+          setIsDraft(data.is_draft)
+          setNewPath(data.file_path)
+          setAuthor(data.author)
+          setCreatedAt(data.created_at)
+          setModifiedAt(data.modified_at)
         })
         .catch((err) => {
           if (err instanceof HTTPError && err.response.status === 404) {
@@ -34,13 +49,12 @@ export default function EditorPage() {
             setError('Failed to load post')
           }
         })
+        .finally(() => setLoading(false))
     } else {
-      const now = new Date().toISOString().split('T')[0]
-      setContent(
-        `---\ncreated_at: ${now}\nauthor: \nlabels: []\n---\n# New Post\n\nStart writing here...\n`,
-      )
+      setBody('# New Post\n\nStart writing here...\n')
+      setAuthor(user?.display_name || user?.username || null)
     }
-  }, [filePath, isNew])
+  }, [filePath, isNew, user])
 
   async function handleSave() {
     setSaving(true)
@@ -48,9 +62,9 @@ export default function EditorPage() {
     try {
       const path = isNew ? newPath : filePath
       if (isNew) {
-        await createPost(path, content)
+        await createPost({ file_path: path, body, labels, is_draft: isDraft })
       } else {
-        await updatePost(path, content)
+        await updatePost(path, { body, labels, is_draft: isDraft })
       }
       void navigate(`/post/${path}`)
     } catch (err) {
@@ -71,9 +85,6 @@ export default function EditorPage() {
   }
 
   async function handlePreview() {
-    // Strip frontmatter for preview
-    const bodyMatch = content.match(/^---[\s\S]*?---\n([\s\S]*)$/)
-    const body = bodyMatch ? bodyMatch[1] : content
     setPreviewing(true)
     try {
       const resp = await api
@@ -87,9 +98,21 @@ export default function EditorPage() {
     }
   }
 
+  function formatDate(iso: string): string {
+    return new Date(iso).toLocaleString()
+  }
+
+  if (loading) {
+    return (
+      <div className="animate-fade-in flex items-center justify-center py-20">
+        <span className="text-muted text-sm">Loading...</span>
+      </div>
+    )
+  }
+
   return (
     <div className="animate-fade-in">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4">
         <button
           onClick={() => void navigate(-1)}
           className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-ink transition-colors"
@@ -101,7 +124,7 @@ export default function EditorPage() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => void handlePreview()}
-            disabled={previewing}
+            disabled={previewing || saving}
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium
                      border border-border rounded-lg hover:bg-paper-warm disabled:opacity-50 transition-colors"
           >
@@ -110,7 +133,7 @@ export default function EditorPage() {
           </button>
           <button
             onClick={() => void handleSave()}
-            disabled={saving}
+            disabled={saving || previewing}
             className="flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium
                      bg-accent text-white rounded-lg hover:bg-accent-light disabled:opacity-50 transition-colors"
           >
@@ -126,35 +149,74 @@ export default function EditorPage() {
         </div>
       )}
 
-      {isNew && (
-        <div className="mb-4">
-          <label htmlFor="filepath" className="block text-sm font-medium text-ink mb-1.5">
-            File path
-          </label>
-          <input
-            id="filepath"
-            type="text"
-            value={newPath}
-            onChange={(e) => setNewPath(e.target.value)}
-            placeholder="posts/my-new-post.md"
-            className="w-full px-4 py-2.5 bg-paper-warm border border-border rounded-lg
-                     text-ink font-mono text-sm
-                     focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20"
-          />
+      <div className="mb-4 space-y-3 p-4 bg-paper border border-border rounded-lg">
+        {isNew && (
+          <div>
+            <label htmlFor="filepath" className="block text-xs font-medium text-muted mb-1">
+              File path
+            </label>
+            <input
+              id="filepath"
+              type="text"
+              value={newPath}
+              onChange={(e) => setNewPath(e.target.value)}
+              disabled={saving}
+              placeholder="posts/my-new-post.md"
+              className="w-full px-3 py-2 bg-paper-warm border border-border rounded-lg
+                       text-ink font-mono text-sm
+                       focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20
+                       disabled:opacity-50"
+            />
+          </div>
+        )}
+
+        <div>
+          <label className="block text-xs font-medium text-muted mb-1">Labels</label>
+          <LabelInput value={labels} onChange={setLabels} disabled={saving} />
         </div>
-      )}
+
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-6">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isDraft}
+                onChange={(e) => setIsDraft(e.target.checked)}
+                disabled={saving}
+                className="rounded border-border text-accent focus:ring-accent/20"
+              />
+              <span className="text-sm text-ink">Draft</span>
+            </label>
+
+            {author && (
+              <span className="text-sm text-muted">
+                Author: <span className="text-ink">{author}</span>
+              </span>
+            )}
+          </div>
+
+          {!isNew && (createdAt || modifiedAt) && (
+            <div className="flex items-center gap-4 text-xs text-muted">
+              {createdAt && <span>Created {formatDate(createdAt)}</span>}
+              {modifiedAt && <span>Modified {formatDate(modifiedAt)}</span>}
+            </div>
+          )}
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4" style={{ minHeight: '60vh' }}>
         <div>
           <textarea
-            value={content}
+            value={body}
             onChange={(e) => {
-              setContent(e.target.value)
+              setBody(e.target.value)
               setPreview(null)
             }}
+            disabled={saving}
             className="w-full h-full min-h-[60vh] p-4 bg-paper-warm border border-border rounded-lg
                      font-mono text-sm leading-relaxed text-ink resize-none
-                     focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20"
+                     focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20
+                     disabled:opacity-50"
             spellCheck={false}
           />
         </div>

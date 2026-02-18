@@ -142,3 +142,13 @@ export interface SearchResult {
   created_at: string
   rank: number
 }
+
+export interface PostEditResponse {
+  file_path: string
+  body: string
+  labels: string[]
+  is_draft: boolean
+  created_at: string
+  modified_at: string
+  author: string | null
+}

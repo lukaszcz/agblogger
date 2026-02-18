@@ -1,5 +1,5 @@
 import api from './client'
-import type { PostDetail, PostListResponse, SearchResult } from './client'
+import type { PostDetail, PostEditResponse, PostListResponse, SearchResult } from './client'
 
 export interface PostListParams {
   page?: number
@@ -28,16 +28,30 @@ export async function fetchPost(filePath: string): Promise<PostDetail> {
   return api.get(`posts/${filePath}`).json<PostDetail>()
 }
 
+export async function fetchPostForEdit(filePath: string): Promise<PostEditResponse> {
+  return api.get(`posts/${filePath}/edit`).json<PostEditResponse>()
+}
+
 export async function searchPosts(query: string, limit = 20): Promise<SearchResult[]> {
-  return api.get('posts/search', { searchParams: { q: query, limit: String(limit) } }).json<SearchResult[]>()
+  return api
+    .get('posts/search', { searchParams: { q: query, limit: String(limit) } })
+    .json<SearchResult[]>()
 }
 
-export async function createPost(filePath: string, content: string): Promise<PostDetail> {
-  return api.post('posts', { json: { file_path: filePath, content } }).json<PostDetail>()
+export async function createPost(params: {
+  file_path: string
+  body: string
+  labels: string[]
+  is_draft: boolean
+}): Promise<PostDetail> {
+  return api.post('posts', { json: params }).json<PostDetail>()
 }
 
-export async function updatePost(filePath: string, content: string): Promise<PostDetail> {
-  return api.put(`posts/${filePath}`, { json: { content } }).json<PostDetail>()
+export async function updatePost(
+  filePath: string,
+  params: { body: string; labels: string[]; is_draft: boolean },
+): Promise<PostDetail> {
+  return api.put(`posts/${filePath}`, { json: params }).json<PostDetail>()
 }
 
 export async function deletePost(filePath: string): Promise<void> {

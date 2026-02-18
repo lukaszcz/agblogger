@@ -24,3 +24,7 @@ export async function fetchLabelPosts(
     })
     .json<PostListResponse>()
 }
+
+export async function createLabel(id: string): Promise<LabelResponse> {
+  return api.post('labels', { json: { id } }).json<LabelResponse>()
+}
