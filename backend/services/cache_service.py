@@ -12,6 +12,7 @@ from backend.filesystem.content_manager import ContentManager, hash_content
 from backend.models.label import LabelCache, LabelParentCache, PostLabelCache
 from backend.models.post import PostCache
 from backend.pandoc.renderer import render_markdown
+from backend.services.dag import break_cycles
 from backend.services.datetime_service import format_datetime
 
 if TYPE_CHECKING:
@@ -20,10 +21,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-async def rebuild_cache(session: AsyncSession, content_manager: ContentManager) -> int:
+async def rebuild_cache(
+    session: AsyncSession, content_manager: ContentManager
+) -> tuple[int, list[str]]:
     """Rebuild all cache tables from filesystem.
 
-    Returns the number of posts indexed.
+    Returns a tuple of (post_count, warnings) where warnings contains messages
+    about any cyclic label edges that were dropped.
     """
     # Clear existing cache
     await session.execute(delete(PostLabelCache))
@@ -52,16 +56,27 @@ async def rebuild_cache(session: AsyncSession, content_manager: ContentManager) 
 
     await session.flush()
 
-    # Add parent edges
+    # Collect all edges and run cycle detection
+    all_edges: list[tuple[str, str]] = []
     for label_id, label_def in labels_config.items():
         for parent_id in label_def.parents:
-            # Ensure parent exists
+            # Ensure parent label exists in DB
             if parent_id not in labels_config:
                 parent_label = LabelCache(id=parent_id, names="[]", is_implicit=True)
                 session.add(parent_label)
                 await session.flush()
-            edge = LabelParentCache(label_id=label_id, parent_id=parent_id)
-            session.add(edge)
+            all_edges.append((label_id, parent_id))
+
+    accepted_edges, dropped_edges = break_cycles(all_edges)
+    warnings: list[str] = []
+    for child, parent in dropped_edges:
+        msg = f"Cycle detected: dropped edge #{child} \u2192 #{parent}"
+        logger.warning(msg)
+        warnings.append(msg)
+
+    for label_id, parent_id in accepted_edges:
+        edge = LabelParentCache(label_id=label_id, parent_id=parent_id)
+        session.add(edge)
 
     await session.flush()
 
@@ -134,7 +149,7 @@ async def rebuild_cache(session: AsyncSession, content_manager: ContentManager) 
 
     await session.commit()
     logger.info("Cache rebuilt: %d posts indexed", post_count)
-    return post_count
+    return post_count, warnings
 
 
 async def ensure_tables(session: AsyncSession) -> None:

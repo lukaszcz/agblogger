@@ -82,8 +82,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     from backend.services.cache_service import rebuild_cache
 
     async with session_factory() as session:
-        post_count = await rebuild_cache(session, content_manager)
+        post_count, warnings = await rebuild_cache(session, content_manager)
         logger.info("Indexed %d posts from filesystem", post_count)
+        for warning in warnings:
+            logger.warning("Cache rebuild: %s", warning)
 
     yield
 

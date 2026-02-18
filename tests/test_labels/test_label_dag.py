@@ -6,6 +6,12 @@ import tomllib
 from collections import defaultdict, deque
 from typing import TYPE_CHECKING
 
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from backend.filesystem.content_manager import ContentManager
+from backend.models.label import LabelCache, LabelParentCache
+from backend.services.cache_service import ensure_tables, rebuild_cache
 from backend.services.dag import break_cycles
 
 if TYPE_CHECKING:
@@ -80,6 +86,54 @@ class TestBreakCycles:
         accepted, dropped = break_cycles([])
         assert accepted == []
         assert dropped == []
+
+
+class TestCacheCycleEnforcement:
+    async def test_rebuild_cache_drops_cyclic_edges(
+        self,
+        db_session: AsyncSession,
+        tmp_content_dir: Path,
+    ) -> None:
+        (tmp_content_dir / "labels.toml").write_text(
+            "[labels]\n"
+            '[labels.a]\nnames = ["A"]\nparent = "#b"\n'
+            '[labels.b]\nnames = ["B"]\nparent = "#c"\n'
+            '[labels.c]\nnames = ["C"]\nparent = "#a"\n'
+        )
+        await ensure_tables(db_session)
+        cm = ContentManager(tmp_content_dir)
+        post_count, warnings = await rebuild_cache(db_session, cm)
+
+        # All 3 labels should exist
+        result = await db_session.execute(select(LabelCache))
+        labels = {r.id for r in result.scalars().all()}
+        assert labels == {"a", "b", "c"}
+
+        # At least one edge should have been dropped to break the cycle
+        edge_result = await db_session.execute(select(LabelParentCache))
+        edges = [(e.label_id, e.parent_id) for e in edge_result.scalars().all()]
+        assert len(edges) == 2  # 3 edges - 1 dropped = 2
+        assert len(warnings) == 1
+
+    async def test_rebuild_cache_no_warnings_when_no_cycles(
+        self,
+        db_session: AsyncSession,
+        tmp_content_dir: Path,
+    ) -> None:
+        (tmp_content_dir / "labels.toml").write_text(
+            "[labels]\n"
+            '[labels.cs]\nnames = ["CS"]\n'
+            '[labels.swe]\nnames = ["SWE"]\nparent = "#cs"\n'
+        )
+        await ensure_tables(db_session)
+        cm = ContentManager(tmp_content_dir)
+        post_count, warnings = await rebuild_cache(db_session, cm)
+        assert warnings == []
+
+        edge_result = await db_session.execute(select(LabelParentCache))
+        edges = [(e.label_id, e.parent_id) for e in edge_result.scalars().all()]
+        assert len(edges) == 1
+        assert ("swe", "cs") in edges
 
 
 def _is_dag(edges: list[tuple[str, str]]) -> bool:

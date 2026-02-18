@@ -168,7 +168,7 @@ async def sync_commit(
     # Rebuild caches
     from backend.services.cache_service import rebuild_cache
 
-    await rebuild_cache(session, content_manager)
+    _post_count, _warnings = await rebuild_cache(session, content_manager)
 
     return SyncCommitResponse(
         status="ok",
