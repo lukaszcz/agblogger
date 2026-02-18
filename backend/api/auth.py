@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.deps import get_current_user, get_session, get_settings
+from backend.config import Settings
 from backend.models.user import User
 from backend.schemas.auth import (
     LoginRequest,
@@ -23,11 +25,6 @@ from backend.services.auth_service import (
     refresh_tokens,
 )
 from backend.services.datetime_service import format_iso, now_utc
-
-if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
-
-    from backend.config import Settings
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 

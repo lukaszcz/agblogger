@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.deps import (
     get_content_manager,
@@ -14,6 +15,7 @@ from backend.api.deps import (
 from backend.filesystem.content_manager import ContentManager, hash_content
 from backend.filesystem.frontmatter import parse_post
 from backend.models.post import PostCache
+from backend.models.user import User
 from backend.pandoc.renderer import render_markdown
 from backend.schemas.post import (
     PostCreate,
@@ -24,11 +26,6 @@ from backend.schemas.post import (
 )
 from backend.services.datetime_service import format_datetime, now_utc
 from backend.services.post_service import get_post, list_posts, search_posts
-
-if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
-
-    from backend.models.user import User
 
 router = APIRouter(prefix="/api/posts", tags=["posts"])
 

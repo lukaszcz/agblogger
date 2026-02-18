@@ -2,21 +2,17 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated
+from collections.abc import AsyncGenerator
+from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.config import Settings
+from backend.filesystem.content_manager import ContentManager
 from backend.models.user import User
 from backend.services.auth_service import decode_access_token
-
-if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator
-
-    from sqlalchemy.ext.asyncio import AsyncSession
-
-    from backend.config import Settings
-    from backend.filesystem.content_manager import ContentManager
 
 security = HTTPBearer(auto_error=False)
 
@@ -43,7 +39,7 @@ async def get_session(request: Request) -> AsyncGenerator[AsyncSession]:
 async def get_current_user(
     request: Request,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)] = None,
-    session: AsyncSession = Depends(get_session),  # noqa: B008
+    session: AsyncSession = Depends(get_session),
 ) -> User | None:
     """Get current authenticated user, or None if not authenticated."""
     if credentials is None:

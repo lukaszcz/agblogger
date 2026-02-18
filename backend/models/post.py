@@ -47,7 +47,7 @@ class PostsFTS(Base):
     """
 
     __tablename__ = "posts_fts"
-    __table_args__ = {"info": {"is_virtual": True}}  # noqa: RUF012
+    __table_args__ = {"info": {"is_virtual": True}}
 
     rowid: Mapped[int] = mapped_column(Integer, primary_key=True)
     title: Mapped[str] = mapped_column(Text)

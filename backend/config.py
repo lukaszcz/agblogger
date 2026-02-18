@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     frontend_dir: Path = Path("./frontend/dist")
 
     # Server
-    host: str = "0.0.0.0"  # noqa: S104
+    host: str = "0.0.0.0"
     port: int = 8000
 
     # Auth

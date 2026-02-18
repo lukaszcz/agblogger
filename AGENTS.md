@@ -10,9 +10,9 @@ AgBlogger is a markdown-first blogging platform where markdown files with YAML f
 
 ```bash
 just dev              # Start backend (port 8000) + frontend (port 5173) concurrently
-just check            # Run all type checking, linting, and format checks
-just check-backend    # Backend only: mypy, ruff check, ruff format --check
-just check-frontend   # Frontend only: tsc, eslint
+just check            # Run all type checking, linting, format checks, and tests
+just check-backend    # Backend only: mypy, ruff check, ruff format --check, pytest
+just check-frontend   # Frontend only: tsc, eslint, vitest
 ```
 
 ```bash
@@ -30,6 +30,7 @@ cd frontend && npm run test:coverage
 ### Python (backend/, cli/, tests/)
 
 - Formatting: ruff (line length 100)
+- Linting: avoid `noqa` comments
 - Files/modules: `snake_case` (e.g., `post_service.py`, `auth.py`)
 - Functions/variables: `snake_case`; private helpers prefixed with `_` (e.g., `_post_labels()`)
 - Classes: `PascalCase` (e.g., `PostCache`, `TokenResponse`)
@@ -57,6 +58,10 @@ cd frontend && npm run test:coverage
 - Styling: Tailwind utility classes; semantic color tokens (`bg-paper`, `text-ink`, `text-muted`, `border-border`)
 
 ## Testing Guidelines
+
+- Avoid brittle tests. Test user workflows, not implementation details.
+- Every major new feature should have associated unit tests.
+- Don't leak expected error output into test run output.
 
 ### Backend (pytest)
 

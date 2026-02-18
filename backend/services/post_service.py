@@ -46,7 +46,7 @@ async def list_posts(
     stmt = select(PostCache)
 
     if not include_drafts:
-        stmt = stmt.where(PostCache.is_draft == False)  # noqa: E712
+        stmt = stmt.where(PostCache.is_draft.is_(False))
 
     if author:
         stmt = stmt.where(PostCache.author == author)

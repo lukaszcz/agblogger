@@ -17,7 +17,7 @@ def render_markdown(markdown: str) -> str:
     """
     try:
         result = subprocess.run(
-            [  # noqa: S607
+            [
                 "pandoc",
                 "-f",
                 "gfm+tex_math_dollars+footnotes+raw_html",

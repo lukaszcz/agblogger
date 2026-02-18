@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
 
 const mockFetchConfig = vi.fn()
@@ -31,11 +31,17 @@ vi.mock('@/api/posts', () => ({
   fetchPosts: vi.fn().mockResolvedValue({ posts: [], total: 0, page: 1, per_page: 20, total_pages: 1 }),
 }))
 
+vi.mock('@/api/labels', () => ({
+  fetchLabels: vi.fn().mockResolvedValue([]),
+}))
+
 import App from './App'
 
 describe('App', () => {
-  it('renders the header with site title', () => {
+  it('renders the header with site title', async () => {
     render(<App />)
-    expect(screen.getByText('Test Blog')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByText('Test Blog')).toBeInTheDocument()
+    })
   })
 })
