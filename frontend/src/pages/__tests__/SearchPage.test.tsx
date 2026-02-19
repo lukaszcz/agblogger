@@ -10,6 +10,11 @@ vi.mock('@/api/posts', () => ({
   searchPosts: vi.fn(),
 }))
 
+vi.mock('@/hooks/useKatex', () => ({
+  useRenderedHtml: (html: string | null | undefined) =>
+    html ? html.replace(/(<span class="math[^"]*">)(.*?)(<\/span>)/g, '$1[RENDERED]$3') : '',
+}))
+
 import SearchPage from '../SearchPage'
 
 const mockSearchPosts = vi.mocked(searchPosts)
@@ -125,6 +130,27 @@ describe('SearchPage', () => {
     await userEvent.clear(input)
     await userEvent.type(input, 'vue')
     expect(input).toHaveValue('vue')
+  })
+
+  it('renders KaTeX math in search result excerpts', async () => {
+    const mathResult: SearchResult[] = [
+      {
+        id: 1,
+        file_path: 'posts/math.md',
+        title: 'Math Post',
+        rendered_excerpt: '<p>Inline math: <span class="math inline">E = mc^2</span></p>',
+        created_at: '2026-02-01 12:00:00+00:00',
+        rank: 1.0,
+      },
+    ]
+    mockSearchPosts.mockResolvedValue(mathResult)
+    renderSearch('math')
+
+    await waitFor(() => {
+      expect(screen.getByText('Math Post')).toBeInTheDocument()
+    })
+    const excerptEl = screen.getByText('Math Post').closest('a')!.querySelector('.prose-excerpt')!
+    expect(excerptEl.innerHTML).toContain('[RENDERED]')
   })
 
   it('shows result count', async () => {

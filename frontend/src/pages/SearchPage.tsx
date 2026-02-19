@@ -3,6 +3,7 @@ import { useSearchParams, Link } from 'react-router-dom'
 import { Search } from 'lucide-react'
 import { searchPosts } from '@/api/posts'
 import type { SearchResult } from '@/api/client'
+import { useRenderedHtml } from '@/hooks/useKatex'
 
 export default function SearchPage() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -89,26 +90,33 @@ export default function SearchPage() {
       ) : (
         <div className="space-y-1">
           {results.map((result, i) => (
-            <Link
-              key={result.id}
-              to={`/post/${result.file_path}`}
-              className={`block py-4 px-4 -mx-4 rounded-xl hover:bg-paper-warm/60 transition-colors
-                        opacity-0 animate-slide-up stagger-${Math.min(i + 1, 8)}`}
-            >
-              <h3 className="font-display text-lg text-ink">{result.title}</h3>
-              {result.rendered_excerpt && (
-                <div
-                  className="text-sm text-muted mt-1 line-clamp-2 prose-excerpt"
-                  dangerouslySetInnerHTML={{ __html: result.rendered_excerpt }}
-                />
-              )}
-              <span className="text-xs text-muted font-mono mt-2 block">
-                {result.created_at.split(' ')[0]}
-              </span>
-            </Link>
+            <SearchResultItem key={result.id} result={result} index={i} />
           ))}
         </div>
       )}
     </div>
+  )
+}
+
+function SearchResultItem({ result, index }: { result: SearchResult; index: number }) {
+  const renderedExcerpt = useRenderedHtml(result.rendered_excerpt)
+
+  return (
+    <Link
+      to={`/post/${result.file_path}`}
+      className={`block py-4 px-4 -mx-4 rounded-xl hover:bg-paper-warm/60 transition-colors
+                opacity-0 animate-slide-up stagger-${Math.min(index + 1, 8)}`}
+    >
+      <h3 className="font-display text-lg text-ink">{result.title}</h3>
+      {renderedExcerpt && (
+        <div
+          className="text-sm text-muted mt-1 line-clamp-2 prose-excerpt"
+          dangerouslySetInnerHTML={{ __html: renderedExcerpt }}
+        />
+      )}
+      <span className="text-xs text-muted font-mono mt-2 block">
+        {result.created_at.split(' ')[0]}
+      </span>
+    </Link>
   )
 }

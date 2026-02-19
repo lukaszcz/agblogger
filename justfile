@@ -24,20 +24,24 @@ check-frontend:
     @echo "\n── Frontend: tests ──"
     cd frontend && npm test
 
+# ── Build ─────────────────────────────────────────────────────────
+
+# Create a full production build (frontend + backend dependency sync)
+build:
+    @echo "── Frontend: install dependencies ──"
+    cd frontend && npm ci
+    @echo "\n── Frontend: build ──"
+    cd frontend && npm run build
+    @echo "\n── Backend: sync dependencies ──"
+    uv sync
+    @echo "\n✓ Production build complete (frontend/dist/)"
+
 # ── Development server ──────────────────────────────────────────────
 
 backend_port := "8000"
 frontend_port := "5173"
 localdir := justfile_directory() / ".local"
 pidfile := localdir / "dev.pid"
-
-# Start backend and frontend in the foreground (Ctrl-C to stop)
-dev:
-    #!/usr/bin/env bash
-    trap 'kill 0' EXIT
-    uv run uvicorn backend.main:app --reload --host 0.0.0.0 --port {{ backend_port }} &
-    cd frontend && npm run dev -- --port {{ frontend_port }} &
-    wait
 
 # Start backend and frontend in the background (override ports: just start backend_port=9000 frontend_port=9173)
 start:
@@ -71,3 +75,11 @@ stop:
         echo "Dev server was not running (stale pidfile)"
     fi
     rm -f "{{ pidfile }}"
+
+# Start backend and frontend in the foreground (Ctrl-C to stop). Do not use unless you're human.
+syncrun:
+    #!/usr/bin/env bash
+    trap 'kill 0' EXIT
+    uv run uvicorn backend.main:app --reload --host 0.0.0.0 --port {{ backend_port }} &
+    cd frontend && npm run dev -- --port {{ frontend_port }} &
+    wait
