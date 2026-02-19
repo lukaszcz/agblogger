@@ -8,7 +8,10 @@ import type { UserResponse, SiteConfigResponse } from '@/api/client'
 const siteConfig: SiteConfigResponse = {
   title: 'My Blog',
   description: 'A test blog',
-  pages: [{ id: 'timeline', title: 'Posts', file: null }],
+  pages: [
+    { id: 'timeline', title: 'Posts', file: null },
+    { id: 'labels', title: 'Labels', file: null },
+  ],
 }
 
 let mockUser: UserResponse | null = null
@@ -61,18 +64,6 @@ describe('Header', () => {
     renderHeader('/labels/swe')
     const labelsLink = screen.getByRole('link', { name: 'Labels' })
     expect(labelsLink.className).toContain('border-accent')
-  })
-
-  it('Labels NOT active at /labels/graph', () => {
-    renderHeader('/labels/graph')
-    const labelsLink = screen.getByRole('link', { name: 'Labels' })
-    expect(labelsLink.className).not.toContain('border-accent')
-  })
-
-  it('Graph active at /labels/graph', () => {
-    renderHeader('/labels/graph')
-    const graphLink = screen.getByRole('link', { name: 'Graph' })
-    expect(graphLink.className).toContain('border-accent')
   })
 
   it('shows login when unauthenticated', () => {

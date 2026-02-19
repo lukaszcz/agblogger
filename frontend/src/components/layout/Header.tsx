@@ -104,11 +104,19 @@ export default function Header() {
         {/* Navigation tabs */}
         <nav className="flex gap-1 -mb-px">
           {pages.map((page) => {
-            const path = page.id === 'timeline' ? '/' : `/page/${page.id}`
+            const path =
+              page.id === 'timeline'
+                ? '/'
+                : page.id === 'labels'
+                  ? '/labels'
+                  : `/page/${page.id}`
             const isActive =
               page.id === 'timeline'
                 ? location.pathname === '/'
-                : location.pathname === path
+                : page.id === 'labels'
+                  ? location.pathname === '/labels' ||
+                    location.pathname.startsWith('/labels/')
+                  : location.pathname === path
 
             return (
               <Link
@@ -124,26 +132,6 @@ export default function Header() {
               </Link>
             )
           })}
-          <Link
-            to="/labels"
-            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-              location.pathname === '/labels' || (location.pathname.startsWith('/labels/') && location.pathname !== '/labels/graph')
-                ? 'border-accent text-accent'
-                : 'border-transparent text-muted hover:text-ink hover:border-border-dark'
-            }`}
-          >
-            Labels
-          </Link>
-          <Link
-            to="/labels/graph"
-            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-              location.pathname === '/labels/graph'
-                ? 'border-accent text-accent'
-                : 'border-transparent text-muted hover:text-ink hover:border-border-dark'
-            }`}
-          >
-            Graph
-          </Link>
         </nav>
       </div>
     </header>
