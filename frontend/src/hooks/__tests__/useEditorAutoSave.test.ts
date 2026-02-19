@@ -90,6 +90,18 @@ describe('useEditorAutoSave', () => {
       rerender({ state: { ...baseState, isDraft: true } })
       expect(result.current.isDirty).toBe(true)
     })
+
+    it('is dirty when newPath changes', () => {
+      const onRestore = vi.fn()
+      const stateWithPath: DraftData = { ...baseState, newPath: 'posts/' }
+      const { result, rerender } = renderHook(
+        ({ state }) => useEditorAutoSave({ key: 'test-key', currentState: state, onRestore }),
+        { wrapper: createWrapper(), initialProps: { state: stateWithPath } },
+      )
+
+      rerender({ state: { ...stateWithPath, newPath: 'posts/new-post.md' } })
+      expect(result.current.isDirty).toBe(true)
+    })
   })
 
   describe('auto-save', () => {

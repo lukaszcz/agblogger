@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useBlocker } from 'react-router-dom'
 
+const AUTO_SAVE_DEBOUNCE_MS = 3000
+
 export interface DraftData {
   body: string
   labels: string[]
@@ -60,6 +62,12 @@ export function useEditorAutoSave({
     onRestoreRef.current = onRestore
   }, [onRestore])
 
+  // Keep a ref to currentState so markSaved always has the latest value
+  const currentStateRef = useRef(currentState)
+  useEffect(() => {
+    currentStateRef.current = currentState
+  }, [currentState])
+
   // Draft recovery: read from localStorage synchronously on init
   const [initialDraft] = useState(() => readDraft(key))
   const draftDataRef = useRef<DraftData | null>(initialDraft)
@@ -83,7 +91,7 @@ export function useEditorAutoSave({
         savedAt: new Date().toISOString(),
       }
       localStorage.setItem(key, JSON.stringify(toSave))
-    }, 3000)
+    }, AUTO_SAVE_DEBOUNCE_MS)
 
     return () => clearTimeout(timer)
   }, [isDirty, currentState, key])
@@ -100,11 +108,18 @@ export function useEditorAutoSave({
   }, [isDirty])
 
   // react-router navigation blocking
-  useBlocker(({ currentLocation, nextLocation }) => {
-    if (!isDirty) return false
-    if (currentLocation.pathname === nextLocation.pathname) return false
-    return !window.confirm('You have unsaved changes. Are you sure you want to leave?')
-  })
+  const blocker = useBlocker(isDirty)
+
+  useEffect(() => {
+    if (blocker.state === 'blocked') {
+      const leave = window.confirm('You have unsaved changes. Are you sure you want to leave?')
+      if (leave) {
+        blocker.proceed()
+      } else {
+        blocker.reset()
+      }
+    }
+  }, [blocker])
 
   const restoreDraft = useCallback(() => {
     if (draftDataRef.current) {
@@ -124,11 +139,11 @@ export function useEditorAutoSave({
 
   const markSaved = useCallback(() => {
     localStorage.removeItem(key)
-    setSavedState(currentState)
+    setSavedState(currentStateRef.current)
     draftDataRef.current = null
     setDraftAvailable(false)
     setDraftSavedAt(null)
-  }, [key, currentState])
+  }, [key])
 
   return {
     isDirty,

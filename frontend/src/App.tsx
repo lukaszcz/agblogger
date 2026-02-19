@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'
+import { createBrowserRouter, RouterProvider, useLocation, Outlet } from 'react-router-dom'
 import Header from '@/components/layout/Header'
 import TimelinePage from '@/pages/TimelinePage'
 import PostPage from '@/pages/PostPage'
@@ -13,28 +13,26 @@ import EditorPage from '@/pages/EditorPage'
 import { useSiteStore } from '@/stores/siteStore'
 import { useAuthStore } from '@/stores/authStore'
 
-function AppContent() {
+function Layout() {
   const location = useLocation()
   const isEditor = location.pathname.startsWith('/editor')
   const mainClass = isEditor
     ? 'max-w-6xl mx-auto px-6 py-10'
     : 'max-w-3xl mx-auto px-6 py-10'
 
+  const fetchConfig = useSiteStore((s) => s.fetchConfig)
+  const checkAuth = useAuthStore((s) => s.checkAuth)
+
+  useEffect(() => {
+    void fetchConfig()
+    void checkAuth()
+  }, [fetchConfig, checkAuth])
+
   return (
     <div className="min-h-screen bg-paper">
       <Header />
       <main className={mainClass}>
-        <Routes>
-          <Route path="/" element={<TimelinePage />} />
-          <Route path="/post/*" element={<PostPage />} />
-          <Route path="/page/:pageId" element={<PageViewPage />} />
-          <Route path="/search" element={<SearchPage />} />
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/labels" element={<LabelsPage />} />
-          <Route path="/labels/:labelId/settings" element={<LabelSettingsPage />} />
-          <Route path="/labels/:labelId" element={<LabelPostsPage />} />
-          <Route path="/editor/*" element={<EditorPage />} />
-        </Routes>
+        <Outlet />
       </main>
 
       <footer className="border-t border-border mt-16">
@@ -48,18 +46,23 @@ function AppContent() {
   )
 }
 
+const router = createBrowserRouter([
+  {
+    element: <Layout />,
+    children: [
+      { path: '/', element: <TimelinePage /> },
+      { path: '/post/*', element: <PostPage /> },
+      { path: '/page/:pageId', element: <PageViewPage /> },
+      { path: '/search', element: <SearchPage /> },
+      { path: '/login', element: <LoginPage /> },
+      { path: '/labels', element: <LabelsPage /> },
+      { path: '/labels/:labelId/settings', element: <LabelSettingsPage /> },
+      { path: '/labels/:labelId', element: <LabelPostsPage /> },
+      { path: '/editor/*', element: <EditorPage /> },
+    ],
+  },
+])
+
 export default function App() {
-  const fetchConfig = useSiteStore((s) => s.fetchConfig)
-  const checkAuth = useAuthStore((s) => s.checkAuth)
-
-  useEffect(() => {
-    void fetchConfig()
-    void checkAuth()
-  }, [fetchConfig, checkAuth])
-
-  return (
-    <BrowserRouter>
-      <AppContent />
-    </BrowserRouter>
-  )
+  return <RouterProvider router={router} />
 }
