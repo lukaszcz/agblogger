@@ -17,47 +17,19 @@ just check-backend    # Backend only: mypy, ruff check, ruff format --check, pyt
 just check-frontend   # Frontend only: tsc, eslint, vitest
 ```
 
-```bash
-# Backend tests
-uv run pytest tests/ -v
-uv run pytest tests/ --cov=backend --cov-report=html
-
-# Frontend tests
-cd frontend && npm test
-cd frontend && npm run test:coverage
-```
-
 ## Coding Style & Naming Conventions
 
 ### Python (backend/, cli/, tests/)
 
 - Formatting: ruff (line length 100)
 - Linting: avoid `noqa` comments
-- Files/modules: `snake_case` (e.g., `post_service.py`, `auth.py`)
-- Functions/variables: `snake_case`; private helpers prefixed with `_` (e.g., `_post_labels()`)
-- Classes: `PascalCase` (e.g., `PostCache`, `TokenResponse`)
-- Async: all database and I/O operations use `async def`
-- Imports: `from __future__ import annotations` at the top of every module; isort ordering (stdlib, third-party, first-party)
 - Typing: strict typing discipline; avoid `type: ignore` comments; modern union syntax (`str | None`, `dict[str, Any]`, `list[str]`); `Annotated` for FastAPI dependencies
-- Pydantic models: inherit `BaseModel`, snake_case fields, `Field()` for validation, docstrings on every model
-- SQLAlchemy models: inherit `Base`, `__tablename__` in snake_case, `Mapped[type]` + `mapped_column()` syntax
-- FastAPI routes: `APIRouter` with prefix/tags, `response_model` on decorators, dependencies via `Annotated[Type, Depends(...)]`
-- Dependencies: `get_` prefix for providers (e.g., `get_session`), `require_` prefix for auth guards (e.g., `require_auth`)
-- Errors: raise `HTTPException` with specific status codes (401, 403, 404, 409)
+- Naming & style: `snake_case` files/functions/variables, `PascalCase` classes; `from __future__ import annotations` everywhere; `async def` for all I/O; follow existing Pydantic/SQLAlchemy/FastAPI patterns in the codebase
 
 ### TypeScript (frontend/src/)
 
 - Formatting: ESLint with typescript-eslint (type-checked rules); avoid `eslint-disable-line`
-- Component files: `PascalCase.tsx` (e.g., `TimelinePage.tsx`, `PostCard.tsx`)
-- Utility/store/API files: `camelCase.ts` (e.g., `authStore.ts`, `client.ts`)
-- Components: functional, using arrow or function syntax; default export for page components
-- Props interfaces: `PascalCase` with `Props` suffix (e.g., `PostCardProps`)
-- API response types: `PascalCase` matching backend schemas (e.g., `PostDetail`, `PostSummary`)
-- Zustand stores: `use<Name>Store` hook, interface includes state + methods, selector pattern for access
-- API functions: `fetch` prefix (e.g., `fetchPosts()`, `fetchMe()`); parameter objects for multi-param functions
-- Imports: path alias `@/` for `src/`; grouped as: React/external, local components, stores, API, types
-- Event handlers: `handle` prefix (e.g., `handleSearch`)
-- Styling: Tailwind utility classes; semantic color tokens (`bg-paper`, `text-ink`, `text-muted`, `border-border`)
+- Naming & style: `PascalCase.tsx` components, `camelCase.ts` utilities/stores; `PascalCase` types/interfaces, `fetch` prefix for API functions, `handle` prefix for event handlers; Tailwind with semantic color tokens; follow existing patterns in the codebase
 
 ## Testing Guidelines
 
@@ -69,14 +41,9 @@ cd frontend && npm run test:coverage
 
 ### Backend (pytest)
 
-- Test files: `tests/test_<category>/test_<module>.py`
-- Group related tests in classes with `Test` prefix (e.g., `class TestAuth:`)
-- Test functions: `test_<what_is_being_tested>()` — descriptive, underscore-separated
-- All tests are async (`asyncio_mode = "auto"` in pyproject.toml)
-- Fixtures in `conftest.py`: typed, async generators for teardown, fresh per test
-- API integration tests use `httpx.AsyncClient` with `ASGITransport`
-- Assertions: plain `assert` statements; check status codes, JSON fields, list lengths
-- Markers: `@pytest.mark.slow`, `@pytest.mark.integration`
+- Structure: `tests/test_<category>/test_<module>.py`; `Test` prefix classes; descriptive `test_<what>()` functions
+- All tests are async (`asyncio_mode = "auto"`); fixtures in `conftest.py` with async generators
+- API tests use `httpx.AsyncClient` with `ASGITransport`; plain `assert` statements
 
 ### Frontend (Vitest)
 
