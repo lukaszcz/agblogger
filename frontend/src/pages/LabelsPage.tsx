@@ -11,41 +11,49 @@ import LabelGraphPage from '@/pages/LabelGraphPage'
 export default function LabelsPage() {
   const [view, setView] = useState<'list' | 'graph'>('list')
 
+  const viewToggle = (
+    <div className="flex items-center bg-paper-warm rounded-lg p-0.5 border border-border">
+      <button
+        onClick={() => setView('list')}
+        aria-pressed={view === 'list'}
+        className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
+          view === 'list'
+            ? 'bg-accent text-white shadow-sm'
+            : 'text-muted hover:text-ink'
+        }`}
+      >
+        List
+      </button>
+      <button
+        onClick={() => setView('graph')}
+        aria-pressed={view === 'graph'}
+        className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
+          view === 'graph'
+            ? 'bg-accent text-white shadow-sm'
+            : 'text-muted hover:text-ink'
+        }`}
+      >
+        Graph
+      </button>
+    </div>
+  )
+
   return (
     <div className="animate-fade-in">
-      <div className="flex items-center justify-between mb-8">
-        <div className="flex items-center gap-3">
-          <Tag size={20} className="text-accent" />
-          <h1 className="font-display text-3xl text-ink">Labels</h1>
-        </div>
-
-        <div className="flex items-center bg-paper-warm rounded-lg p-0.5 border border-border">
-          <button
-            onClick={() => setView('list')}
-            aria-pressed={view === 'list'}
-            className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
-              view === 'list'
-                ? 'bg-accent text-white shadow-sm'
-                : 'text-muted hover:text-ink'
-            }`}
-          >
-            List
-          </button>
-          <button
-            onClick={() => setView('graph')}
-            aria-pressed={view === 'graph'}
-            className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
-              view === 'graph'
-                ? 'bg-accent text-white shadow-sm'
-                : 'text-muted hover:text-ink'
-            }`}
-          >
-            Graph
-          </button>
-        </div>
-      </div>
-
-      {view === 'list' ? <LabelListView /> : <LabelGraphPage />}
+      {view === 'list' ? (
+        <>
+          <div className="flex items-center justify-between mb-8">
+            <div className="flex items-center gap-3">
+              <Tag size={20} className="text-accent" />
+              <h1 className="font-display text-3xl text-ink">Labels</h1>
+            </div>
+            {viewToggle}
+          </div>
+          <LabelListView />
+        </>
+      ) : (
+        <LabelGraphPage viewToggle={viewToggle} />
+      )}
     </div>
   )
 }

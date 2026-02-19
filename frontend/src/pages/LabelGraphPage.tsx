@@ -193,7 +193,7 @@ function wouldCreateCycle(
 
 /* ── Main component ────────────────────────────────── */
 
-export default function LabelGraphPage() {
+export default function LabelGraphPage({ viewToggle }: { viewToggle: React.ReactNode }) {
   const navigate = useNavigate()
   const user = useAuthStore((s) => s.user)
   const [graphData, setGraphData] = useState<LabelGraphResponse | null>(null)
@@ -349,7 +349,7 @@ export default function LabelGraphPage() {
   return (
     <div className="animate-fade-in -mx-6 -my-10">
       {/* Header bar */}
-      <div className="px-6 py-4 border-b border-border bg-paper flex items-center justify-between gap-4">
+      <div className="px-6 py-4 border-b border-border bg-paper flex items-center gap-4">
         <div className="flex items-center gap-2">
           <GitFork size={18} className="text-accent" />
           <h1 className="font-display text-2xl text-ink">Label Graph</h1>
@@ -366,17 +366,20 @@ export default function LabelGraphPage() {
           )}
         </div>
 
-        {/* Search */}
-        <div className="relative max-w-xs w-full">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Filter labels..."
-            className="w-full pl-9 pr-3 py-2 text-sm border border-border rounded-lg
-              bg-paper focus:outline-none focus:border-accent/50 transition-colors"
-          />
+        <div className="flex items-center gap-3 ml-auto">
+          {/* Search */}
+          <div className="relative">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Filter labels..."
+              className="w-48 pl-9 pr-3 py-2 text-sm border border-border rounded-lg
+                bg-paper focus:outline-none focus:border-accent/50 transition-colors"
+            />
+          </div>
+          {viewToggle}
         </div>
       </div>
 
