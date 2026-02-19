@@ -111,11 +111,13 @@ describe('LabelsPage', () => {
 
   it('shows error message on fetch failure', async () => {
     mockFetchLabels.mockRejectedValue(new Error('Network error'))
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     renderLabelsPage()
 
     await waitFor(() => {
       expect(screen.getByText('Failed to load labels. Please try again later.')).toBeInTheDocument()
     })
+    consoleSpy.mockRestore()
   })
 
   it('shows empty state when no labels exist', async () => {
