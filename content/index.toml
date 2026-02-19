@@ -14,3 +14,7 @@ title = "Posts"
 id = "about"
 title = "About"
 file = "about.md"
+
+[[pages]]
+id = "labels"
+title = "Labels"
