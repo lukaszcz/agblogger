@@ -73,6 +73,14 @@ def save_manifest(content_dir: Path, entries: dict[str, FileEntry]) -> None:
     manifest_path.write_text(json.dumps(data, indent=2))
 
 
+def _is_safe_local_path(content_dir: Path, file_path: str) -> Path | None:
+    """Resolve a server-provided path within content_dir, returning None on traversal."""
+    local_path = (content_dir / file_path).resolve()
+    if not local_path.is_relative_to(content_dir.resolve()):
+        return None
+    return local_path
+
+
 class SyncClient:
     """Client for syncing with AgBlogger server."""
 
@@ -122,11 +130,10 @@ class SyncClient:
         """Show what would change without syncing."""
         local_files = scan_local_files(self.content_dir)
         manifest = [asdict(e) for e in local_files.values()]
-        last_sync_commit = self._get_last_sync_commit()
 
         resp = self.client.post(
             "/api/sync/init",
-            json={"client_manifest": manifest, "last_sync_commit": last_sync_commit},
+            json={"client_manifest": manifest},
         )
         resp.raise_for_status()
         result: dict[str, Any] = resp.json()
@@ -138,14 +145,18 @@ class SyncClient:
         if not full_path.exists():
             print(f"  Skip (missing): {file_path}")
             return False
-        with open(full_path, "rb") as f:
-            resp = self.client.post(
-                "/api/sync/upload",
-                files={"file": (file_path, f)},
-                data={"file_path": file_path},
-            )
-            resp.raise_for_status()
-        return True
+        try:
+            with open(full_path, "rb") as f:
+                resp = self.client.post(
+                    "/api/sync/upload",
+                    files={"file": (file_path, f)},
+                    data={"file_path": file_path},
+                )
+                resp.raise_for_status()
+            return True
+        except httpx.HTTPStatusError as exc:
+            print(f"  ERROR: Failed to upload {file_path} (HTTP {exc.response.status_code})")
+            return False
 
     def push(self) -> None:
         """Push local changes to server."""
@@ -186,20 +197,22 @@ class SyncClient:
 
         downloaded = 0
         for file_path in plan.get("to_download", []):
-            if ".." in file_path or file_path.startswith("/"):
-                print(f"  Skip (invalid path): {file_path}")
+            local_path = _is_safe_local_path(self.content_dir, file_path)
+            if local_path is None:
+                print(f"  Skip (path traversal): {file_path}")
                 continue
             resp = self.client.get(f"/api/sync/download/{file_path}")
             resp.raise_for_status()
 
-            local_path = self.content_dir / file_path
             local_path.parent.mkdir(parents=True, exist_ok=True)
             local_path.write_bytes(resp.content)
             print(f"  Downloaded: {file_path}")
             downloaded += 1
 
         for file_path in plan.get("to_delete_local", []):
-            local_path = self.content_dir / file_path
+            local_path = _is_safe_local_path(self.content_dir, file_path)
+            if local_path is None:
+                continue
             if local_path.exists():
                 local_path.unlink()
                 print(f"  Deleted: {file_path}")
@@ -247,19 +260,21 @@ class SyncClient:
 
         # Pull remote changes
         for file_path in plan.get("to_download", []):
-            if ".." in file_path or file_path.startswith("/"):
-                print(f"  Skip (invalid path): {file_path}")
+            local_path = _is_safe_local_path(self.content_dir, file_path)
+            if local_path is None:
+                print(f"  Skip (path traversal): {file_path}")
                 continue
             resp = self.client.get(f"/api/sync/download/{file_path}")
             resp.raise_for_status()
-            local_path = self.content_dir / file_path
             local_path.parent.mkdir(parents=True, exist_ok=True)
             local_path.write_bytes(resp.content)
             print(f"  Pulled: {file_path}")
 
         # Delete local files
         for file_path in plan.get("to_delete_local", []):
-            local_path = self.content_dir / file_path
+            local_path = _is_safe_local_path(self.content_dir, file_path)
+            if local_path is None:
+                continue
             if local_path.exists():
                 local_path.unlink()
                 print(f"  Deleted: {file_path}")
@@ -282,8 +297,9 @@ class SyncClient:
         merge_results = commit_data.get("merge_results", [])
         for mr in merge_results:
             fp = mr["file_path"]
-            if ".." in fp or fp.startswith("/"):
-                print(f"  Skip (invalid path in merge result): {fp}")
+            local_path = _is_safe_local_path(self.content_dir, fp)
+            if local_path is None:
+                print(f"  Skip (path traversal in merge result): {fp}")
                 continue
             if mr["status"] == "merged":
                 # Download the cleanly merged file from server
@@ -294,12 +310,10 @@ class SyncClient:
                     )
                     print("  Sync aborted. Local state may be inconsistent.")
                     sys.exit(1)
-                local_path = self.content_dir / fp
                 local_path.parent.mkdir(parents=True, exist_ok=True)
                 local_path.write_bytes(dl_resp.content)
                 print(f"  Merged: {fp}")
             elif mr["status"] == "conflicted":
-                local_path = self.content_dir / fp
                 # Save backup of local version
                 backup_path = local_path.with_suffix(local_path.suffix + ".conflict-backup")
                 if local_path.exists():

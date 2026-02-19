@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import subprocess
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from fastapi.responses import FileResponse
@@ -26,11 +26,23 @@ from backend.services.sync_service import (
     update_server_manifest,
 )
 
+if TYPE_CHECKING:
+    from pathlib import Path
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/sync", tags=["sync"])
 
 _sync_lock = asyncio.Lock()
+
+
+def _resolve_safe_path(content_dir: Path, file_path: str) -> Path:
+    """Resolve a file path within content_dir, raising 400 on traversal attempts."""
+    target = file_path.lstrip("/")
+    full_path = (content_dir / target).resolve()
+    if not full_path.is_relative_to(content_dir.resolve()):
+        raise HTTPException(status_code=400, detail=f"Invalid file path: {file_path}")
+    return full_path
 
 
 # ── Schemas ──────────────────────────────────────────
@@ -49,7 +61,6 @@ class SyncInitRequest(BaseModel):
     """Request to initialize a sync session with the client manifest."""
 
     client_manifest: list[ManifestEntry]
-    last_sync_commit: str | None = None
 
 
 class SyncPlanItem(BaseModel):
@@ -155,11 +166,7 @@ async def sync_upload(
     if file.filename is None and not file_path:
         raise HTTPException(status_code=400, detail="file_path required")
 
-    # Security: ensure path is within content dir
-    target_path = file_path.lstrip("/")
-    full_path = (content_manager.content_dir / target_path).resolve()
-    if not full_path.is_relative_to(content_manager.content_dir.resolve()):
-        raise HTTPException(status_code=400, detail="Invalid file path")
+    full_path = _resolve_safe_path(content_manager.content_dir, file_path)
 
     # Enforce max upload size (10 MB)
     max_size = 10 * 1024 * 1024
@@ -169,7 +176,7 @@ async def sync_upload(
     full_path.parent.mkdir(parents=True, exist_ok=True)
     full_path.write_bytes(content)
 
-    return {"status": "ok", "file_path": target_path}
+    return {"status": "ok", "file_path": file_path.lstrip("/")}
 
 
 @router.get("/download/{file_path:path}")
@@ -179,9 +186,7 @@ async def sync_download(
     user: Annotated[User, Depends(require_auth)],
 ) -> FileResponse:
     """Download a file from server to client."""
-    full_path = (content_manager.content_dir / file_path).resolve()
-    if not full_path.is_relative_to(content_manager.content_dir.resolve()):
-        raise HTTPException(status_code=400, detail="Invalid file path")
+    full_path = _resolve_safe_path(content_manager.content_dir, file_path)
     if not full_path.exists():
         raise HTTPException(status_code=404, detail="File not found")
 
@@ -216,13 +221,10 @@ async def _sync_commit_inner(
 
     # Apply remote deletions requested by the client.
     for file_path in body.deleted_files:
-        target_path = file_path.lstrip("/")
-        full_path = (content_dir / target_path).resolve()
-        if not full_path.is_relative_to(content_dir.resolve()):
-            raise HTTPException(status_code=400, detail="Invalid file path")
+        full_path = _resolve_safe_path(content_dir, file_path)
         if full_path.exists() and full_path.is_file():
             full_path.unlink()
-            logger.info("Sync: deleted file %s", target_path)
+            logger.info("Sync: deleted file %s", file_path.lstrip("/"))
 
     # ── Three-way merge for conflict files ──
     pre_upload_head = git_service.head_commit()
@@ -235,17 +237,20 @@ async def _sync_commit_inner(
 
     for conflict_path in body.conflict_files:
         target_path = conflict_path.lstrip("/")
-        full_path = (content_dir / target_path).resolve()
-        if not full_path.is_relative_to(content_dir.resolve()):
-            raise HTTPException(
-                status_code=400, detail=f"Invalid conflict file path: {conflict_path}"
-            )
+        full_path = _resolve_safe_path(content_dir, conflict_path)
 
         # Get server version from before uploads
-        if pre_upload_head is not None:
-            server_content = git_service.show_file_at_commit(pre_upload_head, target_path)
-        else:
-            server_content = None
+        try:
+            server_content = (
+                git_service.show_file_at_commit(pre_upload_head, target_path)
+                if pre_upload_head is not None
+                else None
+            )
+        except subprocess.CalledProcessError as exc:
+            logger.error("Git error retrieving %s at %s: %s", target_path, pre_upload_head, exc)
+            raise HTTPException(
+                status_code=500, detail=f"Git error retrieving {target_path} for merge"
+            ) from exc
 
         # Handle delete/modify conflicts
         try:
@@ -267,7 +272,15 @@ async def _sync_commit_inner(
             client_content = full_path.read_text(encoding="utf-8")
             base_content: str | None = None
             if can_merge and body.last_sync_commit is not None:
-                base_content = git_service.show_file_at_commit(body.last_sync_commit, target_path)
+                try:
+                    base_content = git_service.show_file_at_commit(
+                        body.last_sync_commit, target_path
+                    )
+                except subprocess.CalledProcessError:
+                    logger.warning(
+                        "Failed to retrieve merge base for %s, merging without base",
+                        target_path,
+                    )
 
             merged_text, has_conflicts = merge_file(base_content, server_content, client_content)
 
@@ -301,8 +314,17 @@ async def _sync_commit_inner(
     username = user.display_name or user.username
     try:
         git_service.commit_all(f"Sync commit by {username}")
-    except subprocess.CalledProcessError:
-        logger.warning("Git commit failed during sync commit by %s", username)
+    except subprocess.CalledProcessError as exc:
+        logger.error(
+            "Git commit failed during sync by %s (exit %d): %s",
+            username,
+            exc.returncode,
+            exc.stderr.strip() if exc.stderr else "no stderr",
+        )
+        fm_warnings.append(
+            "Git commit failed; sync history may be degraded. "
+            "Three-way merge on the next sync may produce incorrect results."
+        )
 
     # Scan current server state after uploads/downloads + normalization
     current_files = scan_content_files(content_dir)

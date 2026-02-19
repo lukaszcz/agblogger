@@ -302,14 +302,20 @@ def normalize_post_frontmatter(
             full_path.relative_to(content_dir.resolve())
         except ValueError:
             logger.warning("Path traversal attempt: %s", file_path)
+            warnings.append(f"{file_path}: skipped normalization due to invalid path")
             continue
 
         # Skip if file doesn't exist on disk
         if not full_path.is_file():
             continue
 
-        raw = full_path.read_text(encoding="utf-8")
-        post = fm.loads(raw)
+        try:
+            raw = full_path.read_text(encoding="utf-8")
+            post = fm.loads(raw)
+        except (UnicodeDecodeError, Exception) as exc:
+            logger.warning("Failed to parse %s: %s", file_path, exc)
+            warnings.append(f"{file_path}: skipped normalization due to parse error")
+            continue
 
         # Check for unrecognized fields
         for key in post.metadata:
@@ -347,6 +353,10 @@ def normalize_post_frontmatter(
                 post["author"] = default_author
 
         # Rewrite file on disk
-        full_path.write_text(fm.dumps(post) + "\n", encoding="utf-8")
+        try:
+            full_path.write_text(fm.dumps(post) + "\n", encoding="utf-8")
+        except OSError as exc:
+            logger.warning("Failed to write normalized front matter for %s: %s", file_path, exc)
+            warnings.append(f"{file_path}: failed to write normalized front matter")
 
     return warnings

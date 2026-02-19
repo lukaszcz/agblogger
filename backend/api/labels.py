@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import subprocess
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -94,10 +93,7 @@ async def create_label_endpoint(
             status_code=500, detail="Label created but failed to persist to filesystem"
         ) from exc
 
-    try:
-        git_service.commit_all(f"Create label: {body.id}")
-    except subprocess.CalledProcessError:
-        logger.warning("Git commit failed after creating label %s", body.id)
+    git_service.try_commit(f"Create label: {body.id}")
     return result
 
 
@@ -148,10 +144,7 @@ async def update_label_endpoint(
             status_code=500, detail="Label updated but failed to persist to filesystem"
         ) from exc
 
-    try:
-        git_service.commit_all(f"Update label: {label_id}")
-    except subprocess.CalledProcessError:
-        logger.warning("Git commit failed after updating label %s", label_id)
+    git_service.try_commit(f"Update label: {label_id}")
     return result
 
 
@@ -189,10 +182,7 @@ async def delete_label_endpoint(
             status_code=500, detail="Label deleted but failed to persist to filesystem"
         ) from exc
 
-    try:
-        git_service.commit_all(f"Delete label: {label_id}")
-    except subprocess.CalledProcessError:
-        logger.warning("Git commit failed after deleting label %s", label_id)
+    git_service.try_commit(f"Delete label: {label_id}")
     return LabelDeleteResponse(id=label_id)
 
 

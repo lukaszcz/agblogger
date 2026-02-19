@@ -69,6 +69,23 @@ class GitService:
         self._run("commit", "-m", message)
         return self.head_commit()
 
+    def try_commit(self, message: str) -> str | None:
+        """Stage and commit, logging an error on failure instead of raising.
+
+        Convenience wrapper around commit_all() for API endpoints where a git
+        failure should not abort the request.
+        """
+        try:
+            return self.commit_all(message)
+        except subprocess.CalledProcessError as exc:
+            logger.error(
+                "Git commit failed (exit %d): %s — %s",
+                exc.returncode,
+                exc.stderr.strip() if exc.stderr else "no stderr",
+                message,
+            )
+            return None
+
     def head_commit(self) -> str | None:
         """Return the current HEAD commit hash, or None if the repo has no commits."""
         result = self._run("rev-parse", "HEAD", check=False)
@@ -84,19 +101,23 @@ class GitService:
         return result.returncode == 0 and result.stdout.strip() == "commit"
 
     def show_file_at_commit(self, commit_hash: str, file_path: str) -> str | None:
-        """Return file content at a specific commit, or None if file doesn't exist there."""
+        """Return file content at a specific commit, or None if file doesn't exist there.
+
+        Raises subprocess.CalledProcessError on unexpected git errors (corrupt repo,
+        permission denied, etc.) so callers can distinguish "file missing" from "git broken".
+        """
         if not _COMMIT_RE.match(commit_hash):
+            logger.warning("Rejected invalid commit hash %r for file %s", commit_hash, file_path)
             return None
         result = self._run("show", f"{commit_hash}:{file_path}", check=False)
         if result.returncode == 0:
             return result.stdout
-        if result.returncode == 128 and "does not exist" in result.stderr:
+        stderr = result.stderr
+        if result.returncode == 128 and ("does not exist" in stderr or "but not in" in stderr):
             return None
-        logger.error(
-            "git show failed for %s:%s (exit %d): %s",
-            commit_hash,
-            file_path,
+        raise subprocess.CalledProcessError(
             result.returncode,
-            result.stderr.strip(),
+            f"git show {commit_hash}:{file_path}",
+            output=result.stdout,
+            stderr=result.stderr,
         )
-        return None

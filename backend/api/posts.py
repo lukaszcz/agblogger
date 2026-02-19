@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import logging
-import subprocess
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import delete, select, text
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.deps import (
@@ -37,6 +37,16 @@ from backend.services.post_service import get_post, list_posts, search_posts
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/posts", tags=["posts"])
+
+_FTS_DELETE_SQL = text(
+    "INSERT INTO posts_fts(posts_fts, rowid, title, excerpt, content) "
+    "VALUES ('delete', :rowid, :title, :excerpt, :content)"
+)
+
+_FTS_INSERT_SQL = text(
+    "INSERT INTO posts_fts(rowid, title, excerpt, content) "
+    "VALUES (:rowid, :title, :excerpt, :content)"
+)
 
 
 def _merge_post_labels(file_path: str, explicit_labels: list[str]) -> tuple[list[str], set[str]]:
@@ -85,22 +95,11 @@ async def _upsert_post_fts(
     """Keep the full-text index row in sync with post cache mutations."""
     if old_title is not None and old_excerpt is not None and old_content is not None:
         await session.execute(
-            text(
-                "INSERT INTO posts_fts(posts_fts, rowid, title, excerpt, content) "
-                "VALUES ('delete', :rowid, :title, :excerpt, :content)"
-            ),
-            {
-                "rowid": post_id,
-                "title": old_title,
-                "excerpt": old_excerpt,
-                "content": old_content,
-            },
+            _FTS_DELETE_SQL,
+            {"rowid": post_id, "title": old_title, "excerpt": old_excerpt, "content": old_content},
         )
     await session.execute(
-        text(
-            "INSERT INTO posts_fts(rowid, title, excerpt, content) "
-            "VALUES (:rowid, :title, :excerpt, :content)"
-        ),
+        _FTS_INSERT_SQL,
         {"rowid": post_id, "title": title, "excerpt": excerpt, "content": content},
     )
 
@@ -115,16 +114,14 @@ async def _delete_post_fts(
     """
     try:
         await session.execute(
-            text(
-                "INSERT INTO posts_fts(posts_fts, rowid, title, excerpt, content) "
-                "VALUES ('delete', :rowid, :title, :excerpt, :content)"
-            ),
+            _FTS_DELETE_SQL,
             {"rowid": post_id, "title": title, "excerpt": excerpt, "content": content},
         )
-    except Exception:
+    except OperationalError as exc:
         logger.warning(
-            "FTS delete failed for post %d; will be cleaned up on next cache rebuild",
+            "FTS delete failed for post %d (will be cleaned up on next cache rebuild): %s",
             post_id,
+            exc,
         )
 
 
@@ -266,10 +263,7 @@ async def create_post_endpoint(
 
     await session.commit()
     await session.refresh(post)
-    try:
-        git_service.commit_all(f"Create post: {body.file_path}")
-    except subprocess.CalledProcessError:
-        logger.warning("Git commit failed after creating post %s", body.file_path)
+    git_service.try_commit(f"Create post: {body.file_path}")
 
     return PostDetail(
         id=post.id,
@@ -371,10 +365,7 @@ async def update_post_endpoint(
 
     await session.commit()
     await session.refresh(existing)
-    try:
-        git_service.commit_all(f"Update post: {file_path}")
-    except subprocess.CalledProcessError:
-        logger.warning("Git commit failed after updating post %s", file_path)
+    git_service.try_commit(f"Update post: {file_path}")
 
     return PostDetail(
         id=existing.id,
@@ -425,7 +416,4 @@ async def delete_post_endpoint(
     )
     await session.delete(existing)
     await session.commit()
-    try:
-        git_service.commit_all(f"Delete post: {file_path}")
-    except subprocess.CalledProcessError:
-        logger.warning("Git commit failed after deleting post %s", file_path)
+    git_service.try_commit(f"Delete post: {file_path}")
