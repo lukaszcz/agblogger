@@ -49,7 +49,7 @@ class LabelCreate(BaseModel):
     """Request to create a new label."""
 
     id: LabelIdRef
-    names: list[str] = Field(default_factory=list, min_length=1)
+    names: list[str] = Field(default_factory=list)
     parents: list[LabelIdRef] = Field(default_factory=list)
 
     @field_validator("names")

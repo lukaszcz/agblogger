@@ -33,16 +33,16 @@ const api = ky.create({
       },
     ],
     afterResponse: [
-      async (request, _options, response) => {
+      async (request, options, response) => {
         if (response.status === 401 && !request.url.includes('/auth/refresh')) {
           const newToken = await refreshAccessToken()
           if (newToken) {
-            const headers = new Headers(request.headers)
-            headers.set('Authorization', `Bearer ${newToken}`)
             return ky(request.url, {
-              method: request.method,
-              headers,
-              body: request.bodyUsed ? undefined : request.body,
+              ...options,
+              headers: {
+                ...Object.fromEntries(request.headers),
+                Authorization: `Bearer ${newToken}`,
+              },
               retry: 0,
             })
           }

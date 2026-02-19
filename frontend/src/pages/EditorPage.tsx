@@ -58,11 +58,15 @@ export default function EditorPage() {
           }
         })
         .finally(() => setLoading(false))
-    } else {
+    }
+  }, [filePath, isNew])
+
+  useEffect(() => {
+    if (isNew) {
       setBody('# New Post\n\nStart writing here...\n')
       setAuthor(user?.display_name || user?.username || null)
     }
-  }, [filePath, isNew, user])
+  }, [isNew, user?.display_name, user?.username])
 
   async function handleSave() {
     setSaving(true)

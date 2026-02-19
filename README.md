@@ -180,7 +180,7 @@ labels: ["#swe"]
 ---
 # Hello World
 
-Post content here with **markdown**, $\LaTeX$ math, and ```code blocks```.
+Post content here with **markdown**, $\LaTeX$ math, and `code blocks`.
 ```
 
 Site configuration lives in `content/index.toml` and labels are defined in `content/labels.toml`.

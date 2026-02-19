@@ -6,7 +6,7 @@ import hashlib
 import logging
 import os
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -278,7 +278,7 @@ def normalize_post_frontmatter(
             raw_value = post.get(ts_field)
             if raw_value is not None:
                 if isinstance(raw_value, date) and not isinstance(raw_value, datetime):
-                    raw_value = datetime(raw_value.year, raw_value.month, raw_value.day)
+                    raw_value = datetime(raw_value.year, raw_value.month, raw_value.day, tzinfo=UTC)
                 if isinstance(raw_value, datetime):
                     post[ts_field] = format_datetime(raw_value)
                 else:

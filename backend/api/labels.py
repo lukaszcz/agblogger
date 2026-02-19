@@ -73,9 +73,7 @@ async def create_label_endpoint(
     if result is None:
         raise HTTPException(status_code=409, detail="Label already exists")
 
-    await session.commit()
-
-    # Write to labels.toml so the label survives cache rebuilds (the DB is regenerable from disk)
+    # Write to labels.toml first (filesystem is source of truth)
     labels = dict(content_manager.labels)
     labels[body.id] = LabelDef(
         id=body.id,
@@ -86,11 +84,13 @@ async def create_label_endpoint(
         write_labels_config(content_manager.content_dir, labels)
         content_manager.reload_config()
     except Exception as exc:
+        await session.rollback()
         logger.error("Failed to write labels.toml for label %s: %s", body.id, exc)
         raise HTTPException(
-            status_code=500, detail="Label created but failed to persist to filesystem"
+            status_code=500, detail="Failed to persist label to filesystem"
         ) from exc
 
+    await session.commit()
     return result
 
 
@@ -122,9 +122,7 @@ async def update_label_endpoint(
     if result is None:
         raise HTTPException(status_code=404, detail="Label was deleted during update")
 
-    await session.commit()
-
-    # Persist to labels.toml
+    # Persist to labels.toml first (filesystem is source of truth)
     labels = dict(content_manager.labels)
     labels[label_id] = LabelDef(
         id=label_id,
@@ -135,11 +133,13 @@ async def update_label_endpoint(
         write_labels_config(content_manager.content_dir, labels)
         content_manager.reload_config()
     except Exception as exc:
+        await session.rollback()
         logger.error("Failed to write labels.toml for label %s: %s", label_id, exc)
         raise HTTPException(
-            status_code=500, detail="Label updated but failed to persist to filesystem"
+            status_code=500, detail="Failed to persist label to filesystem"
         ) from exc
 
+    await session.commit()
     return result
 
 
@@ -155,9 +155,7 @@ async def delete_label_endpoint(
     if not deleted:
         raise HTTPException(status_code=404, detail="Label not found")
 
-    await session.commit()
-
-    # Remove from labels.toml and strip stale parent references from other labels
+    # Remove from labels.toml first (filesystem is source of truth)
     labels = dict(content_manager.labels)
     labels.pop(label_id, None)
     for key, label_def in labels.items():
@@ -171,11 +169,13 @@ async def delete_label_endpoint(
         write_labels_config(content_manager.content_dir, labels)
         content_manager.reload_config()
     except Exception as exc:
+        await session.rollback()
         logger.error("Failed to update labels.toml after deleting %s: %s", label_id, exc)
         raise HTTPException(
-            status_code=500, detail="Label deleted but failed to persist to filesystem"
+            status_code=500, detail="Failed to persist label deletion to filesystem"
         ) from exc
 
+    await session.commit()
     return LabelDeleteResponse(id=label_id)
 
 

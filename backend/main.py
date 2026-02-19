@@ -108,7 +108,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.add_middleware(GZipMiddleware, minimum_size=500)
 
-    cors_origins = ["http://localhost:5173", "http://localhost:8000"] if settings.debug else []
+    cors_origins = (
+        settings.cors_origins
+        if settings.cors_origins
+        else (["http://localhost:5173", "http://localhost:8000"] if settings.debug else [])
+    )
     app.add_middleware(
         CORSMiddleware,
         allow_origins=cors_origins,

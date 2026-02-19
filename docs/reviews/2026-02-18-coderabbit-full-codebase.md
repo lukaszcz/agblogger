@@ -254,8 +254,10 @@ Numbered list skips item 9.
 
 Lists `atproto` as dependency but code uses `httpx` directly.
 
-### 42. Dagre version
+### ~~42. Dagre version~~
 
 **File:** `frontend/package.json:18`
 
-`@dagrejs/dagre` version `^2.0.4` may not exist on npm; latest is `1.1.8`.
+~~`@dagrejs/dagre` version `^2.0.4` may not exist on npm; latest is `1.1.8`.~~
+
+**Resolved:** `@dagrejs/dagre@2.0.4` exists on npm. This finding was incorrect.
