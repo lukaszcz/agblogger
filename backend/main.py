@@ -31,6 +31,7 @@ from backend.services.rate_limit_service import InMemoryRateLimiter
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Awaitable, Callable
+    from pathlib import Path
 
     from starlette.responses import Response
 
@@ -50,6 +51,22 @@ def _configure_logging(debug: bool) -> None:
     # Quiet noisy libraries
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
     logging.getLogger("sqlalchemy.engine").setLevel(logging.INFO if debug else logging.WARNING)
+
+
+def ensure_content_dir(content_dir: Path) -> None:
+    """Create the default content directory structure if it doesn't exist."""
+    if content_dir.exists():
+        return
+
+    logger.info("Creating default content directory at %s", content_dir)
+    content_dir.mkdir(parents=True)
+    (content_dir / "posts").mkdir()
+
+    (content_dir / "index.toml").write_text(
+        '[site]\ntitle = "My Blog"\ntimezone = "UTC"\n\n'
+        '[[pages]]\nid = "timeline"\ntitle = "Posts"\n'
+    )
+    (content_dir / "labels.toml").write_text("[labels]\n")
 
 
 @asynccontextmanager
@@ -85,6 +102,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
             )
         )
         await session.commit()
+
+    ensure_content_dir(settings.content_dir)
 
     content_manager = ContentManager(content_dir=settings.content_dir)
     app.state.content_manager = content_manager

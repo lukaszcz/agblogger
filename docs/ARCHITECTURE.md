@@ -86,6 +86,8 @@ agblogger/
 
 The filesystem is the canonical store for all content. The database is entirely regenerable from the files on disk — it is rebuilt on every server startup via `rebuild_cache()`. Post CRUD endpoints also perform incremental cache maintenance for `posts_cache`, `posts_fts`, and `post_labels_cache` so search/filter data stays fresh between full rebuilds.
 
+The `content/` directory is **not version-controlled** (it is in `.gitignore`). On first startup, `ensure_content_dir()` in `backend/main.py` creates a minimal scaffold (`index.toml`, `labels.toml`, `posts/`) if the directory doesn't exist.
+
 Content lives in the `content/` directory:
 
 ```
@@ -163,10 +165,11 @@ On startup, the lifespan handler:
 
 1. Creates the async SQLAlchemy engine and session factory.
 2. Creates all database tables (including the FTS5 virtual table).
-3. Initializes the `ContentManager`.
-4. Initializes the `GitService` (creates a git repo in the content directory if one doesn't exist).
-5. Creates the admin user if it doesn't exist.
-6. Rebuilds the full database cache from the filesystem.
+3. Ensures the content directory exists (`ensure_content_dir()`), creating the default scaffold if needed.
+4. Initializes the `ContentManager`.
+5. Initializes the `GitService` (creates a git repo in the content directory if one doesn't exist).
+6. Creates the admin user if it doesn't exist.
+7. Rebuilds the full database cache from the filesystem.
 
 ### Layered Architecture
 

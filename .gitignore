@@ -38,6 +38,9 @@ frontend/node_modules/.tmp/
 *.db-shm
 data/
 
+# ── Content (auto-generated on first startup) ──────────────────────
+content/
+
 # ── Playwright ────────────────────────────────────────────────────────
 playwright-report/
 playwright-results/
