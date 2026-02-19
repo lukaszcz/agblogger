@@ -52,7 +52,7 @@ just stop
 
 This starts the backend at http://localhost:8000 and the frontend at http://localhost:5173 (proxying API calls to the backend). API docs are at http://localhost:8000/docs.
 
-Default credentials: `admin` / `admin` (change via `.env`).  
+Default credentials: `admin` / `admin` (change via `.env`).
 Self-registration is disabled by default; create invite codes from the admin account.
 
 ## Testing
@@ -114,46 +114,101 @@ Authentication supports either username/password login or a personal access toke
 
 ## Deployment
 
-### Docker (recommended)
+### 1. Configure environment
 
 ```bash
-# Build and start
-docker-compose up -d
+cp .env.example .env
+```
+
+Edit `.env` with production values:
+
+```
+SECRET_KEY=<long-random-string>
+ADMIN_USERNAME=<your-admin-username>
+ADMIN_PASSWORD=<a-strong-password>
+DEBUG=false
+```
+
+Generate a secret key:
+
+```bash
+python3 -c "import secrets; print(secrets.token_urlsafe(64))"
+```
+
+### 2. Build and start the container
+
+```bash
+docker compose up -d --build
 ```
 
 The multi-stage Dockerfile builds the frontend with Node.js, then packages everything into a Python slim image with Pandoc. The container runs as a non-root user and exposes port 8000.
 
-Volumes:
-- `/data/content` — blog content (markdown, TOML, assets)
-- `/data/db` — SQLite database
+### 3. Admin user creation
 
-### With HTTPS via Caddy
+On first startup the server automatically creates an admin account using `ADMIN_USERNAME` and `ADMIN_PASSWORD` from the environment. The password is bcrypt-hashed before storage — the plaintext value is never persisted.
 
-Update the domain in `Caddyfile`, then:
+The admin user is only created if no user with that username already exists. To reset the admin password, delete the database volume and restart:
 
 ```bash
-docker-compose up -d
+docker compose down -v   # removes the db volume
+docker compose up -d     # recreates admin from .env
+```
+
+### 4. Log in
+
+Visit `http://<your-server>:8000/login` and sign in with the admin credentials from `.env`.
+
+Self-registration is disabled by default. To add more users, create invite codes from the admin account — other users can then register at `/login` with an invite code.
+
+### 5. Add HTTPS with Caddy (recommended)
+
+Edit `Caddyfile` and replace `myblog.example.com` with your domain, then add a Caddy service to `docker-compose.yml`:
+
+```yaml
+services:
+  agblogger:
+    # ... existing config ...
+
+  caddy:
+    image: caddy:2
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy-data:/data
+    depends_on:
+      - agblogger
+
+volumes:
+  agblogger-db:
+  caddy-data:
 ```
 
 Caddy automatically obtains Let's Encrypt certificates and reverse-proxies to the backend.
 
-### Environment Variables
+### Data volumes
+
+| Volume | Path in container | Purpose |
+|--------|-------------------|---------|
+| `./content` | `/data/content` | Blog content — markdown, TOML, assets (bind mount) |
+| `agblogger-db` | `/data/db` | SQLite database (named volume) |
+
+The `content/` directory is the source of truth. Back it up to preserve your blog. The database is fully regenerable from content files on startup (auth data like user accounts is the exception).
+
+### Environment variables
 
 Key variables (see `.env.example` for the full list):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SECRET_KEY` | `change-me-in-production` | JWT signing key |
+| `ADMIN_USERNAME` | `admin` | Bootstrap admin username |
+| `ADMIN_PASSWORD` | `admin` | Bootstrap admin password (hashed on storage) |
 | `DATABASE_URL` | `sqlite+aiosqlite:///data/db/agblogger.db` | Database connection string |
 | `CONTENT_DIR` | `./content` | Blog content directory |
-| `ADMIN_USERNAME` | `admin` | Bootstrap admin username |
-| `ADMIN_PASSWORD` | `admin` | Bootstrap admin password |
 | `AUTH_SELF_REGISTRATION` | `false` | Enable/disable open registration |
-| `AUTH_INVITES_ENABLED` | `true` | Allow invite-code registration when open registration is off |
-| `AUTH_INVITE_EXPIRE_DAYS` | `7` | Default invite expiration window |
-| `AUTH_LOGIN_MAX_FAILURES` | `5` | Failed login attempts allowed per rate-limit window |
-| `AUTH_REFRESH_MAX_FAILURES` | `10` | Failed refresh attempts allowed per rate-limit window |
-| `AUTH_RATE_LIMIT_WINDOW_SECONDS` | `300` | Window size for auth rate limiting |
+| `AUTH_INVITES_ENABLED` | `true` | Allow invite-code registration |
 | `HOST` | `0.0.0.0` | Server bind address |
 | `PORT` | `8000` | Server port |
 

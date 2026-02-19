@@ -17,6 +17,8 @@ just check-backend    # Backend only: mypy, ruff check, ruff format --check, pyt
 just check-frontend   # Frontend only: tsc, eslint, vitest
 ```
 
+Always start a dev server with `just start`. Remeber to stop a running dev server with `just stop` when finished.
+
 ## Coding Style & Naming Conventions
 
 ### Python (backend/, cli/, tests/)
