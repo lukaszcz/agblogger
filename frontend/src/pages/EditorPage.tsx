@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Save, Eye, ArrowLeft } from 'lucide-react'
+import { Save, ArrowLeft } from 'lucide-react'
+import { format, parseISO } from 'date-fns'
 
 import { fetchPostForEdit, createPost, updatePost } from '@/api/posts'
 import { HTTPError } from '@/api/client'
@@ -25,11 +26,10 @@ export default function EditorPage() {
   const [modifiedAt, setModifiedAt] = useState<string | null>(null)
   const [loading, setLoading] = useState(!isNew)
   const [saving, setSaving] = useState(false)
-  const [previewing, setPreviewing] = useState(false)
   const [preview, setPreview] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const renderedPreview = useRenderedHtml(preview)
-  const busy = saving || previewing
+  const previewRequestRef = useRef(0)
 
   useEffect(() => {
     if (isInitialized && !user) {
@@ -67,6 +67,24 @@ export default function EditorPage() {
       setAuthor(user?.display_name || user?.username || null)
     }
   }, [isNew, user?.display_name, user?.username])
+
+  useEffect(() => {
+    if (!body) return
+    const requestId = ++previewRequestRef.current
+    const timer = setTimeout(async () => {
+      try {
+        const resp = await api
+          .post('render/preview', { json: { markdown: body } })
+          .json<{ html: string }>()
+        if (previewRequestRef.current === requestId) {
+          setPreview(resp.html)
+        }
+      } catch {
+        // Silently ignore preview failures — editor remains usable
+      }
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [body])
 
   async function handleSave() {
     setSaving(true)
@@ -128,26 +146,13 @@ export default function EditorPage() {
     }
   }
 
-  async function handlePreview() {
-    setPreviewing(true)
-    try {
-      const resp = await api
-        .post('render/preview', { json: { markdown: body } })
-        .json<{ html: string }>()
-      setPreview(resp.html)
-    } catch (err) {
-      if (err instanceof HTTPError && err.response.status === 401) {
-        setError('Session expired. Please log in again.')
-      } else {
-        setError('Preview failed. The server may be unavailable.')
-      }
-    } finally {
-      setPreviewing(false)
-    }
-  }
-
   function formatDate(iso: string): string {
-    return new Date(iso).toLocaleString()
+    try {
+      const parsed = parseISO(iso.replace(' ', 'T').replace(/\+(\d{2})$/, '+$1:00'))
+      return format(parsed, 'MMM d, yyyy, HH:mm')
+    } catch {
+      return iso.split('.')[0] ?? iso
+    }
   }
 
   if (!isInitialized || !user) {
@@ -190,26 +195,15 @@ export default function EditorPage() {
           Back
         </button>
 
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => void handlePreview()}
-            disabled={busy}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium
-                     border border-border rounded-lg hover:bg-paper-warm disabled:opacity-50 transition-colors"
-          >
-            <Eye size={14} />
-            {previewing ? 'Loading...' : 'Preview'}
-          </button>
-          <button
-            onClick={() => void handleSave()}
-            disabled={busy}
-            className="flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium
-                     bg-accent text-white rounded-lg hover:bg-accent-light disabled:opacity-50 transition-colors"
-          >
-            <Save size={14} />
-            {saving ? 'Saving...' : 'Save'}
-          </button>
-        </div>
+        <button
+          onClick={() => void handleSave()}
+          disabled={saving}
+          className="flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium
+                   bg-accent text-white rounded-lg hover:bg-accent-light disabled:opacity-50 transition-colors"
+        >
+          <Save size={14} />
+          {saving ? 'Saving...' : 'Save'}
+        </button>
       </div>
 
       {error && (
@@ -229,7 +223,7 @@ export default function EditorPage() {
               type="text"
               value={newPath}
               onChange={(e) => setNewPath(e.target.value)}
-              disabled={busy}
+              disabled={saving}
               placeholder="posts/my-new-post.md"
               className="w-full px-3 py-2 bg-paper-warm border border-border rounded-lg
                        text-ink font-mono text-sm
@@ -241,7 +235,7 @@ export default function EditorPage() {
 
         <div>
           <label className="block text-xs font-medium text-muted mb-1">Labels</label>
-          <LabelInput value={labels} onChange={setLabels} disabled={busy} />
+          <LabelInput value={labels} onChange={setLabels} disabled={saving} />
         </div>
 
         <div className="flex items-center justify-between">
@@ -251,7 +245,7 @@ export default function EditorPage() {
                 type="checkbox"
                 checked={isDraft}
                 onChange={(e) => setIsDraft(e.target.checked)}
-                disabled={busy}
+                disabled={saving}
                 className="rounded border-border text-accent focus:ring-accent/20"
               />
               <span className="text-sm text-ink">Draft</span>
@@ -277,11 +271,8 @@ export default function EditorPage() {
         <div>
           <textarea
             value={body}
-            onChange={(e) => {
-              setBody(e.target.value)
-              setPreview(null)
-            }}
-            disabled={busy}
+            onChange={(e) => setBody(e.target.value)}
+            disabled={saving}
             className="w-full h-full min-h-[60vh] p-4 bg-paper-warm border border-border rounded-lg
                      font-mono text-sm leading-relaxed text-ink resize-none
                      focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20
@@ -290,14 +281,16 @@ export default function EditorPage() {
           />
         </div>
 
-        {preview && (
-          <div className="p-6 bg-paper border border-border rounded-lg overflow-y-auto">
+        <div className="p-6 bg-paper border border-border rounded-lg overflow-y-auto">
+          {preview ? (
             <div
               className="prose max-w-none"
               dangerouslySetInnerHTML={{ __html: renderedPreview }}
             />
-          </div>
-        )}
+          ) : (
+            <p className="text-sm text-muted italic">Preview will appear here...</p>
+          )}
+        </div>
       </div>
     </div>
   )
