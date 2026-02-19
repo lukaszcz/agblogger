@@ -84,6 +84,7 @@ export default function Header() {
                   disabled={isLoggingOut}
                   className="p-2 text-muted hover:text-ink transition-colors rounded-lg hover:bg-paper-warm disabled:opacity-50 disabled:cursor-not-allowed"
                   aria-label="Logout"
+                  title="Log out"
                 >
                   <LogOut size={18} />
                 </button>

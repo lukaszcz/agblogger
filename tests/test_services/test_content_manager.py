@@ -12,7 +12,7 @@ from backend.filesystem.content_manager import (
 )
 from backend.filesystem.frontmatter import (
     extract_title,
-    generate_excerpt,
+    generate_markdown_excerpt,
     parse_labels,
     parse_post,
 )
@@ -77,15 +77,38 @@ class TestParseLabels:
         assert parse_labels([]) == []
 
 
-class TestGenerateExcerpt:
-    def test_basic_excerpt(self) -> None:
-        content = "# Title\n\nThis is the first paragraph.\n\nSecond paragraph."
-        excerpt = generate_excerpt(content)
-        assert "This is the first paragraph." in excerpt
+class TestGenerateMarkdownExcerpt:
+    def test_preserves_bold(self) -> None:
+        content = "This is **bold** text."
+        excerpt = generate_markdown_excerpt(content)
+        assert "**bold**" in excerpt
+
+    def test_preserves_links(self) -> None:
+        content = "Check [this link](https://example.com) out."
+        excerpt = generate_markdown_excerpt(content)
+        assert "[this link](https://example.com)" in excerpt
+
+    def test_preserves_inline_math(self) -> None:
+        content = "The formula $E = mc^2$ is famous."
+        excerpt = generate_markdown_excerpt(content)
+        assert "$E = mc^2$" in excerpt
+
+    def test_strips_headings(self) -> None:
+        content = "# Title\n\nBody text here."
+        excerpt = generate_markdown_excerpt(content)
+        assert "Title" not in excerpt
+        assert "Body text here." in excerpt
+
+    def test_strips_code_blocks(self) -> None:
+        content = "Before.\n\n```python\nprint('hi')\n```\n\nAfter."
+        excerpt = generate_markdown_excerpt(content)
+        assert "print" not in excerpt
+        assert "Before." in excerpt
+        assert "After." in excerpt
 
     def test_truncation(self) -> None:
         content = "Word " * 100
-        excerpt = generate_excerpt(content, max_length=50)
+        excerpt = generate_markdown_excerpt(content, max_length=50)
         assert len(excerpt) <= 53  # 50 + "..."
         assert excerpt.endswith("...")
 

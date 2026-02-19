@@ -159,14 +159,14 @@ async def update_label(
     # Update names
     label.names = json.dumps(names)
 
-    # Delete existing parent edges
-    await session.execute(delete(LabelParentCache).where(LabelParentCache.label_id == label_id))
-    await session.flush()
-
-    # Check all proposed parents for cycles before inserting any edges
+    # Check all proposed parents for cycles before modifying edges
     for parent_id in parents:
         if await would_create_cycle(session, label_id, parent_id):
             raise ValueError(f"Adding parent '{parent_id}' would create a cycle")
+
+    # Delete existing parent edges
+    await session.execute(delete(LabelParentCache).where(LabelParentCache.label_id == label_id))
+
     for parent_id in parents:
         edge = LabelParentCache(label_id=label_id, parent_id=parent_id)
         session.add(edge)

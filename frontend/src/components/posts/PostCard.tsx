@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { format, parseISO } from 'date-fns'
 import type { PostSummary } from '@/api/client'
 import LabelChip from '@/components/labels/LabelChip'
+import { useRenderedHtml } from '@/hooks/useKatex'
 
 interface PostCardProps {
   post: PostSummary
@@ -11,6 +12,7 @@ interface PostCardProps {
 export default function PostCard({ post, index = 0 }: PostCardProps) {
   const postUrl = `/post/${post.file_path}`
   const staggerClass = `stagger-${Math.min(index + 1, 8)}`
+  const renderedExcerpt = useRenderedHtml(post.rendered_excerpt)
 
   let dateStr = ''
   try {
@@ -31,10 +33,11 @@ export default function PostCard({ post, index = 0 }: PostCardProps) {
               {post.title}
             </h2>
 
-            {post.excerpt && (
-              <p className="mt-2 text-sm text-muted leading-relaxed line-clamp-2">
-                {post.excerpt}
-              </p>
+            {renderedExcerpt && (
+              <div
+                className="mt-2 text-sm text-muted leading-relaxed line-clamp-2 prose-excerpt"
+                dangerouslySetInnerHTML={{ __html: renderedExcerpt }}
+              />
             )}
 
             <div className="mt-3 flex items-center gap-3 flex-wrap">

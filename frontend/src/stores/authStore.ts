@@ -7,6 +7,7 @@ interface AuthState {
   user: UserResponse | null
   isLoading: boolean
   isLoggingOut: boolean
+  isInitialized: boolean
   error: string | null
   login: (username: string, password: string) => Promise<void>
   logout: () => Promise<void>
@@ -17,6 +18,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   isLoading: false,
   isLoggingOut: false,
+  isInitialized: false,
   error: null,
 
   login: async (username: string, password: string) => {
@@ -49,13 +51,13 @@ export const useAuthStore = create<AuthState>((set) => ({
   checkAuth: async () => {
     try {
       const user = await fetchMe()
-      set({ user })
+      set({ user, isInitialized: true })
     } catch (err) {
       if (err instanceof HTTPError && err.response.status === 401) {
-        set({ user: null })
+        set({ user: null, isInitialized: true })
       } else {
         console.error('Auth check failed:', err)
-        set({ user: null })
+        set({ user: null, isInitialized: true })
       }
     }
   },

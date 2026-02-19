@@ -95,6 +95,13 @@ describe('Header', () => {
     expect(screen.getByLabelText('Logout')).toBeDisabled()
   })
 
+  it('logout button has tooltip', () => {
+    mockUser = { id: 1, username: 'admin', email: 'a@b.com', display_name: null, is_admin: true }
+    renderHeader()
+    const logoutButton = screen.getByLabelText('Logout')
+    expect(logoutButton).toHaveAttribute('title', 'Log out')
+  })
+
   it('opens search on click', async () => {
     renderHeader()
     await userEvent.click(screen.getByLabelText('Search'))

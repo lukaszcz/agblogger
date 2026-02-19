@@ -14,7 +14,7 @@ function makePost(overrides: Partial<PostSummary> = {}): PostSummary {
     created_at: '2026-02-01 12:00:00+00:00',
     modified_at: '2026-02-01 12:00:00+00:00',
     is_draft: false,
-    excerpt: 'This is the excerpt.',
+    rendered_excerpt: '<p>This is the excerpt.</p>',
     labels: [],
     ...overrides,
   }

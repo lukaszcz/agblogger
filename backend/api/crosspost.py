@@ -124,7 +124,7 @@ async def crosspost_endpoint(
         CrossPostResponse(
             id=0,  # IDs not needed in response
             post_path=body.post_path,
-            platform=body.platforms[i] if i < len(body.platforms) else "",
+            platform=body.platforms[i],
             platform_id=r.platform_id or None,
             status="posted" if r.success else "failed",
             posted_at=None,

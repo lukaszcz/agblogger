@@ -33,8 +33,8 @@ vi.mock('@/api/labels', () => ({
 let mockUser: UserResponse | null = null
 
 vi.mock('@/stores/authStore', () => ({
-  useAuthStore: (selector: (s: { user: UserResponse | null }) => unknown) =>
-    selector({ user: mockUser }),
+  useAuthStore: (selector: (s: { user: UserResponse | null; isInitialized: boolean }) => unknown) =>
+    selector({ user: mockUser, isInitialized: true }),
 }))
 
 vi.mock('@/hooks/useKatex', () => ({
@@ -112,13 +112,29 @@ describe('EditorPage', () => {
     expect(mockFetchPostForEdit).toHaveBeenCalledWith('posts/existing.md')
   })
 
-  it('shows 404 error', async () => {
+  it('shows 404 error page without editor form', async () => {
     // MockHTTPError has our test-friendly 1-arg constructor but TS sees the real type
     mockFetchPostForEdit.mockRejectedValue(new (MockHTTPError as unknown as new (s: number) => Error)(404))
     renderEditor('/editor/posts/missing.md')
 
     await waitFor(() => {
-      expect(screen.getByText('Post not found')).toBeInTheDocument()
+      expect(screen.getByText('404')).toBeInTheDocument()
     })
+    expect(screen.getByText('Post not found')).toBeInTheDocument()
+    expect(screen.getByText('Go back')).toBeInTheDocument()
+    // Editor form should NOT be rendered
+    expect(screen.queryByText('Save')).not.toBeInTheDocument()
+    expect(screen.queryByText('Preview')).not.toBeInTheDocument()
+  })
+
+  it('shows generic error page without editor form', async () => {
+    mockFetchPostForEdit.mockRejectedValue(new Error('Network error'))
+    renderEditor('/editor/posts/broken.md')
+
+    await waitFor(() => {
+      expect(screen.getByText('Error')).toBeInTheDocument()
+    })
+    expect(screen.getByText('Failed to load post')).toBeInTheDocument()
+    expect(screen.queryByText('Save')).not.toBeInTheDocument()
   })
 })

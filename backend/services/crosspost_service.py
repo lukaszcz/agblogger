@@ -113,7 +113,7 @@ async def crosspost(
         slug = slug.removesuffix(".md")
     post_url = f"{site_url.rstrip('/')}/posts/{slug}"
 
-    excerpt = content_manager.get_excerpt(post_data)
+    excerpt = content_manager.get_plain_excerpt(post_data)
     content = CrossPostContent(
         title=post_data.title,
         excerpt=excerpt,

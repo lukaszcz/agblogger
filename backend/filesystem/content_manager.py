@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from backend.filesystem.frontmatter import PostData, generate_excerpt, parse_post
+from backend.filesystem.frontmatter import PostData, generate_markdown_excerpt, parse_post
 from backend.filesystem.toml_manager import (
     LabelDef,
     SiteConfig,
@@ -183,6 +184,36 @@ class ContentManager:
             pages=pages,
         )
 
-    def get_excerpt(self, post_data: PostData) -> str:
-        """Generate an excerpt for a post."""
-        return generate_excerpt(post_data.content)
+    def get_markdown_excerpt(self, post_data: PostData) -> str:
+        """Generate a markdown excerpt for a post (to be rendered via Pandoc)."""
+        return generate_markdown_excerpt(post_data.content)
+
+    def get_plain_excerpt(self, post_data: PostData, max_length: int = 200) -> str:
+        """Generate a plain-text excerpt for cross-posting.
+
+        Strips all markdown formatting including links, bold/italic,
+        inline code, headings, code blocks, and images.
+        """
+        lines: list[str] = []
+        in_code_block = False
+        for line in post_data.content.split("\n"):
+            if line.strip().startswith("```"):
+                in_code_block = not in_code_block
+                continue
+            if in_code_block:
+                continue
+            if line.strip().startswith("#"):
+                continue
+            if line.strip().startswith("!["):
+                continue
+            stripped = line.strip()
+            if stripped:
+                stripped = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", stripped)
+                stripped = re.sub(r"[*_]{1,3}([^*_]+)[*_]{1,3}", r"\1", stripped)
+                stripped = re.sub(r"`([^`]+)`", r"\1", stripped)
+                stripped = re.sub(r"\$[^$]+\$", "", stripped)
+                lines.append(stripped)
+        text = " ".join(lines)
+        if len(text) > max_length:
+            text = text[:max_length].rsplit(" ", maxsplit=1)[0] + "..."
+        return text

@@ -740,7 +740,6 @@ async def update_label_endpoint(
     for parent_id in body.parents:
         if await would_create_cycle_for_update(session, label_id, body.parents):
             raise HTTPException(status_code=409, detail="Adding parent would create a cycle")
-            break
 
     result = await update_label(session, label_id, body.names, body.parents)
 

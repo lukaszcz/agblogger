@@ -14,6 +14,7 @@ export default function EditorPage() {
   const navigate = useNavigate()
   const isNew = !filePath || filePath === 'new'
   const user = useAuthStore((s) => s.user)
+  const isInitialized = useAuthStore((s) => s.isInitialized)
 
   const [body, setBody] = useState('')
   const [labels, setLabels] = useState<string[]>([])
@@ -29,6 +30,12 @@ export default function EditorPage() {
   const [error, setError] = useState<string | null>(null)
   const renderedPreview = useRenderedHtml(preview)
   const busy = saving || previewing
+
+  useEffect(() => {
+    if (isInitialized && !user) {
+      void navigate('/login', { replace: true })
+    }
+  }, [user, isInitialized, navigate])
 
   useEffect(() => {
     if (!isNew && filePath) {
@@ -51,11 +58,15 @@ export default function EditorPage() {
           }
         })
         .finally(() => setLoading(false))
-    } else {
+    }
+  }, [filePath, isNew])
+
+  useEffect(() => {
+    if (isNew) {
       setBody('# New Post\n\nStart writing here...\n')
       setAuthor(user?.display_name || user?.username || null)
     }
-  }, [filePath, isNew, user])
+  }, [isNew, user?.display_name, user?.username])
 
   async function handleSave() {
     setSaving(true)
@@ -74,7 +85,11 @@ export default function EditorPage() {
         if (status === 401) {
           setError('Session expired. Please log in again.')
         } else if (status === 409) {
-          setError('Conflict: this post was modified elsewhere.')
+          setError(
+            isNew
+              ? 'A post with this file path already exists.'
+              : 'Conflict: this post was modified elsewhere.',
+          )
         } else if (status === 404) {
           setError('Post not found. It may have been deleted.')
         } else if (status === 422) {
@@ -135,10 +150,31 @@ export default function EditorPage() {
     return new Date(iso).toLocaleString()
   }
 
+  if (!isInitialized || !user) {
+    return null
+  }
+
   if (loading) {
     return (
       <div className="animate-fade-in flex items-center justify-center py-20">
         <span className="text-muted text-sm">Loading...</span>
+      </div>
+    )
+  }
+
+  if (!isNew && error) {
+    return (
+      <div className="animate-fade-in text-center py-24">
+        <p className="font-display text-3xl text-muted italic">
+          {error === 'Post not found' ? '404' : 'Error'}
+        </p>
+        <p className="text-sm text-muted mt-2">{error}</p>
+        <button
+          onClick={() => void navigate(-1)}
+          className="text-accent text-sm hover:underline mt-4 inline-block"
+        >
+          Go back
+        </button>
       </div>
     )
   }

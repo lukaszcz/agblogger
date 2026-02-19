@@ -31,6 +31,7 @@ export default function LabelSettingsPage() {
   const { labelId } = useParams()
   const navigate = useNavigate()
   const user = useAuthStore((s) => s.user)
+  const isInitialized = useAuthStore((s) => s.isInitialized)
 
   const [label, setLabel] = useState<LabelResponse | null>(null)
   const [allLabels, setAllLabels] = useState<LabelResponse[]>([])
@@ -49,10 +50,10 @@ export default function LabelSettingsPage() {
   const busy = saving || deleting
 
   useEffect(() => {
-    if (!user) {
+    if (isInitialized && !user) {
       void navigate('/login', { replace: true })
     }
-  }, [user, navigate])
+  }, [user, isInitialized, navigate])
 
   useEffect(() => {
     if (!labelId) return
@@ -162,7 +163,7 @@ export default function LabelSettingsPage() {
     }
   }
 
-  if (!user) {
+  if (!isInitialized || !user) {
     return null
   }
 

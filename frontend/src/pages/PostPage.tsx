@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
-import { ArrowLeft, Calendar, User, PenLine } from 'lucide-react'
+import { useParams, Link, useNavigate } from 'react-router-dom'
+import { ArrowLeft, Calendar, User, PenLine, Trash2 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
-import { fetchPost } from '@/api/posts'
+import { fetchPost, deletePost } from '@/api/posts'
 import { useAuthStore } from '@/stores/authStore'
 import { HTTPError } from '@/api/client'
 import LabelChip from '@/components/labels/LabelChip'
@@ -11,25 +11,48 @@ import type { PostDetail } from '@/api/client'
 
 export default function PostPage() {
   const { '*': filePath } = useParams()
+  const navigate = useNavigate()
   const [post, setPost] = useState<PostDetail | null>(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const user = useAuthStore((s) => s.user)
   const renderedHtml = useRenderedHtml(post?.rendered_html)
+
+  async function handleDelete() {
+    if (!filePath) return
+    setDeleting(true)
+    setDeleteError(null)
+    try {
+      await deletePost(filePath)
+      void navigate('/', { replace: true })
+    } catch (err) {
+      if (err instanceof HTTPError && err.response.status === 401) {
+        setDeleteError('Session expired. Please log in again.')
+      } else {
+        setDeleteError('Failed to delete post. Please try again.')
+      }
+      setConfirmDelete(false)
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   useEffect(() => {
     if (!filePath) return
     void (async () => {
       setLoading(true)
-      setError(null)
+      setLoadError(null)
       try {
         const p = await fetchPost(filePath)
         setPost(p)
       } catch (err) {
         if (err instanceof HTTPError && err.response.status === 404) {
-          setError('Post not found')
+          setLoadError('Post not found')
         } else {
-          setError('Failed to load post. Please try again later.')
+          setLoadError('Failed to load post. Please try again later.')
         }
       } finally {
         setLoading(false)
@@ -45,13 +68,13 @@ export default function PostPage() {
     )
   }
 
-  if (error || !post) {
+  if (loadError || !post) {
     return (
       <div className="text-center py-24">
         <p className="font-display text-3xl text-muted italic">
-          {error === 'Post not found' ? '404' : 'Error'}
+          {loadError === 'Post not found' ? '404' : 'Error'}
         </p>
-        <p className="text-sm text-muted mt-2">{error ?? 'Post not found'}</p>
+        <p className="text-sm text-muted mt-2">{loadError ?? 'Post not found'}</p>
         <Link to="/" className="text-accent text-sm hover:underline mt-4 inline-block">
           Back to timeline
         </Link>
@@ -104,23 +127,39 @@ export default function PostPage() {
           )}
 
           {user && (
-            <Link
-              to={`/editor/${post.file_path}`}
-              className="flex items-center gap-1 text-accent hover:underline ml-auto"
-            >
-              <PenLine size={14} />
-              Edit
-            </Link>
+            <div className="flex items-center gap-3 ml-auto">
+              <Link
+                to={`/editor/${post.file_path}`}
+                className="flex items-center gap-1 text-accent hover:underline"
+              >
+                <PenLine size={14} />
+                Edit
+              </Link>
+              <button
+                onClick={() => setConfirmDelete(true)}
+                disabled={deleting}
+                className="flex items-center gap-1 text-muted hover:text-red-600 transition-colors disabled:opacity-50"
+              >
+                <Trash2 size={14} />
+                Delete
+              </button>
+            </div>
           )}
         </div>
 
         <div className="mt-6 h-px bg-gradient-to-r from-accent/40 via-border to-transparent" />
       </header>
 
+      {deleteError && (
+        <div className="mb-6 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+          {deleteError}
+        </div>
+      )}
+
       <div
         className="prose max-w-none"
         dangerouslySetInnerHTML={{
-          __html: renderedHtml.replace(/<h1[^>]*>.*?<\/h1>\s*/i, ''),
+          __html: renderedHtml.replace(/<h1[^>]*>[\s\S]*?<\/h1>\s*/i, ''),
         }}
       />
 
@@ -133,6 +172,35 @@ export default function PostPage() {
           Back to posts
         </Link>
       </footer>
+
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-paper border border-border rounded-xl shadow-xl p-6 max-w-sm mx-4 animate-fade-in">
+            <h2 className="font-display text-xl text-ink mb-2">Delete post?</h2>
+            <p className="text-sm text-muted mb-6">
+              This will permanently delete &ldquo;{post.title}&rdquo;. This cannot be undone.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setConfirmDelete(false)}
+                disabled={deleting}
+                className="px-4 py-2 text-sm font-medium text-muted hover:text-ink
+                         border border-border rounded-lg transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void handleDelete()}
+                disabled={deleting}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700
+                         rounded-lg transition-colors disabled:opacity-50"
+              >
+                {deleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </article>
   )
 }

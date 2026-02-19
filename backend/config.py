@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = Field(default=8000, ge=1, le=65535)
 
+    # CORS
+    cors_origins: list[str] = Field(default_factory=list)
+
     # Auth
     access_token_expire_minutes: int = Field(default=15, ge=1)
     refresh_token_expire_days: int = Field(default=7, ge=1)
