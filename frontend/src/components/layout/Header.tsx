@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { Search, LogIn, LogOut, PenLine } from 'lucide-react'
+import { Search, LogIn, LogOut, PenLine, Settings } from 'lucide-react'
 import { useState } from 'react'
 import { useSiteStore } from '@/stores/siteStore'
 import { useAuthStore } from '@/stores/authStore'
@@ -79,6 +79,16 @@ export default function Header() {
                   <PenLine size={14} />
                   <span>Write</span>
                 </Link>
+                {user.is_admin && (
+                  <Link
+                    to="/admin"
+                    className="p-2 text-muted hover:text-ink transition-colors rounded-lg hover:bg-paper-warm"
+                    aria-label="Admin"
+                    title="Admin panel"
+                  >
+                    <Settings size={18} />
+                  </Link>
+                )}
                 <button
                   onClick={() => void handleLogout()}
                   disabled={isLoggingOut}
