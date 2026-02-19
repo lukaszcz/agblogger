@@ -40,8 +40,14 @@ cd frontend && npm install && cd ..
 # Copy and edit environment config
 cp .env.example .env
 
-# Start both backend and frontend dev servers
-just dev
+# Start both backend and frontend dev servers in the background
+just start
+
+# Or with custom ports (useful when running multiple worktrees)
+just start backend_port=9000 frontend_port=9173
+
+# Stop the dev server
+just stop
 ```
 
 This starts the backend at http://localhost:8000 and the frontend at http://localhost:5173 (proxying API calls to the backend). API docs are at http://localhost:8000/docs.
