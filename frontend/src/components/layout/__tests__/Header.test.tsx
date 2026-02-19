@@ -12,6 +12,7 @@ const siteConfig: SiteConfigResponse = {
 }
 
 let mockUser: UserResponse | null = null
+let mockIsLoggingOut = false
 const mockLogout = vi.fn()
 
 vi.mock('@/stores/siteStore', () => ({
@@ -20,8 +21,12 @@ vi.mock('@/stores/siteStore', () => ({
 }))
 
 vi.mock('@/stores/authStore', () => ({
-  useAuthStore: (selector: (s: { user: UserResponse | null; logout: () => void }) => unknown) =>
-    selector({ user: mockUser, logout: mockLogout }),
+  useAuthStore: (selector: (s: {
+    user: UserResponse | null
+    logout: () => Promise<void>
+    isLoggingOut: boolean
+  }) => unknown) =>
+    selector({ user: mockUser, logout: mockLogout, isLoggingOut: mockIsLoggingOut }),
 }))
 
 import Header from '../Header'
@@ -37,6 +42,7 @@ function renderHeader(path = '/') {
 describe('Header', () => {
   beforeEach(() => {
     mockUser = null
+    mockIsLoggingOut = false
     vi.clearAllMocks()
   })
 
@@ -80,6 +86,13 @@ describe('Header', () => {
     expect(screen.getByText('Write')).toBeInTheDocument()
     expect(screen.getByLabelText('Logout')).toBeInTheDocument()
     expect(screen.queryByLabelText('Login')).not.toBeInTheDocument()
+  })
+
+  it('disables logout button while logout is in progress', () => {
+    mockUser = { id: 1, username: 'admin', email: 'a@b.com', display_name: null, is_admin: true }
+    mockIsLoggingOut = true
+    renderHeader()
+    expect(screen.getByLabelText('Logout')).toBeDisabled()
   })
 
   it('opens search on click', async () => {

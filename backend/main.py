@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import logging
+import secrets
 import sys
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.api.auth import router as auth_router
@@ -24,9 +26,12 @@ from backend.config import Settings
 from backend.database import create_engine
 from backend.filesystem.content_manager import ContentManager
 from backend.models.base import Base
+from backend.services.rate_limit_service import InMemoryRateLimiter
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator
+    from collections.abc import AsyncGenerator, Awaitable, Callable
+
+    from starlette.responses import Response
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +116,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     app.state.settings = settings
+    app.state.rate_limiter = InMemoryRateLimiter()
 
     app.add_middleware(GZipMiddleware, minimum_size=500)
 
@@ -122,6 +128,31 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.middleware("http")
+    async def csrf_protection(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        if request.method in {"POST", "PUT", "PATCH", "DELETE"} and request.url.path.startswith(
+            "/api/"
+        ):
+            auth_header = request.headers.get("Authorization", "")
+            has_bearer = auth_header.lower().startswith("bearer ")
+            access_cookie = request.cookies.get("access_token")
+            if access_cookie and not has_bearer and request.url.path != "/api/auth/login":
+                header_token = request.headers.get("X-CSRF-Token")
+                cookie_token = request.cookies.get("csrf_token")
+                if (
+                    header_token is None
+                    or cookie_token is None
+                    or not secrets.compare_digest(header_token, cookie_token)
+                ):
+                    return JSONResponse(
+                        status_code=403,
+                        content={"detail": "Invalid CSRF token"},
+                    )
+        return await call_next(request)
 
     app.include_router(health_router)
     app.include_router(auth_router)

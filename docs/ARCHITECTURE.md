@@ -190,7 +190,7 @@ On startup, the lifespan handler:
 
 | Router | Prefix | Purpose |
 |--------|--------|---------|
-| `auth` | `/api/auth` | Login, register, refresh tokens, current user |
+| `auth` | `/api/auth` | Login, invite-based register, refresh/logout, invite management, PAT management, current user |
 | `posts` | `/api/posts` | CRUD, search, listing with pagination/filtering, structured editor data |
 | `labels` | `/api/labels` | Label CRUD (create, update, delete), listing, graph data, posts by label |
 | `pages` | `/api/pages` | Site config, rendered page content |
@@ -210,6 +210,8 @@ The database serves as a **cache**, not the source of truth:
 - **`PostLabelCache`** — Many-to-many posts to labels with source tracking ("frontmatter" or "directory").
 - **`User`** — Username, email, password hash, display name, admin flag.
 - **`RefreshToken`** — Hashed refresh token with expiry.
+- **`PersonalAccessToken`** — Hashed long-lived API tokens (PATs), with revocation and optional expiry.
+- **`InviteCode`** — Single-use hashed invite codes for closed registration.
 - **`SocialAccount`** — OAuth credentials per user/platform.
 - **`CrossPost`** — Cross-posting history log.
 - **`SyncManifest`** — File state at last sync: path, content hash, file size, mtime.
@@ -229,11 +231,21 @@ Lua filter files exist in `backend/pandoc/filters/` as placeholders for future u
 
 ## Authentication and Authorization
 
-### JWT Flow
+### Token and Session Flow
 
+- **Web sessions**: Login issues `access_token` and `refresh_token` as `HttpOnly` cookies, plus a readable `csrf_token` cookie.
+- **CSRF protection**: Unsafe API methods (`POST/PUT/PATCH/DELETE`) with cookie auth require `X-CSRF-Token` matching the `csrf_token` cookie.
 - **Access tokens**: Short-lived (15 min), HS256 JWT containing `{sub: user_id, username, is_admin}`.
-- **Refresh tokens**: Long-lived (7 days), cryptographically random 48-byte strings. Only the SHA-256 hash is stored in the database. Old tokens are revoked on refresh (rotation).
+- **Refresh tokens**: Long-lived (7 days), cryptographically random 48-byte strings. Only SHA-256 hashes are stored in DB. Refresh rotates tokens and revokes the old one.
+- **PATs (Personal Access Tokens)**: Long-lived random tokens (hashed in DB) for CLI/API automation via Bearer auth.
 - **Passwords**: bcrypt hashed.
+- **Logout**: `POST /api/auth/logout` revokes refresh token (if present) and clears auth cookies.
+
+### Registration and Abuse Controls
+
+- **Self-registration** is disabled by default (`AUTH_SELF_REGISTRATION=false`).
+- **Invite-based registration** is enabled by default (`AUTH_INVITES_ENABLED=true`): admins generate single-use invite codes.
+- **Rate limiting** is applied to failed auth attempts on login and refresh endpoints in a sliding window.
 
 ### Roles
 
@@ -331,6 +343,12 @@ The client handles merge results:
 ### CLI Sync Client (`cli/sync_client.py`)
 
 A standalone Python script using httpx with subcommands: `init`, `status`, `push`, `pull`, `sync`. Stores config in `.agblogger-sync.json` (including `last_sync_commit`) and the local manifest in `.agblogger-manifest.json`. The client uploads conflict files to the server for three-way merge, sends `uploaded_files`, `deleted_files`, `conflict_files`, and `last_sync_commit` in the commit request, and saves the returned `commit_hash` for subsequent syncs.
+
+CLI authentication supports either:
+- Username/password login (obtaining a JWT access token), or
+- A pre-created PAT via `--pat` (recommended for automation).
+
+For transport security, the CLI requires `https://` for non-localhost servers by default. Plain `http://` is only allowed for localhost, or when explicitly opted in with `--allow-insecure-http`.
 
 ## Cross-Posting
 

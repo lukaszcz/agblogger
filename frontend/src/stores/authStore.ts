@@ -6,15 +6,17 @@ import { fetchMe, login as apiLogin, logout as apiLogout } from '@/api/auth'
 interface AuthState {
   user: UserResponse | null
   isLoading: boolean
+  isLoggingOut: boolean
   error: string | null
   login: (username: string, password: string) => Promise<void>
-  logout: () => void
+  logout: () => Promise<void>
   checkAuth: () => Promise<void>
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   isLoading: false,
+  isLoggingOut: false,
   error: null,
 
   login: async (username: string, password: string) => {
@@ -33,25 +35,24 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
   },
 
-  logout: () => {
-    apiLogout()
-    set({ user: null })
+  logout: async () => {
+    set({ isLoggingOut: true })
+    try {
+      await apiLogout()
+    } catch (err) {
+      console.error('Logout failed:', err)
+    } finally {
+      set({ user: null, isLoggingOut: false })
+    }
   },
 
   checkAuth: async () => {
-    const token = localStorage.getItem('access_token')
-    if (!token) {
-      set({ user: null })
-      return
-    }
     try {
       const user = await fetchMe()
       set({ user })
     } catch (err) {
       if (err instanceof HTTPError && err.response.status === 401) {
         set({ user: null })
-        localStorage.removeItem('access_token')
-        localStorage.removeItem('refresh_token')
       } else {
         console.error('Auth check failed:', err)
         set({ user: null })

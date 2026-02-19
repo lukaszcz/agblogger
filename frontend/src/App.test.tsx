@@ -13,9 +13,10 @@ const siteState = {
 const authState = {
   user: null,
   isLoading: false,
+  isLoggingOut: false,
   error: null,
   login: vi.fn(),
-  logout: vi.fn(),
+  logout: vi.fn().mockResolvedValue(undefined),
   checkAuth: mockCheckAuth,
 }
 

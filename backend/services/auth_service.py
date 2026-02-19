@@ -11,7 +11,7 @@ import bcrypt
 from jose import JWTError, jwt
 from sqlalchemy import select
 
-from backend.models.user import RefreshToken, User
+from backend.models.user import InviteCode, PersonalAccessToken, RefreshToken, User
 from backend.services.datetime_service import format_iso, now_utc
 
 if TYPE_CHECKING:
@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from backend.config import Settings
 
 ALGORITHM = "HS256"
+_DUMMY_PASSWORD_HASH = bcrypt.hashpw(b"agblogger-dummy-password", bcrypt.gensalt()).decode("utf-8")
 
 
 def hash_password(password: str) -> str:
@@ -66,7 +67,11 @@ async def authenticate_user(session: AsyncSession, username: str, password: str)
     stmt = select(User).where(User.username == username)
     result = await session.execute(stmt)
     user = result.scalar_one_or_none()
-    if user is None or not verify_password(password, user.password_hash):
+    if user is None:
+        # Run a dummy hash check to reduce username timing side channels.
+        verify_password(password, _DUMMY_PASSWORD_HASH)
+        return None
+    if not verify_password(password, user.password_hash):
         return None
     return user
 
@@ -130,6 +135,157 @@ async def refresh_tokens(
 
     await session.delete(stored_token)
     return await create_tokens(session, user, settings)
+
+
+async def revoke_refresh_token(session: AsyncSession, refresh_token_value: str) -> bool:
+    """Revoke a refresh token. Returns True if a token was revoked."""
+    token_h = hash_token(refresh_token_value)
+    stmt = select(RefreshToken).where(RefreshToken.token_hash == token_h)
+    result = await session.execute(stmt)
+    token = result.scalar_one_or_none()
+    if token is None:
+        await session.commit()
+        return False
+    await session.delete(token)
+    await session.commit()
+    return True
+
+
+def _parse_iso_datetime(value: str) -> datetime | None:
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed
+
+
+async def create_invite_code(
+    session: AsyncSession,
+    created_by_user_id: int,
+    expires_days: int,
+) -> tuple[InviteCode, str]:
+    """Create and persist a single-use invite code."""
+    now = now_utc()
+    plaintext_code = f"aginvite_{secrets.token_urlsafe(24)}"
+    invite = InviteCode(
+        code_hash=hash_token(plaintext_code),
+        created_by_user_id=created_by_user_id,
+        created_at=format_iso(now),
+        expires_at=format_iso(now + timedelta(days=expires_days)),
+    )
+    session.add(invite)
+    await session.commit()
+    await session.refresh(invite)
+    return invite, plaintext_code
+
+
+async def get_valid_invite_code(
+    session: AsyncSession,
+    invite_code: str,
+) -> InviteCode | None:
+    """Return invite if valid (exists, not used, not expired)."""
+    stmt = select(InviteCode).where(InviteCode.code_hash == hash_token(invite_code))
+    result = await session.execute(stmt)
+    invite = result.scalar_one_or_none()
+    if invite is None or invite.used_at is not None:
+        return None
+    expires = _parse_iso_datetime(invite.expires_at)
+    if expires is None or expires <= now_utc():
+        return None
+    return invite
+
+
+def create_personal_access_token_value() -> str:
+    """Generate a long-lived personal access token value."""
+    return f"agpat_{secrets.token_urlsafe(48)}"
+
+
+async def create_personal_access_token(
+    session: AsyncSession,
+    user_id: int,
+    name: str,
+    expires_days: int | None,
+) -> tuple[PersonalAccessToken, str]:
+    """Create and persist a personal access token."""
+    now = now_utc()
+    token_value = create_personal_access_token_value()
+    expires_at = (
+        format_iso(now + timedelta(days=expires_days)) if expires_days is not None else None
+    )
+    pat = PersonalAccessToken(
+        user_id=user_id,
+        name=name,
+        token_hash=hash_token(token_value),
+        created_at=format_iso(now),
+        expires_at=expires_at,
+    )
+    session.add(pat)
+    await session.commit()
+    await session.refresh(pat)
+    return pat, token_value
+
+
+async def list_personal_access_tokens(
+    session: AsyncSession,
+    user_id: int,
+) -> list[PersonalAccessToken]:
+    """List active and historical personal access tokens for a user."""
+    stmt = (
+        select(PersonalAccessToken)
+        .where(PersonalAccessToken.user_id == user_id)
+        .order_by(PersonalAccessToken.created_at.desc())
+    )
+    result = await session.execute(stmt)
+    return list(result.scalars().all())
+
+
+async def revoke_personal_access_token(
+    session: AsyncSession,
+    user_id: int,
+    token_id: int,
+) -> bool:
+    """Revoke a personal access token owned by the user."""
+    stmt = select(PersonalAccessToken).where(
+        PersonalAccessToken.id == token_id,
+        PersonalAccessToken.user_id == user_id,
+    )
+    result = await session.execute(stmt)
+    pat = result.scalar_one_or_none()
+    if pat is None:
+        return False
+    if pat.revoked_at is None:
+        pat.revoked_at = format_iso(now_utc())
+    await session.commit()
+    return True
+
+
+async def authenticate_personal_access_token(
+    session: AsyncSession,
+    token_value: str,
+) -> User | None:
+    """Authenticate a user with a personal access token."""
+    stmt = select(PersonalAccessToken).where(
+        PersonalAccessToken.token_hash == hash_token(token_value)
+    )
+    result = await session.execute(stmt)
+    pat = result.scalar_one_or_none()
+    if pat is None or pat.revoked_at is not None:
+        return None
+
+    if pat.expires_at is not None:
+        expires = _parse_iso_datetime(pat.expires_at)
+        if expires is None or expires <= now_utc():
+            pat.revoked_at = format_iso(now_utc())
+            await session.commit()
+            return None
+
+    user = await session.get(User, pat.user_id)
+    if user is None:
+        return None
+
+    return user
 
 
 async def ensure_admin_user(session: AsyncSession, settings: Settings) -> None:

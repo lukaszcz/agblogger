@@ -42,6 +42,7 @@ def app_settings(tmp_content_dir: Path, tmp_path: Path) -> Settings:
         frontend_dir=tmp_path / "frontend",
         admin_username="admin",
         admin_password="admin123",
+        auth_self_registration=True,
     )
 
 
@@ -186,6 +187,41 @@ class TestAuthTokenValidation:
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 401
+
+
+class TestAuthLogout:
+    """Logout should revoke refresh tokens server-side."""
+
+    @pytest.mark.asyncio
+    async def test_logout_revokes_refresh_token(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        assert login_resp.status_code == 200
+        access_token = login_resp.json()["access_token"]
+        refresh_token = login_resp.json()["refresh_token"]
+
+        logout_resp = await client.post(
+            "/api/auth/logout",
+            json={"refresh_token": refresh_token},
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+        assert logout_resp.status_code == 204
+
+        refresh_resp = await client.post(
+            "/api/auth/refresh",
+            json={"refresh_token": refresh_token},
+        )
+        assert refresh_resp.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_logout_with_unknown_token_returns_204(self, client: AsyncClient) -> None:
+        logout_resp = await client.post(
+            "/api/auth/logout",
+            json={"refresh_token": "not-a-real-refresh-token"},
+        )
+        assert logout_resp.status_code == 204
 
 
 class TestLabelCreateEmptyNames:

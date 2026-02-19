@@ -10,6 +10,7 @@ import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 try:
     import httpx
@@ -340,6 +341,24 @@ class SyncClient:
 
 
 CONFIG_FILE = ".agblogger-sync.json"
+_LOCALHOST_HOSTS = {"localhost", "127.0.0.1", "::1"}
+
+
+def validate_server_url(server_url: str, allow_insecure_http: bool = False) -> str:
+    """Validate server URL and enforce HTTPS for non-localhost hosts by default."""
+    normalized = server_url.strip().rstrip("/")
+    parsed = urlparse(normalized)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("Server URL must include scheme and host (e.g. https://example.com)")
+
+    hostname = parsed.hostname
+    if parsed.scheme == "http" and not allow_insecure_http and hostname not in _LOCALHOST_HOSTS:
+        raise ValueError(
+            "HTTPS is required for non-localhost servers. "
+            "Use --allow-insecure-http only on trusted networks."
+        )
+
+    return normalized
 
 
 def load_config(dir_path: Path) -> dict[str, str]:
@@ -365,8 +384,14 @@ def main() -> None:
     )
     parser.add_argument("--dir", "-d", default=".", help="Content directory (default: current)")
     parser.add_argument("--server", "-s", help="Server URL")
+    parser.add_argument(
+        "--allow-insecure-http",
+        action="store_true",
+        help="Allow http:// server URLs for non-localhost hosts",
+    )
     parser.add_argument("--username", "-u", help="Username for authentication")
     parser.add_argument("--password", "-p", help="Password for authentication")
+    parser.add_argument("--pat", help="Personal access token for authentication")
 
     subparsers = parser.add_subparsers(dest="command")
     subparsers.add_parser("init", help="Initialize sync configuration")
@@ -382,40 +407,54 @@ def main() -> None:
         if not args.server:
             print("Error: --server required for init")
             sys.exit(1)
+        try:
+            server_url = validate_server_url(args.server, args.allow_insecure_http)
+        except ValueError as exc:
+            print(f"Error: {exc}")
+            sys.exit(1)
         config = {
-            "server": args.server,
+            "server": server_url,
             "content_dir": str(content_dir),
         }
         if args.username:
             config["username"] = args.username
+        if args.pat:
+            config["pat"] = args.pat
         save_config(content_dir, config)
         print(f"Initialized sync config in {content_dir / CONFIG_FILE}")
         return
 
     # Load config
     config = load_config(content_dir)
-    server_url = args.server or config.get("server")
-    if not server_url:
+    configured_server_url = args.server or config.get("server")
+    if not configured_server_url:
         print("Error: No server configured. Run 'agblogger-sync init --server <url>' first.")
         sys.exit(1)
-
-    username = args.username or config.get("username")
-    password = args.password or config.get("password")
-    if not username or not password:
-        print("Error: Username and password required. Use --username/--password or set in config.")
+    try:
+        server_url = validate_server_url(configured_server_url, args.allow_insecure_http)
+    except ValueError as exc:
+        print(f"Error: {exc}")
         sys.exit(1)
 
-    # Create client and login
-    temp_client = httpx.Client(base_url=server_url, timeout=30.0)
-    login_resp = temp_client.post(
-        "/api/auth/login",
-        json={"username": username, "password": password},
-    )
-    if login_resp.status_code != 200:
-        print(f"Error: Login failed ({login_resp.status_code})")
-        sys.exit(1)
-    token = login_resp.json()["access_token"]
-    temp_client.close()
+    token = args.pat or config.get("pat")
+    if token is None:
+        username = args.username or config.get("username")
+        password = args.password or config.get("password")
+        if not username or not password:
+            print("Error: Provide --pat, or username/password via --username/--password or config.")
+            sys.exit(1)
+
+        # Create client and login
+        temp_client = httpx.Client(base_url=server_url, timeout=30.0)
+        login_resp = temp_client.post(
+            "/api/auth/login",
+            json={"username": username, "password": password},
+        )
+        if login_resp.status_code != 200:
+            print(f"Error: Login failed ({login_resp.status_code})")
+            sys.exit(1)
+        token = login_resp.json()["access_token"]
+        temp_client.close()
 
     with SyncClient(server_url, content_dir, token) as client:
         if args.command == "status":

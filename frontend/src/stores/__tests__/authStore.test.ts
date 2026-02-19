@@ -1,17 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-// Stub localStorage before any module imports
-const storage = new Map<string, string>()
-const localStorageMock = {
-  getItem: vi.fn((key: string) => storage.get(key) ?? null),
-  setItem: vi.fn((key: string, value: string) => storage.set(key, value)),
-  removeItem: vi.fn((key: string) => storage.delete(key)),
-  clear: vi.fn(() => storage.clear()),
-  get length() { return storage.size },
-  key: vi.fn((i: number) => [...storage.keys()][i] ?? null),
-}
-vi.stubGlobal('localStorage', localStorageMock)
-
 const mockFetchMe = vi.fn()
 const mockApiLogin = vi.fn()
 const mockApiLogout = vi.fn()
@@ -48,40 +36,25 @@ const testUser = {
 describe('authStore', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    storage.clear()
-    useAuthStore.setState({ user: null, isLoading: false, error: null })
+    useAuthStore.setState({ user: null, isLoading: false, isLoggingOut: false, error: null })
   })
 
   describe('checkAuth', () => {
-    it('no token sets user to null', async () => {
+    it('401 sets user to null', async () => {
+      mockFetchMe.mockRejectedValue(new MockHTTPError(401))
+
       await useAuthStore.getState().checkAuth()
       expect(useAuthStore.getState().user).toBeNull()
-      expect(mockFetchMe).not.toHaveBeenCalled()
     })
 
     it('success sets user', async () => {
-      storage.set('access_token', 'valid-token')
       mockFetchMe.mockResolvedValue(testUser)
 
       await useAuthStore.getState().checkAuth()
       expect(useAuthStore.getState().user).toEqual(testUser)
     })
 
-    it('401 clears tokens from localStorage', async () => {
-      storage.set('access_token', 'expired')
-      storage.set('refresh_token', 'expired-refresh')
-      mockFetchMe.mockRejectedValue(new MockHTTPError(401))
-
-      await useAuthStore.getState().checkAuth()
-      expect(useAuthStore.getState().user).toBeNull()
-      expect(localStorageMock.removeItem).toHaveBeenCalledWith('access_token')
-      expect(localStorageMock.removeItem).toHaveBeenCalledWith('refresh_token')
-      expect(storage.has('access_token')).toBe(false)
-      expect(storage.has('refresh_token')).toBe(false)
-    })
-
     it('non-401 error clears user and logs error', async () => {
-      storage.set('access_token', 'valid')
       const error = new Error('Network failure')
       mockFetchMe.mockRejectedValue(error)
       const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -119,10 +92,11 @@ describe('authStore', () => {
   })
 
   describe('logout', () => {
-    it('clears user and calls apiLogout', () => {
+    it('clears user and calls apiLogout', async () => {
+      mockApiLogout.mockResolvedValue(undefined)
       useAuthStore.setState({ user: testUser })
 
-      useAuthStore.getState().logout()
+      await useAuthStore.getState().logout()
       expect(useAuthStore.getState().user).toBeNull()
       expect(mockApiLogout).toHaveBeenCalled()
     })

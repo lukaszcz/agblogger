@@ -9,7 +9,7 @@ A markdown-first blogging platform where markdown files with YAML front matter a
 - **Bidirectional sync** — SHA-256 hash-based sync with three-way merge and conflict resolution
 - **Cross-posting** — Publish to Bluesky, Mastodon, X (Twitter), LinkedIn, and Facebook
 - **Full-text search** — SQLite FTS5 index over post content and metadata
-- **JWT authentication** — Access and refresh tokens with role-based authorization
+- **Hardened authentication** — HttpOnly cookie sessions for web, invite-based registration, PATs for CLI/API
 
 ## Tech Stack
 
@@ -46,7 +46,8 @@ just dev
 
 This starts the backend at http://localhost:8000 and the frontend at http://localhost:5173 (proxying API calls to the backend). API docs are at http://localhost:8000/docs.
 
-Default credentials: `admin` / `admin` (change via `.env`).
+Default credentials: `admin` / `admin` (change via `.env`).  
+Self-registration is disabled by default; create invite codes from the admin account.
 
 ## Testing
 
@@ -103,7 +104,7 @@ python cli/sync_client.py --dir ./my-blog pull
 python cli/sync_client.py --dir ./my-blog sync
 ```
 
-Credentials default to `admin`/`admin` and can be overridden with `--username` and `--password`. Conflicts are resolved by keeping the server version; the local copy is saved as a `.conflict-backup` file.
+Authentication supports either username/password login or a personal access token (`--pat`). Conflicts are resolved by keeping the server version; the local copy is saved as a `.conflict-backup` file.
 
 ## Deployment
 
@@ -141,6 +142,12 @@ Key variables (see `.env.example` for the full list):
 | `CONTENT_DIR` | `./content` | Blog content directory |
 | `ADMIN_USERNAME` | `admin` | Bootstrap admin username |
 | `ADMIN_PASSWORD` | `admin` | Bootstrap admin password |
+| `AUTH_SELF_REGISTRATION` | `false` | Enable/disable open registration |
+| `AUTH_INVITES_ENABLED` | `true` | Allow invite-code registration when open registration is off |
+| `AUTH_INVITE_EXPIRE_DAYS` | `7` | Default invite expiration window |
+| `AUTH_LOGIN_MAX_FAILURES` | `5` | Failed login attempts allowed per rate-limit window |
+| `AUTH_REFRESH_MAX_FAILURES` | `10` | Failed refresh attempts allowed per rate-limit window |
+| `AUTH_RATE_LIMIT_WINDOW_SECONDS` | `300` | Window size for auth rate limiting |
 | `HOST` | `0.0.0.0` | Server bind address |
 | `PORT` | `8000` | Server port |
 

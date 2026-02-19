@@ -10,6 +10,7 @@ export default function Header() {
   const config = useSiteStore((s) => s.config)
   const user = useAuthStore((s) => s.user)
   const logout = useAuthStore((s) => s.logout)
+  const isLoggingOut = useAuthStore((s) => s.isLoggingOut)
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
 
@@ -23,6 +24,10 @@ export default function Header() {
       setSearchOpen(false)
       setSearchQuery('')
     }
+  }
+
+  async function handleLogout() {
+    await logout()
   }
 
   return (
@@ -75,8 +80,9 @@ export default function Header() {
                   <span>Write</span>
                 </Link>
                 <button
-                  onClick={logout}
-                  className="p-2 text-muted hover:text-ink transition-colors rounded-lg hover:bg-paper-warm"
+                  onClick={() => void handleLogout()}
+                  disabled={isLoggingOut}
+                  className="p-2 text-muted hover:text-ink transition-colors rounded-lg hover:bg-paper-warm disabled:opacity-50 disabled:cursor-not-allowed"
                   aria-label="Logout"
                 >
                   <LogOut size={18} />

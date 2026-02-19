@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.config import Settings
 from backend.filesystem.content_manager import ContentManager
 from backend.models.user import User
-from backend.services.auth_service import decode_access_token
+from backend.services.auth_service import authenticate_personal_access_token, decode_access_token
 from backend.services.git_service import GitService
 
 security = HTTPBearer(auto_error=False)
@@ -49,23 +49,28 @@ async def get_current_user(
     session: AsyncSession = Depends(get_session),
 ) -> User | None:
     """Get current authenticated user, or None if not authenticated."""
-    if credentials is None:
+    token_value = (
+        credentials.credentials if credentials is not None else request.cookies.get("access_token")
+    )
+    if token_value is None:
         return None
 
     settings: Settings = request.app.state.settings
-    payload = decode_access_token(credentials.credentials, settings.secret_key)
-    if payload is None:
-        return None
+    payload = decode_access_token(token_value, settings.secret_key)
+    if payload is not None:
+        user_id = payload.get("sub")
+        if user_id is None:
+            return None
+        if not isinstance(user_id, (str, int)) or (
+            isinstance(user_id, str) and not user_id.isdigit()
+        ):
+            return None
+        return await session.get(User, int(user_id))
 
-    user_id = payload.get("sub")
-    if user_id is None:
-        return None
-
-    if not isinstance(user_id, (str, int)) or (isinstance(user_id, str) and not user_id.isdigit()):
-        return None
-
-    user = await session.get(User, int(user_id))
-    return user
+    # PATs are supported for Bearer credentials only.
+    if credentials is not None:
+        return await authenticate_personal_access_token(session, token_value)
+    return None
 
 
 async def require_auth(
