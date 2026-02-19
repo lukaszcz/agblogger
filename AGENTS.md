@@ -9,7 +9,9 @@ AgBlogger is a markdown-first blogging platform where markdown files with YAML f
 ## Build, Test, and Development Commands
 
 ```bash
-just dev              # Start backend (port 8000) + frontend (port 5173) concurrently
+just start            # Start backend (:8000) + frontend (:5173) in the background
+just stop             # Stop the running dev server
+just start backend_port=9000 frontend_port=9173  # Custom ports
 just check            # Run all type checking, linting, format checks, and tests
 just check-backend    # Backend only: mypy, ruff check, ruff format --check, pytest
 just check-frontend   # Frontend only: tsc, eslint, vitest
@@ -105,4 +107,5 @@ cd frontend && npm run test:coverage
 - Use the frontend-design skill to design the user interface and user experience.
 - Ensure the application works end-to-end. Use the playwright mcp to test in the browser.
 - While waiting on an async operation, UI controls should **ALWAYS** be disabled.
+- When finished browser testing, remove any leftover *.png screenshot files.
 - When finished, verify with `just check` that there are no compilation, formatting or test errors.
