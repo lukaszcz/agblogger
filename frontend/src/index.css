@@ -62,9 +62,16 @@ html {
   outline-offset: 2px;
 }
 
-.prose ul, .prose ol {
+.prose ul {
   margin: 1rem 0;
   padding-left: 1.5rem;
+  list-style-type: disc;
+}
+
+.prose ol {
+  margin: 1rem 0;
+  padding-left: 1.5rem;
+  list-style-type: decimal;
 }
 
 .prose li {
