@@ -20,6 +20,7 @@ agblogger/
 ├── frontend/           React 19 + TypeScript SPA
 │   └── src/
 │       ├── api/        HTTP client (ky) + API functions
+│       ├── hooks/      Custom React hooks (auto-save, KaTeX)
 │       ├── stores/     Zustand state management
 │       ├── pages/      Route-level page components
 │       └── components/ Reusable UI components
@@ -378,6 +379,8 @@ A platform registry maps names to poster classes. Each cross-post attempt is rec
 
 ### Routing
 
+Uses `createBrowserRouter` (data router) with `RouterProvider` for full react-router v7 feature support including `useBlocker`.
+
 | Route | Page | Description |
 |-------|------|-------------|
 | `/` | TimelinePage | Paginated post list with filter panel |
@@ -389,6 +392,16 @@ A platform registry maps names to poster classes. Each cross-post attempt is rec
 | `/labels/:labelId` | LabelPostsPage | Posts filtered by label |
 | `/labels/:labelId/settings` | LabelSettingsPage | Label names, parents, delete (auth required) |
 | `/editor/*` | EditorPage | Structured metadata bar + split-pane markdown editor |
+
+### Editor Auto-Save
+
+The `useEditorAutoSave` hook (`hooks/useEditorAutoSave.ts`) provides crash recovery and unsaved-changes protection:
+
+- **Dirty tracking**: Compares current form state (body, labels, isDraft, newPath) to the loaded/initial state
+- **Debounced auto-save**: Writes draft to `localStorage` (key: `agblogger:draft:<filePath>`) 3 seconds after the last edit
+- **Navigation blocking**: `useBlocker` shows a native `window.confirm` dialog for in-app SPA navigation; `beforeunload` covers tab close and page refresh
+- **Draft recovery**: On editor mount, detects stale drafts and shows a banner with Restore/Discard options
+- **Enabled gating**: The hook accepts an `enabled` parameter; for existing posts it activates only after loading completes, preventing false dirty state during data fetch
 
 ### State Management
 
