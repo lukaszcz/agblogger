@@ -138,6 +138,4 @@ def write_site_config(content_dir: Path, config: SiteConfig) -> None:
         pages_data.append(entry)
 
     index_path = content_dir / "index.toml"
-    index_path.write_bytes(
-        tomli_w.dumps({"site": site_data, "pages": pages_data}).encode("utf-8")
-    )
+    index_path.write_bytes(tomli_w.dumps({"site": site_data, "pages": pages_data}).encode("utf-8"))

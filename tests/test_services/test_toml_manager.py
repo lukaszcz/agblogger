@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from backend.filesystem.toml_manager import (
     PageConfig,
@@ -10,6 +10,9 @@ from backend.filesystem.toml_manager import (
     parse_site_config,
     write_site_config,
 )
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def test_write_site_config_roundtrip(tmp_path: Path) -> None:
