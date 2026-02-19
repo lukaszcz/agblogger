@@ -75,31 +75,38 @@ describe('EditorPage', () => {
     mockFetchPostForEdit.mockReset()
   })
 
-  it('author from display_name', () => {
+  it('author from display_name', async () => {
     mockUser = { id: 1, username: 'jane', email: 'j@t.com', display_name: 'Jane Doe', is_admin: false }
     renderEditor('/editor/new')
 
-    expect(screen.getByText('Jane Doe')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByText('Jane Doe')).toBeInTheDocument()
+    })
   })
 
-  it('author fallback to username', () => {
+  it('author fallback to username', async () => {
     mockUser = { id: 1, username: 'jane', email: 'j@t.com', display_name: null, is_admin: false }
     renderEditor('/editor/new')
 
-    expect(screen.getByText('jane')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByText('jane')).toBeInTheDocument()
+    })
   })
 
-  it('file path input for new post', () => {
+  it('file path input for new post', async () => {
     renderEditor('/editor/new')
-    const input = screen.getByLabelText('File path')
-    expect(input).toHaveValue('posts/')
+    await waitFor(() => {
+      expect(screen.getByLabelText('File path')).toHaveValue('posts/')
+    })
   })
 
-  it('default body for new post', () => {
+  it('default body for new post', async () => {
     renderEditor('/editor/new')
-    const textareas = document.querySelectorAll('textarea')
-    const bodyTextarea = Array.from(textareas).find((t) => t.value.includes('# New Post'))
-    expect(bodyTextarea).toBeTruthy()
+    await waitFor(() => {
+      const textareas = document.querySelectorAll('textarea')
+      const bodyTextarea = Array.from(textareas).find((t) => t.value.includes('# New Post'))
+      expect(bodyTextarea).toBeTruthy()
+    })
   })
 
   it('loads existing post data', async () => {

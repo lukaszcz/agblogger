@@ -90,12 +90,13 @@ describe('SearchPage', () => {
     consoleSpy.mockRestore()
   })
 
-  it('shows search input with current query', () => {
+  it('shows search input with current query', async () => {
     mockSearchPosts.mockResolvedValue([])
     renderSearch('react')
 
-    const input = screen.getByPlaceholderText('Search posts...')
-    expect(input).toHaveValue('react')
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('Search posts...')).toHaveValue('react')
+    })
   })
 
   it('shows search input when no query', () => {

@@ -62,12 +62,14 @@ describe('TimelinePage', () => {
     mockFetchPosts.mockReset()
   })
 
-  it('shows skeleton cards during loading', () => {
+  it('shows skeleton cards during loading', async () => {
     mockFetchPosts.mockReturnValue(new Promise(() => {})) // never resolves
     renderTimeline()
 
-    const skeletonCards = document.querySelectorAll('.animate-pulse')
-    expect(skeletonCards.length).toBe(3)
+    await waitFor(() => {
+      const skeletonCards = document.querySelectorAll('.animate-pulse')
+      expect(skeletonCards.length).toBe(3)
+    })
   })
 
   it('renders posts', async () => {

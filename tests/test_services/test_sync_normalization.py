@@ -32,7 +32,7 @@ class TestFrontMatterNormalization:
 
         import frontmatter as fm
 
-        post = fm.load(str(content_dir / "posts/new.md"))
+        post = fm.loads((content_dir / "posts/new.md").read_text())
         assert "created_at" in post.metadata
         assert "modified_at" in post.metadata
         assert post["author"] == "Admin"
@@ -64,7 +64,7 @@ class TestFrontMatterNormalization:
 
         import frontmatter as fm
 
-        post = fm.load(str(content_dir / "posts/existing.md"))
+        post = fm.loads((content_dir / "posts/existing.md").read_text())
         assert "2026-01-01" in post["created_at"]
         assert post["modified_at"] != post["created_at"]
 
@@ -89,7 +89,7 @@ class TestFrontMatterNormalization:
 
         import frontmatter as fm
 
-        post = fm.load(str(content_dir / "posts/dt.md"))
+        post = fm.loads((content_dir / "posts/dt.md").read_text())
         # Should be a string now, not a datetime object
         assert isinstance(post["created_at"], str)
 
@@ -160,7 +160,7 @@ class TestFrontMatterNormalization:
 
         import frontmatter as fm
 
-        post = fm.load(str(content_dir / "posts/date-only.md"))
+        post = fm.loads((content_dir / "posts/date-only.md").read_text())
         # Should be a normalized string
         assert isinstance(post["created_at"], str)
         assert "2026-02-02" in post["created_at"]
