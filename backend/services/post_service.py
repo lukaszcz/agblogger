@@ -139,7 +139,7 @@ async def list_posts(
                 created_at=format_iso(post.created_at),
                 modified_at=format_iso(post.modified_at),
                 is_draft=post.is_draft,
-                excerpt=post.excerpt,
+                rendered_excerpt=post.rendered_excerpt,
                 labels=labels_map.get(post.id, []),
             )
         )
@@ -176,7 +176,7 @@ async def get_post(
         created_at=format_iso(post.created_at),
         modified_at=format_iso(post.modified_at),
         is_draft=post.is_draft,
-        excerpt=post.excerpt,
+        rendered_excerpt=post.rendered_excerpt,
         labels=post_label_ids,
         rendered_html=post.rendered_html or "",
         content=None,  # Only provided when authenticated
@@ -188,7 +188,7 @@ async def search_posts(session: AsyncSession, query: str, *, limit: int = 20) ->
     # Escape FTS5 special characters by wrapping in double quotes
     safe_query = '"' + query.replace('"', '""') + '"'
     stmt = text("""
-        SELECT p.id, p.file_path, p.title, p.excerpt, p.created_at,
+        SELECT p.id, p.file_path, p.title, p.rendered_excerpt, p.created_at,
                rank
         FROM posts_fts fts
         JOIN posts_cache p ON fts.rowid = p.id
@@ -211,7 +211,7 @@ async def search_posts(session: AsyncSession, query: str, *, limit: int = 20) ->
                 id=r[0],
                 file_path=r[1],
                 title=r[2],
-                excerpt=r[3],
+                rendered_excerpt=r[3],
                 created_at=created_at_str,
                 rank=float(r[5]) if r[5] else 0.0,
             )

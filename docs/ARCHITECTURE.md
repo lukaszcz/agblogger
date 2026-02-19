@@ -200,8 +200,8 @@ On startup, the lifespan handler:
 
 The database serves as a **cache**, not the source of truth:
 
-- **`PostCache`** — Cached post metadata: file path, title, author, timestamps (`DateTime(timezone=True)`, stored as UTC), draft status, content hash (SHA-256), excerpt, rendered HTML.
-- **`PostsFTS`** — SQLite FTS5 virtual table for full-text search over title, excerpt, and content.
+- **`PostCache`** — Cached post metadata: file path, title, author, timestamps (`DateTime(timezone=True)`, stored as UTC), draft status, content hash (SHA-256), rendered excerpt (Pandoc HTML), rendered HTML.
+- **`PostsFTS`** — SQLite FTS5 virtual table for full-text search over title and content.
 - **`LabelCache`** — Label with ID, display names (JSON array), and implicit flag.
 - **`LabelParentCache`** — DAG edge table (label_id → parent_id).
 - **`PostLabelCache`** — Many-to-many posts to labels with source tracking ("frontmatter" or "directory").
@@ -213,7 +213,7 @@ The database serves as a **cache**, not the source of truth:
 
 ### Rendering Pipeline
 
-Pandoc renders markdown to HTML at publish time (during cache rebuild), not per-request. The rendered HTML is stored in `PostCache.rendered_html`.
+Pandoc renders markdown to HTML at publish time (during cache rebuild), not per-request. The rendered HTML is stored in `PostCache.rendered_html`. A rendered excerpt is also generated from a markdown-preserving truncation (`generate_markdown_excerpt()`) and stored in `PostCache.rendered_excerpt` — used in timeline cards and search results. KaTeX math in excerpts is processed client-side by the `useRenderedHtml` hook.
 
 ```
 pandoc -f gfm+tex_math_dollars+footnotes+raw_html -t html5

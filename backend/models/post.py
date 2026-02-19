@@ -27,7 +27,7 @@ class PostCache(Base):
     modified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     is_draft: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
-    excerpt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    rendered_excerpt: Mapped[str | None] = mapped_column(Text, nullable=True)
     rendered_html: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     labels: Mapped[list[PostLabelCache]] = relationship(
@@ -52,5 +52,4 @@ class PostsFTS(Base):
 
     rowid: Mapped[int] = mapped_column(Integer, primary_key=True)
     title: Mapped[str] = mapped_column(Text)
-    excerpt: Mapped[str] = mapped_column(Text)
     content: Mapped[str] = mapped_column(Text)

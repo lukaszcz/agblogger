@@ -39,7 +39,7 @@ async def rebuild_cache(
     await session.execute(
         text(
             "CREATE VIRTUAL TABLE IF NOT EXISTS posts_fts USING fts5("
-            "title, excerpt, content, content='posts_cache', content_rowid='id')"
+            "title, content, content='posts_cache', content_rowid='id')"
         )
     )
 
@@ -85,10 +85,10 @@ async def rebuild_cache(
 
     for post_data in posts:
         content_h = hash_content(post_data.raw_content)
-        excerpt = content_manager.get_excerpt(post_data)
 
         # Render HTML
         rendered_html = await render_markdown(post_data.content)
+        rendered_excerpt = await render_markdown(content_manager.get_markdown_excerpt(post_data))
 
         post = PostCache(
             file_path=post_data.file_path,
@@ -98,7 +98,7 @@ async def rebuild_cache(
             modified_at=post_data.modified_at,
             is_draft=post_data.is_draft,
             content_hash=content_h,
-            excerpt=excerpt,
+            rendered_excerpt=rendered_excerpt,
             rendered_html=rendered_html,
         )
         session.add(post)
@@ -106,14 +106,10 @@ async def rebuild_cache(
 
         # Index in FTS
         await session.execute(
-            text(
-                "INSERT INTO posts_fts(rowid, title, excerpt, content) "
-                "VALUES (:rowid, :title, :excerpt, :content)"
-            ),
+            text("INSERT INTO posts_fts(rowid, title, content) VALUES (:rowid, :title, :content)"),
             {
                 "rowid": post.id,
                 "title": post_data.title,
-                "excerpt": excerpt,
                 "content": post_data.content,
             },
         )
@@ -155,7 +151,7 @@ async def ensure_tables(session: AsyncSession) -> None:
     await session.execute(
         text(
             "CREATE VIRTUAL TABLE IF NOT EXISTS posts_fts USING fts5("
-            "title, excerpt, content, content='posts_cache', content_rowid='id')"
+            "title, content, content='posts_cache', content_rowid='id')"
         )
     )
     await session.commit()

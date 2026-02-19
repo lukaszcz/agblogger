@@ -25,8 +25,8 @@ function renderSearch(query = '') {
 }
 
 const mockResults: SearchResult[] = [
-  { id: 1, file_path: 'posts/hello.md', title: 'Hello World', excerpt: 'A first post', created_at: '2026-02-01 12:00:00+00:00', rank: 1.0 },
-  { id: 2, file_path: 'posts/react.md', title: 'React Guide', excerpt: 'Learn React', created_at: '2026-02-02 12:00:00+00:00', rank: 0.9 },
+  { id: 1, file_path: 'posts/hello.md', title: 'Hello World', rendered_excerpt: '<p>A first post</p>', created_at: '2026-02-01 12:00:00+00:00', rank: 1.0 },
+  { id: 2, file_path: 'posts/react.md', title: 'React Guide', rendered_excerpt: '<p>Learn React</p>', created_at: '2026-02-02 12:00:00+00:00', rank: 0.9 },
 ]
 
 describe('SearchPage', () => {

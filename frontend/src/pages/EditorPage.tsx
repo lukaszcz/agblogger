@@ -14,6 +14,7 @@ export default function EditorPage() {
   const navigate = useNavigate()
   const isNew = !filePath || filePath === 'new'
   const user = useAuthStore((s) => s.user)
+  const isInitialized = useAuthStore((s) => s.isInitialized)
 
   const [body, setBody] = useState('')
   const [labels, setLabels] = useState<string[]>([])
@@ -29,6 +30,12 @@ export default function EditorPage() {
   const [error, setError] = useState<string | null>(null)
   const renderedPreview = useRenderedHtml(preview)
   const busy = saving || previewing
+
+  useEffect(() => {
+    if (isInitialized && !user) {
+      void navigate('/login', { replace: true })
+    }
+  }, [user, isInitialized, navigate])
 
   useEffect(() => {
     if (!isNew && filePath) {
@@ -74,7 +81,11 @@ export default function EditorPage() {
         if (status === 401) {
           setError('Session expired. Please log in again.')
         } else if (status === 409) {
-          setError('Conflict: this post was modified elsewhere.')
+          setError(
+            isNew
+              ? 'A post with this file path already exists.'
+              : 'Conflict: this post was modified elsewhere.',
+          )
         } else if (status === 404) {
           setError('Post not found. It may have been deleted.')
         } else if (status === 422) {
@@ -133,6 +144,10 @@ export default function EditorPage() {
 
   function formatDate(iso: string): string {
     return new Date(iso).toLocaleString()
+  }
+
+  if (!isInitialized || !user) {
+    return null
   }
 
   if (loading) {

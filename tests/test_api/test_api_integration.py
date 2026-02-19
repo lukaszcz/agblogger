@@ -67,7 +67,7 @@ async def client(app_settings: Settings) -> AsyncGenerator[AsyncClient]:
         await session.execute(
             text(
                 "CREATE VIRTUAL TABLE IF NOT EXISTS posts_fts USING fts5("
-                "title, excerpt, content, content='posts_cache', content_rowid='id')"
+                "title, content, content='posts_cache', content_rowid='id')"
             )
         )
         await session.commit()

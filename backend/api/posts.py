@@ -6,6 +6,7 @@ import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import delete, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.deps import (
@@ -14,7 +15,13 @@ from backend.api.deps import (
     require_auth,
 )
 from backend.filesystem.content_manager import ContentManager, hash_content
-from backend.filesystem.frontmatter import PostData, extract_title, generate_excerpt, serialize_post
+from backend.filesystem.frontmatter import (
+    PostData,
+    extract_title,
+    generate_markdown_excerpt,
+    serialize_post,
+)
+from backend.models.label import PostLabelCache
 from backend.models.post import PostCache
 from backend.models.user import User
 from backend.pandoc.renderer import render_markdown
@@ -32,6 +39,56 @@ from backend.services.post_service import get_post, list_posts, search_posts
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/posts", tags=["posts"])
+
+
+async def _sync_post_labels(
+    session: AsyncSession,
+    post_id: int,
+    labels: list[str],
+    file_path: str,
+) -> None:
+    """Sync post_labels_cache for a post, replacing existing entries."""
+    from backend.filesystem.content_manager import get_directory_labels
+
+    await session.execute(delete(PostLabelCache).where(PostLabelCache.post_id == post_id))
+    dir_labels = get_directory_labels(file_path)
+    for label_id in labels:
+        source = "directory" if label_id in dir_labels else "frontmatter"
+        session.add(PostLabelCache(post_id=post_id, label_id=label_id, source=source))
+
+
+async def _delete_post_fts(
+    session: AsyncSession,
+    post_id: int,
+    old_title: str,
+    old_content: str,
+) -> None:
+    """Remove FTS index entry using the special delete command.
+
+    The posts_fts table uses content='posts_cache' but posts_cache has no
+    'content' column, so plain DELETE FROM posts_fts fails.  The FTS5 special
+    'delete' command accepts explicit old values and works correctly.
+    """
+    await session.execute(
+        text(
+            "INSERT INTO posts_fts(posts_fts, rowid, title, content) "
+            "VALUES ('delete', :rowid, :title, :content)"
+        ),
+        {"rowid": post_id, "title": old_title, "content": old_content},
+    )
+
+
+async def _insert_post_fts(
+    session: AsyncSession,
+    post_id: int,
+    title: str,
+    content: str,
+) -> None:
+    """Insert a new FTS index entry for a post."""
+    await session.execute(
+        text("INSERT INTO posts_fts(rowid, title, content) VALUES (:rowid, :title, :content)"),
+        {"rowid": post_id, "title": title, "content": content},
+    )
 
 
 @router.get("", response_model=PostListResponse)
@@ -116,6 +173,12 @@ async def create_post_endpoint(
     user: Annotated[User, Depends(require_auth)],
 ) -> PostDetail:
     """Create a new post."""
+    from sqlalchemy import select
+
+    existing = await session.execute(select(PostCache).where(PostCache.file_path == body.file_path))
+    if existing.scalar_one_or_none() is not None:
+        raise HTTPException(status_code=409, detail="A post with this file path already exists")
+
     now = now_utc()
     author = user.display_name or user.username
 
@@ -131,7 +194,8 @@ async def create_post_endpoint(
         file_path=body.file_path,
     )
 
-    excerpt = generate_excerpt(post_data.content)
+    md_excerpt = generate_markdown_excerpt(post_data.content)
+    rendered_excerpt = await render_markdown(md_excerpt) if md_excerpt else ""
     rendered_html = await render_markdown(post_data.content)
 
     serialized = serialize_post(post_data)
@@ -143,11 +207,14 @@ async def create_post_endpoint(
         modified_at=post_data.modified_at,
         is_draft=post_data.is_draft,
         content_hash=hash_content(serialized),
-        excerpt=excerpt,
+        rendered_excerpt=rendered_excerpt,
         rendered_html=rendered_html,
     )
     session.add(post)
     await session.flush()
+
+    await _sync_post_labels(session, post.id, post_data.labels, body.file_path)
+    await _insert_post_fts(session, post.id, post_data.title, post_data.content)
 
     try:
         content_manager.write_post(body.file_path, post_data)
@@ -167,7 +234,7 @@ async def create_post_endpoint(
         created_at=format_iso(post.created_at),
         modified_at=format_iso(post.modified_at),
         is_draft=post.is_draft,
-        excerpt=post.excerpt,
+        rendered_excerpt=post.rendered_excerpt,
         labels=post_data.labels,
         rendered_html=rendered_html,
     )
@@ -196,12 +263,17 @@ async def update_post_endpoint(
     if existing_post_data:
         created_at = existing_post_data.created_at
         author = existing_post_data.author
+        old_content = existing_post_data.content
     else:
         logger.warning(
             "Post %s exists in DB cache but not on filesystem; using cached metadata", file_path
         )
         created_at = existing.created_at if existing.created_at else now_utc()
         author = existing.author or user.display_name or user.username
+        old_content = ""
+
+    # Remove old FTS entry before modifying PostCache
+    await _delete_post_fts(session, existing.id, existing.title, old_content)
 
     now = now_utc()
     title = extract_title(body.body, file_path)
@@ -219,7 +291,8 @@ async def update_post_endpoint(
     )
 
     serialized = serialize_post(post_data)
-    excerpt = generate_excerpt(post_data.content)
+    md_excerpt = generate_markdown_excerpt(post_data.content)
+    rendered_excerpt = await render_markdown(md_excerpt) if md_excerpt else ""
     rendered_html = await render_markdown(post_data.content)
 
     existing.title = title
@@ -227,10 +300,13 @@ async def update_post_endpoint(
     existing.modified_at = now
     existing.is_draft = body.is_draft
     existing.content_hash = hash_content(serialized)
-    existing.excerpt = excerpt
+    existing.rendered_excerpt = rendered_excerpt
     existing.rendered_html = rendered_html
 
     await session.flush()
+
+    await _sync_post_labels(session, existing.id, post_data.labels, file_path)
+    await _insert_post_fts(session, existing.id, title, post_data.content)
 
     try:
         content_manager.write_post(file_path, post_data)
@@ -250,7 +326,7 @@ async def update_post_endpoint(
         created_at=format_iso(existing.created_at),
         modified_at=format_iso(existing.modified_at),
         is_draft=existing.is_draft,
-        excerpt=existing.excerpt,
+        rendered_excerpt=existing.rendered_excerpt,
         labels=post_data.labels,
         rendered_html=existing.rendered_html or "",
     )
@@ -272,11 +348,16 @@ async def delete_post_endpoint(
     if existing is None:
         raise HTTPException(status_code=404, detail="Post not found")
 
+    # Read post content for FTS cleanup before deleting the file
+    old_post_data = content_manager.read_post(file_path)
+    old_content = old_post_data.content if old_post_data else ""
+
     try:
         content_manager.delete_post(file_path)
     except OSError as exc:
         logger.error("Failed to delete post file %s: %s", file_path, exc)
         raise HTTPException(status_code=500, detail="Failed to delete post file") from exc
 
+    await _delete_post_fts(session, existing.id, existing.title, old_content)
     await session.delete(existing)
     await session.commit()

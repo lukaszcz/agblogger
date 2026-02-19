@@ -9,6 +9,8 @@ const MATH_SPAN_RE =
  * Pre-renders KaTeX math in an HTML string. Replaces Pandoc's
  * `<span class="math inline">` and `<span class="math display">`
  * with KaTeX-rendered HTML so React can manage the final DOM.
+ *
+ * Used for both full post HTML and rendered excerpts.
  */
 export function useRenderedHtml(html: string | null | undefined): string {
   return useMemo(() => {

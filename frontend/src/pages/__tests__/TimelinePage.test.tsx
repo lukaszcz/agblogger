@@ -28,7 +28,7 @@ const postsResponse: PostListResponse = {
       created_at: '2026-02-01 12:00:00+00:00',
       modified_at: '2026-02-01 12:00:00+00:00',
       is_draft: false,
-      excerpt: 'First post',
+      rendered_excerpt: '<p>First post</p>',
       labels: [],
     },
     {
@@ -39,7 +39,7 @@ const postsResponse: PostListResponse = {
       created_at: '2026-02-02 12:00:00+00:00',
       modified_at: '2026-02-02 12:00:00+00:00',
       is_draft: false,
-      excerpt: 'Another post',
+      rendered_excerpt: '<p>Another post</p>',
       labels: [],
     },
   ],

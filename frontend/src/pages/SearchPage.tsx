@@ -67,8 +67,11 @@ export default function SearchPage() {
                         opacity-0 animate-slide-up stagger-${Math.min(i + 1, 8)}`}
             >
               <h3 className="font-display text-lg text-ink">{result.title}</h3>
-              {result.excerpt && (
-                <p className="text-sm text-muted mt-1 line-clamp-2">{result.excerpt}</p>
+              {result.rendered_excerpt && (
+                <div
+                  className="text-sm text-muted mt-1 line-clamp-2 prose-excerpt"
+                  dangerouslySetInnerHTML={{ __html: result.rendered_excerpt }}
+                />
               )}
               <span className="text-xs text-muted font-mono mt-2 block">
                 {result.created_at.split(' ')[0]}

@@ -66,7 +66,7 @@ export interface PostSummary {
   created_at: string
   modified_at: string
   is_draft: boolean
-  excerpt: string | null
+  rendered_excerpt: string | null
   labels: string[]
 }
 
@@ -160,7 +160,7 @@ export interface SearchResult {
   id: number
   file_path: string
   title: string
-  excerpt: string | null
+  rendered_excerpt: string | null
   created_at: string
   rank: number
 }

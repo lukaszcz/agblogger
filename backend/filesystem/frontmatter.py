@@ -136,10 +136,13 @@ def serialize_post(post_data: PostData) -> str:
     return str(frontmatter.dumps(post)) + "\n"
 
 
-def generate_excerpt(content: str, max_length: int = 200) -> str:
-    """Generate a plain-text excerpt from markdown content.
+def generate_markdown_excerpt(content: str, max_length: int = 300) -> str:
+    """Generate a markdown excerpt preserving inline formatting.
 
-    Strips headings, links, images, and code blocks.
+    Strips headings, code blocks, and images but preserves bold, italic,
+    links, math expressions, and inline code so the excerpt can be rendered
+    to HTML via Pandoc.  Visual truncation is handled by CSS line-clamp on
+    the frontend; the backend provides enough rendered content.
     """
     lines: list[str] = []
     in_code_block = False
@@ -155,12 +158,6 @@ def generate_excerpt(content: str, max_length: int = 200) -> str:
             continue
         stripped = line.strip()
         if stripped:
-            # Strip markdown links
-            stripped = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", stripped)
-            # Strip bold/italic
-            stripped = re.sub(r"[*_]{1,3}([^*_]+)[*_]{1,3}", r"\1", stripped)
-            # Strip inline code
-            stripped = re.sub(r"`([^`]+)`", r"\1", stripped)
             lines.append(stripped)
 
     text = " ".join(lines)

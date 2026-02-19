@@ -15,7 +15,7 @@ class PostSummary(BaseModel):
     created_at: str
     modified_at: str
     is_draft: bool = False
-    excerpt: str | None = None
+    rendered_excerpt: str | None = None
     labels: list[str] = Field(default_factory=list)
 
 
@@ -84,6 +84,6 @@ class SearchResult(BaseModel):
     id: int
     file_path: str
     title: str
-    excerpt: str | None = None
+    rendered_excerpt: str | None = None
     created_at: str
     rank: float = 0.0
