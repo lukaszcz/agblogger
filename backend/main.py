@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
 
 from backend.api.auth import router as auth_router
 from backend.api.crosspost import router as crosspost_router
@@ -63,9 +64,18 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     app.state.session_factory = session_factory
 
     async with engine.begin() as conn:
+        # Drop cache tables so create_all always matches current schema.
+        # These are regenerated from the filesystem on every startup.
+        for table in [
+            "post_labels_cache",
+            "label_parents_cache",
+            "posts_fts",
+            "posts_cache",
+            "labels_cache",
+            "sync_manifest",
+        ]:
+            await conn.execute(text(f"DROP TABLE IF EXISTS {table}"))
         await conn.run_sync(Base.metadata.create_all)
-
-    from sqlalchemy import text
 
     async with session_factory() as session:
         await session.execute(

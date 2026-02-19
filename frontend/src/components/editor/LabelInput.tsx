@@ -90,13 +90,13 @@ export default function LabelInput({ value, onChange, disabled }: LabelInputProp
       if (!open) {
         setOpen(true)
         setActiveIndex(0)
-      } else {
+      } else if (totalOptions > 0) {
         setActiveIndex((prev) => (prev + 1) % totalOptions)
       }
     }
     if (e.key === 'ArrowUp') {
       e.preventDefault()
-      if (open) {
+      if (open && totalOptions > 0) {
         setActiveIndex((prev) => (prev <= 0 ? totalOptions - 1 : prev - 1))
       }
     }
