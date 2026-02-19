@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Save, ArrowLeft } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
@@ -6,6 +6,8 @@ import { format, parseISO } from 'date-fns'
 import { fetchPostForEdit, createPost, updatePost } from '@/api/posts'
 import { HTTPError } from '@/api/client'
 import api from '@/api/client'
+import { useEditorAutoSave } from '@/hooks/useEditorAutoSave'
+import type { DraftData } from '@/hooks/useEditorAutoSave'
 import { useRenderedHtml } from '@/hooks/useKatex'
 import { useAuthStore } from '@/stores/authStore'
 import LabelInput from '@/components/editor/LabelInput'
@@ -30,6 +32,22 @@ export default function EditorPage() {
   const [error, setError] = useState<string | null>(null)
   const renderedPreview = useRenderedHtml(preview)
   const previewRequestRef = useRef(0)
+
+  const autoSaveKey = isNew ? 'agblogger:draft:new' : `agblogger:draft:${filePath}`
+  const currentState = useMemo<DraftData>(
+    () => ({ body, labels, isDraft, ...(isNew ? { newPath } : {}) }),
+    [body, labels, isDraft, isNew, newPath],
+  )
+
+  const handleRestore = useCallback((draft: DraftData) => {
+    setBody(draft.body)
+    setLabels(draft.labels)
+    setIsDraft(draft.isDraft)
+    if (draft.newPath) setNewPath(draft.newPath)
+  }, [])
+
+  const { isDirty, draftAvailable, draftSavedAt, restoreDraft, discardDraft, markSaved } =
+    useEditorAutoSave({ key: autoSaveKey, currentState, onRestore: handleRestore })
 
   useEffect(() => {
     if (isInitialized && !user) {
@@ -96,6 +114,7 @@ export default function EditorPage() {
       } else {
         await updatePost(path, { body, labels, is_draft: isDraft })
       }
+      markSaved()
       void navigate(`/post/${path}`)
     } catch (err) {
       if (err instanceof HTTPError) {
@@ -187,13 +206,16 @@ export default function EditorPage() {
   return (
     <div className="animate-fade-in">
       <div className="flex items-center justify-between mb-4">
-        <button
-          onClick={() => void navigate(-1)}
-          className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-ink transition-colors"
-        >
-          <ArrowLeft size={14} />
-          Back
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => void navigate(-1)}
+            className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-ink transition-colors"
+          >
+            <ArrowLeft size={14} />
+            Back
+          </button>
+          {isDirty && <span className="text-muted text-sm">*</span>}
+        </div>
 
         <button
           onClick={() => void handleSave()}
@@ -209,6 +231,29 @@ export default function EditorPage() {
       {error && (
         <div className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
           {error}
+        </div>
+      )}
+
+      {draftAvailable && draftSavedAt && (
+        <div className="mb-4 flex items-center justify-between text-sm bg-sky-50 border border-sky-200 rounded-lg px-4 py-3">
+          <span className="text-sky-800">
+            You have unsaved changes from{' '}
+            {format(parseISO(draftSavedAt), 'MMM d, h:mm a')}
+          </span>
+          <span className="flex gap-2">
+            <button
+              onClick={restoreDraft}
+              className="font-medium text-sky-700 hover:text-sky-900 hover:underline"
+            >
+              Restore
+            </button>
+            <button
+              onClick={discardDraft}
+              className="font-medium text-sky-500 hover:text-sky-700 hover:underline"
+            >
+              Discard
+            </button>
+          </span>
         </div>
       )}
 

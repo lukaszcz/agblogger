@@ -1,9 +1,29 @@
+import { createElement } from 'react'
 import { render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter, Routes, Route } from 'react-router-dom'
+import userEvent from '@testing-library/user-event'
+import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 import { fetchPostForEdit } from '@/api/posts'
 import type { UserResponse, PostEditResponse } from '@/api/client'
+
+// Mock localStorage since jsdom doesn't always provide full implementation
+const storage = new Map<string, string>()
+const mockLocalStorage = {
+  getItem: (key: string) => storage.get(key) ?? null,
+  setItem: (key: string, value: string) => storage.set(key, value),
+  removeItem: (key: string) => storage.delete(key),
+  clear: () => storage.clear(),
+  get length() {
+    return storage.size
+  },
+  key: (index: number) => [...storage.keys()][index] ?? null,
+}
+
+Object.defineProperty(window, 'localStorage', {
+  value: mockLocalStorage,
+  writable: true,
+})
 
 vi.mock('@/api/posts', () => ({
   fetchPostForEdit: vi.fn(),
@@ -49,14 +69,14 @@ const mockFetchPostForEdit = vi.mocked(fetchPostForEdit)
 const { HTTPError: MockHTTPError } = await import('@/api/client')
 
 function renderEditor(path = '/editor/new') {
-  return render(
-    <MemoryRouter initialEntries={[path]}>
-      <Routes>
-        <Route path="/editor/new" element={<EditorPage />} />
-        <Route path="/editor/*" element={<EditorPage />} />
-      </Routes>
-    </MemoryRouter>,
+  const router = createMemoryRouter(
+    [
+      { path: '/editor/new', element: createElement(EditorPage) },
+      { path: '/editor/*', element: createElement(EditorPage) },
+    ],
+    { initialEntries: [path] },
   )
+  return render(createElement(RouterProvider, { router }))
 }
 
 const editResponse: PostEditResponse = {
@@ -73,6 +93,7 @@ describe('EditorPage', () => {
   beforeEach(() => {
     mockUser = { id: 1, username: 'jane', email: 'jane@test.com', display_name: null, is_admin: true }
     mockFetchPostForEdit.mockReset()
+    localStorage.clear()
   })
 
   it('author from display_name', async () => {
@@ -143,5 +164,67 @@ describe('EditorPage', () => {
     })
     expect(screen.getByText('Failed to load post')).toBeInTheDocument()
     expect(screen.queryByText('Save')).not.toBeInTheDocument()
+  })
+
+  it('shows recovery banner when draft exists', async () => {
+    const draft = {
+      body: '# Draft content',
+      labels: ['swe'],
+      isDraft: false,
+      savedAt: '2026-02-20T15:45:00.000Z',
+    }
+    localStorage.setItem('agblogger:draft:new', JSON.stringify(draft))
+
+    renderEditor('/editor/new')
+
+    await waitFor(() => {
+      expect(screen.getByText(/unsaved changes/i)).toBeInTheDocument()
+    })
+    expect(screen.getByRole('button', { name: /restore/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /discard/i })).toBeInTheDocument()
+  })
+
+  it('restores draft content when Restore is clicked', async () => {
+    const user = userEvent.setup()
+    const draft = {
+      body: '# Restored draft',
+      labels: ['cs'],
+      isDraft: true,
+      savedAt: '2026-02-20T15:45:00.000Z',
+    }
+    localStorage.setItem('agblogger:draft:new', JSON.stringify(draft))
+
+    renderEditor('/editor/new')
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /restore/i })).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /restore/i }))
+
+    // Banner should disappear
+    expect(screen.queryByText(/unsaved changes/i)).not.toBeInTheDocument()
+
+    // Body should be restored
+    const textareas = document.querySelectorAll('textarea')
+    const bodyTextarea = Array.from(textareas).find((t) => t.value.includes('# Restored draft'))
+    expect(bodyTextarea).toBeTruthy()
+  })
+
+  it('dismisses banner and clears draft when Discard is clicked', async () => {
+    const user = userEvent.setup()
+    localStorage.setItem(
+      'agblogger:draft:new',
+      JSON.stringify({ body: '# Old', labels: [], isDraft: false, savedAt: '2026-02-20T15:45:00.000Z' }),
+    )
+
+    renderEditor('/editor/new')
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /discard/i })).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /discard/i }))
+
+    expect(screen.queryByText(/unsaved changes/i)).not.toBeInTheDocument()
+    expect(localStorage.getItem('agblogger:draft:new')).toBeNull()
   })
 })
