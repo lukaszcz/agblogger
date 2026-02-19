@@ -19,7 +19,7 @@ export default function EditorPage() {
   const user = useAuthStore((s) => s.user)
   const isInitialized = useAuthStore((s) => s.isInitialized)
 
-  const [body, setBody] = useState('')
+  const [body, setBody] = useState(isNew ? '# New Post\n\nStart writing here...\n' : '')
   const [labels, setLabels] = useState<string[]>([])
   const [isDraft, setIsDraft] = useState(false)
   const [newPath, setNewPath] = useState('posts/')
@@ -47,7 +47,12 @@ export default function EditorPage() {
   }, [])
 
   const { isDirty, draftAvailable, draftSavedAt, restoreDraft, discardDraft, markSaved } =
-    useEditorAutoSave({ key: autoSaveKey, currentState, onRestore: handleRestore })
+    useEditorAutoSave({
+      key: autoSaveKey,
+      currentState,
+      onRestore: handleRestore,
+      enabled: isNew || !loading,
+    })
 
   useEffect(() => {
     if (isInitialized && !user) {
@@ -81,7 +86,6 @@ export default function EditorPage() {
 
   useEffect(() => {
     if (isNew) {
-      setBody('# New Post\n\nStart writing here...\n')
       setAuthor(user?.display_name || user?.username || null)
     }
   }, [isNew, user?.display_name, user?.username])

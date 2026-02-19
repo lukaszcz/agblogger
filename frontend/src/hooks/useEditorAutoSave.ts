@@ -15,6 +15,7 @@ interface UseEditorAutoSaveParams {
   key: string
   currentState: DraftData
   onRestore: (draft: DraftData) => void
+  enabled?: boolean
 }
 
 interface UseEditorAutoSaveReturn {
@@ -53,6 +54,7 @@ export function useEditorAutoSave({
   key,
   currentState,
   onRestore,
+  enabled = true,
 }: UseEditorAutoSaveParams): UseEditorAutoSaveReturn {
   // Use state (not ref) so changes trigger isDirty recalculation
   const [savedState, setSavedState] = useState<DraftData>(currentState)
@@ -68,6 +70,15 @@ export function useEditorAutoSave({
     currentStateRef.current = currentState
   }, [currentState])
 
+  // Track enabled transitions: when enabled becomes true, capture current state as baseline
+  const prevEnabledRef = useRef(enabled)
+  useEffect(() => {
+    if (enabled && !prevEnabledRef.current) {
+      setSavedState(currentStateRef.current)
+    }
+    prevEnabledRef.current = enabled
+  }, [enabled])
+
   // Draft recovery: read from localStorage synchronously on init
   const [initialDraft] = useState(() => readDraft(key))
   const draftDataRef = useRef<DraftData | null>(initialDraft)
@@ -77,8 +88,8 @@ export function useEditorAutoSave({
   )
 
   const isDirty = useMemo(
-    () => !statesEqual(currentState, savedState),
-    [currentState, savedState],
+    () => enabled && !statesEqual(currentState, savedState),
+    [enabled, currentState, savedState],
   )
 
   // Debounced auto-save to localStorage

@@ -241,6 +241,42 @@ describe('useEditorAutoSave', () => {
     })
   })
 
+  describe('enabled parameter', () => {
+    it('is not dirty when enabled is false even if state changes', () => {
+      const onRestore = vi.fn()
+      const { result, rerender } = renderHook(
+        ({ state, enabled }) =>
+          useEditorAutoSave({ key: 'test-key', currentState: state, onRestore, enabled }),
+        { wrapper: createWrapper(), initialProps: { state: baseState, enabled: false } },
+      )
+
+      rerender({ state: { ...baseState, body: '# Changed' }, enabled: false })
+      expect(result.current.isDirty).toBe(false)
+    })
+
+    it('captures baseline when transitioning from disabled to enabled', () => {
+      const onRestore = vi.fn()
+      const changedState: DraftData = { ...baseState, body: '# Loaded content' }
+      const { result, rerender } = renderHook(
+        ({ state, enabled }) =>
+          useEditorAutoSave({ key: 'test-key', currentState: state, onRestore, enabled }),
+        { wrapper: createWrapper(), initialProps: { state: baseState, enabled: false } },
+      )
+
+      // Change state while disabled
+      rerender({ state: changedState, enabled: false })
+      expect(result.current.isDirty).toBe(false)
+
+      // Enable — should capture changedState as baseline
+      rerender({ state: changedState, enabled: true })
+      expect(result.current.isDirty).toBe(false)
+
+      // Now change from the new baseline — should be dirty
+      rerender({ state: { ...changedState, body: '# Different' }, enabled: true })
+      expect(result.current.isDirty).toBe(true)
+    })
+  })
+
   describe('beforeunload', () => {
     it('registers beforeunload when dirty', () => {
       const addSpy = vi.spyOn(window, 'addEventListener')
