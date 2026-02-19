@@ -74,6 +74,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     content_manager = ContentManager(content_dir=settings.content_dir)
     app.state.content_manager = content_manager
 
+    from backend.services.git_service import GitService
+
+    git_service = GitService(content_dir=settings.content_dir)
+    git_service.init_repo()
+    app.state.git_service = git_service
+
     from backend.services.auth_service import ensure_admin_user
 
     async with session_factory() as session:

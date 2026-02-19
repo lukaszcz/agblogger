@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import logging
+import subprocess
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.api.deps import get_content_manager, get_session, require_auth
+from backend.api.deps import get_content_manager, get_git_service, get_session, require_auth
 from backend.filesystem.content_manager import ContentManager
 from backend.filesystem.toml_manager import LabelDef, write_labels_config
 from backend.models.user import User
@@ -20,6 +21,7 @@ from backend.schemas.label import (
     LabelUpdate,
 )
 from backend.schemas.post import PostListResponse
+from backend.services.git_service import GitService
 from backend.services.label_service import (
     create_label,
     delete_label,
@@ -56,6 +58,7 @@ async def create_label_endpoint(
     body: LabelCreate,
     session: Annotated[AsyncSession, Depends(get_session)],
     content_manager: Annotated[ContentManager, Depends(get_content_manager)],
+    git_service: Annotated[GitService, Depends(get_git_service)],
     user: Annotated[User, Depends(require_auth)],
 ) -> LabelResponse:
     """Create a new label."""
@@ -91,6 +94,10 @@ async def create_label_endpoint(
             status_code=500, detail="Label created but failed to persist to filesystem"
         ) from exc
 
+    try:
+        git_service.commit_all(f"Create label: {body.id}")
+    except subprocess.CalledProcessError:
+        logger.warning("Git commit failed after creating label %s", body.id)
     return result
 
 
@@ -100,6 +107,7 @@ async def update_label_endpoint(
     body: LabelUpdate,
     session: Annotated[AsyncSession, Depends(get_session)],
     content_manager: Annotated[ContentManager, Depends(get_content_manager)],
+    git_service: Annotated[GitService, Depends(get_git_service)],
     user: Annotated[User, Depends(require_auth)],
 ) -> LabelResponse:
     """Update a label's names and parents."""
@@ -140,6 +148,10 @@ async def update_label_endpoint(
             status_code=500, detail="Label updated but failed to persist to filesystem"
         ) from exc
 
+    try:
+        git_service.commit_all(f"Update label: {label_id}")
+    except subprocess.CalledProcessError:
+        logger.warning("Git commit failed after updating label %s", label_id)
     return result
 
 
@@ -148,6 +160,7 @@ async def delete_label_endpoint(
     label_id: str,
     session: Annotated[AsyncSession, Depends(get_session)],
     content_manager: Annotated[ContentManager, Depends(get_content_manager)],
+    git_service: Annotated[GitService, Depends(get_git_service)],
     user: Annotated[User, Depends(require_auth)],
 ) -> LabelDeleteResponse:
     """Delete a label."""
@@ -176,6 +189,10 @@ async def delete_label_endpoint(
             status_code=500, detail="Label deleted but failed to persist to filesystem"
         ) from exc
 
+    try:
+        git_service.commit_all(f"Delete label: {label_id}")
+    except subprocess.CalledProcessError:
+        logger.warning("Git commit failed after deleting label %s", label_id)
     return LabelDeleteResponse(id=label_id)
 
 

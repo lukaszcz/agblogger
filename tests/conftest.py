@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from backend.config import Settings
+from backend.services.git_service import GitService
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
@@ -48,6 +49,14 @@ def test_settings(tmp_content_dir: Path, tmp_path: Path) -> Settings:
         content_dir=tmp_content_dir,
         frontend_dir=tmp_path / "frontend",
     )
+
+
+@pytest.fixture
+def git_service(tmp_content_dir: Path) -> GitService:
+    """Create a git service for the temporary content directory."""
+    gs = GitService(tmp_content_dir)
+    gs.init_repo()
+    return gs
 
 
 @pytest.fixture

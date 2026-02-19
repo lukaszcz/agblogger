@@ -78,6 +78,12 @@ async def client(app_settings: Settings) -> AsyncGenerator[AsyncClient]:
     content_manager = ContentManager(content_dir=app_settings.content_dir)
     app.state.content_manager = content_manager
 
+    from backend.services.git_service import GitService
+
+    git_service = GitService(content_dir=app_settings.content_dir)
+    git_service.init_repo()
+    app.state.git_service = git_service
+
     async with session_factory() as session:
         await ensure_admin_user(session, app_settings)
 

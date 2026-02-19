@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import frontmatter as fm
+from merge3 import Merge3
 from sqlalchemy import delete, select
 
 from backend.filesystem.frontmatter import RECOGNIZED_FIELDS
@@ -81,8 +82,11 @@ def hash_file(file_path: Path) -> str:
 def scan_content_files(content_dir: Path) -> dict[str, FileEntry]:
     """Scan content directory and build file entry map."""
     entries: dict[str, FileEntry] = {}
-    for root, _dirs, files in os.walk(content_dir):
+    for root, dirs, files in os.walk(content_dir):
+        dirs[:] = [d for d in dirs if not d.startswith(".")]
         for filename in files:
+            if filename.startswith("."):
+                continue
             full = Path(root) / filename
             rel = str(full.relative_to(content_dir))
             stat = full.stat()
@@ -169,8 +173,19 @@ def compute_sync_plan(
                 plan.to_delete_local.append(path)
 
         elif not in_client and in_manifest and in_server:
-            # Local deletion
-            plan.to_delete_remote.append(path)
+            # Local deletion; preserve remote edits as conflict.
+            manifest_hash = server_manifest[path].content_hash
+            server_hash = server_current[path].content_hash
+            if server_hash != manifest_hash:
+                plan.conflicts.append(
+                    SyncChange(
+                        file_path=path,
+                        change_type=ChangeType.DELETE_MODIFY_CONFLICT,
+                        action="merge",
+                    )
+                )
+            else:
+                plan.to_delete_remote.append(path)
 
         elif in_client and not in_manifest and in_server:
             # Both added independently
@@ -226,6 +241,37 @@ async def update_server_manifest(
             )
         )
     await session.commit()
+
+
+def merge_file(
+    base: str | None,
+    server: str,
+    client: str,
+) -> tuple[str, bool]:
+    """Three-way merge of file content.
+
+    Returns (merged_content, has_conflicts). When base is None, falls back to
+    keeping the server version with has_conflicts=True.
+    """
+    if base is None:
+        return server, True
+
+    base_lines = base.splitlines(True)
+    server_lines = server.splitlines(True)
+    client_lines = client.splitlines(True)
+
+    m = Merge3(base_lines, server_lines, client_lines)
+    merged_lines = list(
+        m.merge_lines(
+            name_a="SERVER",
+            name_b="CLIENT",
+            name_base="BASE",
+            base_marker="|||||||",
+        )
+    )
+    merged_text = "".join(merged_lines)
+    has_conflicts = "<<<<<<< SERVER" in merged_text
+    return merged_text, has_conflicts
 
 
 def normalize_post_frontmatter(

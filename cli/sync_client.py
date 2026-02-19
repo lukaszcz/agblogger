@@ -40,7 +40,8 @@ def hash_file(path: Path) -> str:
 def scan_local_files(content_dir: Path) -> dict[str, FileEntry]:
     """Scan local content directory."""
     entries: dict[str, FileEntry] = {}
-    for root, _dirs, files in os.walk(content_dir):
+    for root, dirs, files in os.walk(content_dir):
+        dirs[:] = [d for d in dirs if not d.startswith(".")]
         for filename in files:
             if filename.startswith("."):
                 continue
@@ -104,57 +105,84 @@ class SyncClient:
         result: str = resp.json()["access_token"]
         return result
 
+    def _get_last_sync_commit(self) -> str | None:
+        """Get the commit hash from the last sync."""
+        config = load_config(self.content_dir)
+        return config.get("last_sync_commit")
+
+    def _save_commit_hash(self, commit_hash: str | None) -> None:
+        """Save the commit hash from a sync response."""
+        if commit_hash is None:
+            return
+        config = load_config(self.content_dir)
+        config["last_sync_commit"] = commit_hash
+        save_config(self.content_dir, config)
+
     def status(self) -> dict[str, Any]:
         """Show what would change without syncing."""
         local_files = scan_local_files(self.content_dir)
         manifest = [asdict(e) for e in local_files.values()]
+        last_sync_commit = self._get_last_sync_commit()
 
         resp = self.client.post(
             "/api/sync/init",
-            json={"client_manifest": manifest},
+            json={"client_manifest": manifest, "last_sync_commit": last_sync_commit},
         )
         resp.raise_for_status()
         result: dict[str, Any] = resp.json()
         return result
 
+    def _upload_file(self, file_path: str) -> bool:
+        """Upload a single file to the server. Returns True if successful."""
+        full_path = self.content_dir / file_path
+        if not full_path.exists():
+            print(f"  Skip (missing): {file_path}")
+            return False
+        with open(full_path, "rb") as f:
+            resp = self.client.post(
+                "/api/sync/upload",
+                files={"file": (file_path, f)},
+                data={"file_path": file_path},
+            )
+            resp.raise_for_status()
+        return True
+
     def push(self) -> None:
         """Push local changes to server."""
         plan = self.status()
+        to_delete_remote = plan.get("to_delete_remote", [])
+        last_sync_commit = self._get_last_sync_commit()
 
-        uploaded = 0
         uploaded_files: list[str] = []
         for file_path in plan.get("to_upload", []):
-            full_path = self.content_dir / file_path
-            if not full_path.exists():
-                print(f"  Skip (missing): {file_path}")
-                continue
-            with open(full_path, "rb") as f:
-                resp = self.client.post(
-                    "/api/sync/upload",
-                    files={"file": (file_path, f)},
-                    data={"file_path": file_path},
-                )
-                resp.raise_for_status()
-            print(f"  Uploaded: {file_path}")
-            uploaded_files.append(file_path)
-            uploaded += 1
+            if self._upload_file(file_path):
+                print(f"  Uploaded: {file_path}")
+                uploaded_files.append(file_path)
 
         # Commit
         resp = self.client.post(
             "/api/sync/commit",
-            json={"resolutions": {}, "uploaded_files": uploaded_files},
+            json={
+                "resolutions": {},
+                "uploaded_files": uploaded_files,
+                "deleted_files": to_delete_remote,
+                "last_sync_commit": last_sync_commit,
+            },
         )
         resp.raise_for_status()
+        commit_data = resp.json()
+        self._save_commit_hash(commit_data.get("commit_hash"))
 
         # Update local manifest
         local_files = scan_local_files(self.content_dir)
         save_manifest(self.content_dir, local_files)
 
-        print(f"Push complete. {uploaded} file(s) uploaded.")
+        print(f"Push complete. {len(uploaded_files)} file(s) uploaded.")
 
     def pull(self) -> None:
         """Pull remote changes to local."""
         plan = self.status()
+        last_sync_commit = self._get_last_sync_commit()
 
         downloaded = 0
         for file_path in plan.get("to_download", []):
@@ -179,9 +207,15 @@ class SyncClient:
         # Commit to update server manifest
         resp = self.client.post(
             "/api/sync/commit",
-            json={"resolutions": {}, "uploaded_files": []},
+            json={
+                "resolutions": {},
+                "uploaded_files": [],
+                "last_sync_commit": last_sync_commit,
+            },
         )
         resp.raise_for_status()
+        commit_data = resp.json()
+        self._save_commit_hash(commit_data.get("commit_hash"))
 
         # Update local manifest
         local_files = scan_local_files(self.content_dir)
@@ -192,22 +226,24 @@ class SyncClient:
     def sync(self) -> None:
         """Full bidirectional sync."""
         plan = self.status()
+        to_delete_remote = plan.get("to_delete_remote", [])
+        last_sync_commit = self._get_last_sync_commit()
 
         # Push local changes
         uploaded_files: list[str] = []
         for file_path in plan.get("to_upload", []):
-            full_path = self.content_dir / file_path
-            if not full_path.exists():
-                continue
-            with open(full_path, "rb") as f:
-                resp = self.client.post(
-                    "/api/sync/upload",
-                    files={"file": (file_path, f)},
-                    data={"file_path": file_path},
-                )
-                resp.raise_for_status()
-            print(f"  Pushed: {file_path}")
-            uploaded_files.append(file_path)
+            if self._upload_file(file_path):
+                print(f"  Pushed: {file_path}")
+                uploaded_files.append(file_path)
+
+        # Upload conflict files (client's version) for server-side merge
+        conflicts = plan.get("conflicts", [])
+        conflict_files: list[str] = []
+        for conflict in conflicts:
+            fp = conflict["file_path"]
+            if self._upload_file(fp):
+                conflict_files.append(fp)
+                print(f"  Uploaded for merge: {fp}")
 
         # Pull remote changes
         for file_path in plan.get("to_download", []):
@@ -221,35 +257,71 @@ class SyncClient:
             local_path.write_bytes(resp.content)
             print(f"  Pulled: {file_path}")
 
-        # Handle conflicts (keep server version)
-        conflicts = plan.get("conflicts", [])
-        resolutions = {}
-        for conflict in conflicts:
-            fp = conflict["file_path"]
-            resolutions[fp] = "keep_remote"
-            # Download server version
-            resp = self.client.get(f"/api/sync/download/{fp}")
-            if resp.status_code == 200:
+        # Delete local files
+        for file_path in plan.get("to_delete_local", []):
+            local_path = self.content_dir / file_path
+            if local_path.exists():
+                local_path.unlink()
+                print(f"  Deleted: {file_path}")
+
+        # Commit with conflict files for server-side merge
+        resp = self.client.post(
+            "/api/sync/commit",
+            json={
+                "resolutions": {},
+                "uploaded_files": uploaded_files,
+                "deleted_files": to_delete_remote,
+                "conflict_files": conflict_files,
+                "last_sync_commit": last_sync_commit,
+            },
+        )
+        resp.raise_for_status()
+        commit_data = resp.json()
+
+        # Handle merge results
+        merge_results = commit_data.get("merge_results", [])
+        for mr in merge_results:
+            fp = mr["file_path"]
+            if ".." in fp or fp.startswith("/"):
+                print(f"  Skip (invalid path in merge result): {fp}")
+                continue
+            if mr["status"] == "merged":
+                # Download the cleanly merged file from server
+                dl_resp = self.client.get(f"/api/sync/download/{fp}")
+                if dl_resp.status_code != 200:
+                    print(
+                        f"  ERROR: Failed to download merged file {fp} (HTTP {dl_resp.status_code})"
+                    )
+                    print("  Sync aborted. Local state may be inconsistent.")
+                    sys.exit(1)
                 local_path = self.content_dir / fp
-                # Save backup
+                local_path.parent.mkdir(parents=True, exist_ok=True)
+                local_path.write_bytes(dl_resp.content)
+                print(f"  Merged: {fp}")
+            elif mr["status"] == "conflicted":
+                local_path = self.content_dir / fp
+                # Save backup of local version
                 backup_path = local_path.with_suffix(local_path.suffix + ".conflict-backup")
                 if local_path.exists():
                     backup_path.write_bytes(local_path.read_bytes())
-                local_path.write_bytes(resp.content)
-                print(f"  Conflict resolved (kept remote): {fp}")
+                # Write conflict markers as the main file
+                if mr.get("content"):
+                    local_path.write_text(mr["content"], encoding="utf-8")
+                    print(f"  CONFLICT: {fp} (markers written, backup saved)")
+                else:
+                    print(f"  CONFLICT: {fp} (no markers available, backup saved)")
 
-        # Commit
-        resp = self.client.post(
-            "/api/sync/commit",
-            json={"resolutions": resolutions, "uploaded_files": uploaded_files},
-        )
-        resp.raise_for_status()
+        self._save_commit_hash(commit_data.get("commit_hash"))
 
         # Update local manifest
         local_files = scan_local_files(self.content_dir)
         save_manifest(self.content_dir, local_files)
 
-        total = len(plan.get("to_upload", [])) + len(plan.get("to_download", []))
+        total = (
+            len(plan.get("to_upload", []))
+            + len(plan.get("to_download", []))
+            + len(to_delete_remote)
+        )
         print(f"Sync complete. {total} file(s) synced, {len(conflicts)} conflict(s).")
 
 

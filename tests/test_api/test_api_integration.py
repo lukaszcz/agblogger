@@ -75,6 +75,12 @@ async def client(app_settings: Settings) -> AsyncGenerator[AsyncClient]:
     content_manager = ContentManager(content_dir=app_settings.content_dir)
     app.state.content_manager = content_manager
 
+    from backend.services.git_service import GitService
+
+    git_service = GitService(content_dir=app_settings.content_dir)
+    git_service.init_repo()
+    app.state.git_service = git_service
+
     async with session_factory() as session:
         await ensure_admin_user(session, app_settings)
 
@@ -399,6 +405,28 @@ class TestSync:
             headers=headers,
         )
         assert resp.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_sync_commit_deletes_remote_files(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        before_resp = await client.get("/api/sync/download/posts/hello.md", headers=headers)
+        assert before_resp.status_code == 200
+
+        commit_resp = await client.post(
+            "/api/sync/commit",
+            json={"resolutions": {}, "deleted_files": ["posts/hello.md"]},
+            headers=headers,
+        )
+        assert commit_resp.status_code == 200
+
+        after_resp = await client.get("/api/sync/download/posts/hello.md", headers=headers)
+        assert after_resp.status_code == 404
 
 
 class TestCrosspost:
@@ -754,6 +782,68 @@ class TestPostCRUD:
         assert edit_resp.status_code == 200
         assert edit_resp.json()["is_draft"] is True
 
+    @pytest.mark.asyncio
+    async def test_create_post_updates_label_filter_cache(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        await client.post("/api/labels", json={"id": "cache-create"}, headers=headers)
+        create_resp = await client.post(
+            "/api/posts",
+            json={
+                "file_path": "posts/cache-create.md",
+                "body": "# Cache Create\n\nBody.\n",
+                "labels": ["cache-create"],
+                "is_draft": False,
+            },
+            headers=headers,
+        )
+        assert create_resp.status_code == 201
+
+        filtered_resp = await client.get("/api/posts", params={"labels": "cache-create"})
+        assert filtered_resp.status_code == 200
+        filtered_paths = [post["file_path"] for post in filtered_resp.json()["posts"]]
+        assert "posts/cache-create.md" in filtered_paths
+
+        label_resp = await client.get("/api/labels/cache-create")
+        assert label_resp.status_code == 200
+        assert label_resp.json()["post_count"] == 1
+
+    @pytest.mark.asyncio
+    async def test_update_post_updates_label_filter_cache(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        await client.post("/api/labels", json={"id": "cache-update"}, headers=headers)
+        update_resp = await client.put(
+            "/api/posts/posts/hello.md",
+            json={
+                "body": "# Hello World\n\nRetagged.\n",
+                "labels": ["cache-update"],
+                "is_draft": False,
+            },
+            headers=headers,
+        )
+        assert update_resp.status_code == 200
+
+        new_label_resp = await client.get("/api/posts", params={"labels": "cache-update"})
+        assert new_label_resp.status_code == 200
+        new_label_paths = [post["file_path"] for post in new_label_resp.json()["posts"]]
+        assert "posts/hello.md" in new_label_paths
+
+        old_label_resp = await client.get("/api/posts", params={"labels": "swe"})
+        assert old_label_resp.status_code == 200
+        old_label_paths = [post["file_path"] for post in old_label_resp.json()["posts"]]
+        assert "posts/hello.md" not in old_label_paths
+
 
 class TestLabelCRUD:
     @pytest.mark.asyncio
@@ -1082,6 +1172,55 @@ class TestSearch:
         assert resp.status_code == 200
         assert resp.json() == []
 
+    @pytest.mark.asyncio
+    async def test_search_reflects_post_create(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+
+        create_resp = await client.post(
+            "/api/posts",
+            json={
+                "file_path": "posts/search-fresh.md",
+                "body": "# Search Fresh\n\nuniquekeycreate987\n",
+                "labels": [],
+                "is_draft": False,
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert create_resp.status_code == 201
+
+        search_resp = await client.get("/api/posts/search", params={"q": "uniquekeycreate987"})
+        assert search_resp.status_code == 200
+        file_paths = [result["file_path"] for result in search_resp.json()]
+        assert "posts/search-fresh.md" in file_paths
+
+    @pytest.mark.asyncio
+    async def test_search_reflects_post_update(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+
+        update_resp = await client.put(
+            "/api/posts/posts/hello.md",
+            json={
+                "body": "# Hello World\n\nuniquekeyupdate654\n",
+                "labels": ["swe"],
+                "is_draft": False,
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert update_resp.status_code == 200
+
+        search_resp = await client.get("/api/posts/search", params={"q": "uniquekeyupdate654"})
+        assert search_resp.status_code == 200
+        file_paths = [result["file_path"] for result in search_resp.json()]
+        assert "posts/hello.md" in file_paths
+
 
 class TestRegistration:
     @pytest.mark.asyncio
@@ -1219,3 +1358,75 @@ class TestSyncSecurity:
             files={"file": ("test.md", b"content", "text/plain")},
         )
         assert resp.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_sync_commit_deleted_files_path_traversal_rejected(
+        self, client: AsyncClient
+    ) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+
+        resp = await client.post(
+            "/api/sync/commit",
+            json={"resolutions": {}, "deleted_files": ["../../../etc/passwd"]},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_sync_commit_conflict_files_path_traversal_rejected(
+        self, client: AsyncClient
+    ) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+
+        resp = await client.post(
+            "/api/sync/commit",
+            json={"resolutions": {}, "conflict_files": ["../../../etc/passwd"]},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 400
+
+
+class TestSearchAfterDelete:
+    @pytest.mark.asyncio
+    async def test_search_does_not_find_deleted_post(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # Create a post with a unique keyword
+        create_resp = await client.post(
+            "/api/posts",
+            json={
+                "file_path": "posts/fts-delete-test.md",
+                "body": "# FTS Delete Test\n\nuniqueftsdeletekey999\n",
+                "labels": [],
+                "is_draft": False,
+            },
+            headers=headers,
+        )
+        assert create_resp.status_code == 201
+
+        # Verify it's searchable
+        search_resp = await client.get("/api/posts/search", params={"q": "uniqueftsdeletekey999"})
+        assert search_resp.status_code == 200
+        assert len(search_resp.json()) >= 1
+
+        # Delete the post
+        delete_resp = await client.delete("/api/posts/posts/fts-delete-test.md", headers=headers)
+        assert delete_resp.status_code == 204
+
+        # Verify it's no longer searchable
+        search_resp = await client.get("/api/posts/search", params={"q": "uniqueftsdeletekey999"})
+        assert search_resp.status_code == 200
+        assert search_resp.json() == []

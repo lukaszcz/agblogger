@@ -13,6 +13,7 @@ from backend.config import Settings
 from backend.filesystem.content_manager import ContentManager
 from backend.models.user import User
 from backend.services.auth_service import decode_access_token
+from backend.services.git_service import GitService
 
 security = HTTPBearer(auto_error=False)
 
@@ -21,6 +22,12 @@ def get_settings(request: Request) -> Settings:
     """Get application settings from app state."""
     settings: Settings = request.app.state.settings
     return settings
+
+
+def get_git_service(request: Request) -> GitService:
+    """Get git service from app state."""
+    gs: GitService = request.app.state.git_service
+    return gs
 
 
 def get_content_manager(request: Request) -> ContentManager:

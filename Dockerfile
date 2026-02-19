@@ -11,7 +11,7 @@ FROM python:3.13-slim
 
 # Install pandoc
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends pandoc curl \
+    && apt-get install -y --no-install-recommends pandoc curl git \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv for fast dependency resolution

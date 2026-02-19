@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from backend.services.sync_service import (
     ChangeType,
     FileEntry,
     compute_sync_plan,
+    scan_content_files,
 )
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _entry(path: str, hash_: str = "abc", size: int = 100) -> FileEntry:
@@ -77,6 +83,17 @@ class TestComputeSyncPlan:
         plan = compute_sync_plan(client, manifest, server)
         assert "a.md" in plan.to_delete_remote
 
+    def test_local_delete_remote_modify_conflict(self) -> None:
+        """Local delete + remote modify should not auto-delete remote content."""
+        manifest = {"a.md": _entry("a.md", "old")}
+        client: dict[str, FileEntry] = {}
+        server = {"a.md": _entry("a.md", "new")}
+        plan = compute_sync_plan(client, manifest, server)
+        assert plan.to_delete_remote == []
+        assert len(plan.conflicts) == 1
+        assert plan.conflicts[0].file_path == "a.md"
+        assert plan.conflicts[0].change_type == ChangeType.DELETE_MODIFY_CONFLICT
+
     def test_remote_deletion(self) -> None:
         manifest = {"a.md": _entry("a.md", "hash")}
         client = {"a.md": _entry("a.md", "hash")}
@@ -134,3 +151,32 @@ class TestComputeSyncPlan:
         assert "push.md" in plan.to_upload
         assert "pull.md" in plan.to_download
         assert "added.md" in plan.to_upload
+
+
+class TestScanContentFiles:
+    def test_excludes_git_directory(self, tmp_path: Path) -> None:
+        (tmp_path / "post.md").write_text("hello")
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir()
+        (git_dir / "HEAD").write_text("ref: refs/heads/main")
+        entries = scan_content_files(tmp_path)
+        assert "post.md" in entries
+        assert not any(".git" in p for p in entries)
+
+    def test_excludes_dot_files(self, tmp_path: Path) -> None:
+        (tmp_path / "post.md").write_text("hello")
+        (tmp_path / ".env").write_text("SECRET=x")
+        (tmp_path / ".agblogger-manifest.json").write_text("{}")
+        entries = scan_content_files(tmp_path)
+        assert "post.md" in entries
+        assert ".env" not in entries
+        assert ".agblogger-manifest.json" not in entries
+
+    def test_excludes_dot_files_in_subdirectories(self, tmp_path: Path) -> None:
+        sub = tmp_path / "posts"
+        sub.mkdir()
+        (sub / "post.md").write_text("hello")
+        (sub / ".hidden").write_text("secret")
+        entries = scan_content_files(tmp_path)
+        assert "posts/post.md" in entries
+        assert "posts/.hidden" not in entries

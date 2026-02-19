@@ -51,6 +51,7 @@ agblogger/
 | Validation | Pydantic 2 + pydantic-settings |
 | Date/time | pendulum |
 | Sync merging | merge3 |
+| Content versioning | git (CLI) |
 | HTTP client | httpx |
 | Cross-posting | httpx |
 
@@ -74,6 +75,7 @@ agblogger/
 - Python 3.13+
 - Node.js 22 (build stage)
 - Pandoc binary
+- git (content versioning for three-way merge)
 - uv (Python dependency management)
 - Docker + Docker Compose
 - Caddy (optional HTTPS reverse proxy)
@@ -82,7 +84,7 @@ agblogger/
 
 ### Markdown as Source of Truth
 
-The filesystem is the canonical store for all content. The database is entirely regenerable from the files on disk — it is rebuilt on every server startup via `rebuild_cache()`.
+The filesystem is the canonical store for all content. The database is entirely regenerable from the files on disk — it is rebuilt on every server startup via `rebuild_cache()`. Post CRUD endpoints also perform incremental cache maintenance for `posts_cache`, `posts_fts`, and `post_labels_cache` so search/filter data stays fresh between full rebuilds.
 
 Content lives in the `content/` directory:
 
@@ -162,8 +164,9 @@ On startup, the lifespan handler:
 1. Creates the async SQLAlchemy engine and session factory.
 2. Creates all database tables (including the FTS5 virtual table).
 3. Initializes the `ContentManager`.
-4. Creates the admin user if it doesn't exist.
-5. Rebuilds the full database cache from the filesystem.
+4. Initializes the `GitService` (creates a git repo in the content directory if one doesn't exist).
+5. Creates the admin user if it doesn't exist.
+6. Rebuilds the full database cache from the filesystem.
 
 ### Layered Architecture
 
@@ -256,20 +259,23 @@ Hash-based, three-way sync inspired by Unison. Both client and server maintain a
 Client                                   Server
   │                                         │
   │  1. POST /api/sync/init                 │
-  │     (client manifest) ──────────────►   │  Compare client manifest
-  │                                         │  vs server manifest
-  │   ◄──────────────── (sync plan)         │  vs current filesystem
+  │     (client manifest,                   │  Compare client manifest
+  │      last_sync_commit) ─────────────►   │  vs server manifest
+  │   ◄──────── (sync plan,                 │  vs current filesystem
+  │              server_commit)              │
   │                                         │
   │  2. POST /api/sync/upload               │
-  │     (changed files) ────────────────►   │  Write files to content/
+  │     (changed + conflict files) ─────►   │  Write files to content/
   │                                         │
   │  3. GET /api/sync/download/{path}       │
   │   ◄──────────────── (file content)      │  Send files to client
   │                                         │
   │  4. POST /api/sync/commit               │
-  │     (uploaded_files + resolutions) ──►  │  Normalize front matter,
-  │                                         │  update manifest,
-  │                                         │  rebuild cache
+  │     (uploaded_files, deleted_files,     │  Merge conflicts, apply
+  │      conflict_files,                    │  deletions, normalize front
+  │      last_sync_commit) ─────────────►   │  matter, git commit, update
+  │   ◄──────── (commit_hash,               │  manifest, rebuild cache
+  │              merge_results)              │
 ```
 
 ### Three-Way Conflict Detection
@@ -283,11 +289,12 @@ Client                                   Server
 | New | Not present | Upload |
 | Not present | New | Download |
 | Deleted | Same | Delete on server |
+| Deleted | Changed | Conflict (delete/modify) |
 | Same | Deleted | Delete on client |
 
 ### Front Matter Normalization
 
-During `sync_commit`, before scanning files and updating the manifest, the server normalizes YAML front matter for uploaded `.md` files under `posts/`. The client sends `uploaded_files` in the commit request to identify which files were uploaded.
+During `sync_commit`, before scanning files and updating the manifest, the server applies `deleted_files` requested by the client and normalizes YAML front matter for uploaded `.md` files under `posts/`. The client sends `uploaded_files` in the commit request to identify which files were uploaded.
 
 - **New posts** (not in old server manifest): missing fields are filled with defaults — `created_at` and `modified_at` set to now, `author` from site config `default_author`.
 - **Edited posts** (in old server manifest): existing fields are preserved, except `modified_at` which is set to the current server time.
@@ -295,9 +302,35 @@ During `sync_commit`, before scanning files and updating the manifest, the serve
 
 Recognized front matter fields: `created_at`, `modified_at`, `author`, `labels`, `draft`.
 
+### Git Content Versioning
+
+The server's `content/` directory is a git repository. Every file-modifying operation (post create/update/delete, label create/update/delete, sync commit) creates a git commit via `GitService`. This provides:
+
+- A complete history of all content changes
+- The merge base for three-way conflict resolution during sync
+- The `server_commit` hash returned in sync init, used by clients to track their last sync point
+
+`GitService` (`backend/services/git_service.py`) wraps the git CLI via `subprocess.run`. It is synchronous (git operations are fast for small repos). The repo is initialized on application startup with `git init` if `.git/` doesn't exist.
+
+### Three-Way Merge
+
+When both client and server modify the same file, the sync protocol performs a three-way merge using `merge3`:
+
+1. **Client uploads its version** of conflicting files during sync
+2. **Server retrieves the merge base** from git history using the client's `last_sync_commit`
+3. **`merge_file(base, server, client)`** performs the merge:
+   - **Clean merge** (non-overlapping edits): merged result written to disk, `MergeResult.status = "merged"`
+   - **Unresolved conflict** (overlapping edits): server version restored on disk, diff3 conflict markers returned to client in `MergeResult.content` with `status = "conflicted"`
+   - **No base available** (first sync or invalid commit): falls back to keeping server version with `status = "conflicted"`
+4. **Delete/modify conflicts**: the modified version is kept regardless of which side deleted
+
+The client handles merge results:
+- `"merged"` → downloads the merged file from the server
+- `"conflicted"` → backs up local file as `.conflict-backup`, writes conflict markers as the main file for manual resolution
+
 ### CLI Sync Client (`cli/sync_client.py`)
 
-A standalone Python script using httpx with subcommands: `init`, `status`, `push`, `pull`, `sync`. Stores config in `.agblogger-sync.json` and the local manifest in `.agblogger-manifest.json`. Conflicts default to "keep remote" with local backups saved as `.conflict-backup`. The client sends `uploaded_files` in the commit request for front matter normalization.
+A standalone Python script using httpx with subcommands: `init`, `status`, `push`, `pull`, `sync`. Stores config in `.agblogger-sync.json` (including `last_sync_commit`) and the local manifest in `.agblogger-manifest.json`. The client uploads conflict files to the server for three-way merge, sends `uploaded_files`, `deleted_files`, `conflict_files`, and `last_sync_commit` in the commit request, and saves the returned `commit_hash` for subsequent syncs.
 
 ## Cross-Posting
 
@@ -365,7 +398,11 @@ tests/
 │   ├── test_crosspost.py        Cross-posting platforms
 │   ├── test_database.py         DB engine creation
 │   ├── test_datetime_service.py Date/time parsing
-│   └── test_sync_service.py     Sync plan computation
+│   ├── test_git_service.py      Git service operations
+│   ├── test_merge.py            Three-way merge logic
+│   ├── test_sync_service.py     Sync plan computation
+│   └── test_sync_merge_integration.py  Full merge API flow
+├── test_sync/                   CLI sync client tests
 ├── test_labels/                 Label service tests
 └── test_rendering/              Pandoc rendering tests
 ```
@@ -416,6 +453,7 @@ The `Caddyfile` configures automatic Let's Encrypt TLS, reverse proxy to the bac
 | Pandoc rendering at publish time | ~100ms overhead on write is acceptable; no per-request cost |
 | JWT with refresh token rotation | Prevents stolen refresh token reuse |
 | SHA-256 based sync | Clock-skew immune, deterministic conflict detection |
+| Git-backed content directory | Provides merge base for three-way sync; full change history at no extra cost |
 | Single Docker container | Simplest deployment for a self-hosted blog |
 
 ## Data Flow
