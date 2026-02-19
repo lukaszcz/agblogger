@@ -382,8 +382,7 @@ A platform registry maps names to poster classes. Each cross-post attempt is rec
 | `/page/:pageId` | PageViewPage | Top-level page (About, etc.) |
 | `/search` | SearchPage | Full-text search results |
 | `/login` | LoginPage | Login form |
-| `/labels` | LabelListPage | Label list with post counts |
-| `/labels/graph` | LabelGraphPage | Interactive DAG visualization (auth: edge create/delete) |
+| `/labels` | LabelsPage | Label list/graph with segmented control toggle (auth: graph edge create/delete) |
 | `/labels/:labelId` | LabelPostsPage | Posts filtered by label |
 | `/labels/:labelId/settings` | LabelSettingsPage | Label names, parents, delete (auth required) |
 | `/editor/*` | EditorPage | Structured metadata bar + split-pane markdown editor |
