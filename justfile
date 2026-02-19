@@ -31,35 +31,43 @@ frontend_port := "5173"
 localdir := justfile_directory() / ".local"
 pidfile := localdir / "dev.pid"
 
+# Start backend and frontend in the foreground (Ctrl-C to stop)
+dev:
+    #!/usr/bin/env bash
+    trap 'kill 0' EXIT
+    uv run uvicorn backend.main:app --reload --host 0.0.0.0 --port {{ backend_port }} &
+    cd frontend && npm run dev -- --port {{ frontend_port }} &
+    wait
+
 # Start backend and frontend in the background (override ports: just start backend_port=9000 frontend_port=9173)
 start:
     #!/usr/bin/env bash
-    mkdir -p "{{localdir}}"
-    if [ -f "{{pidfile}}" ] && kill -0 "$(cat "{{pidfile}}")" 2>/dev/null; then
-        echo "Dev server is already running (PID $(cat "{{pidfile}}"))"
+    mkdir -p "{{ localdir }}"
+    if [ -f "{{ pidfile }}" ] && kill -0 "$(cat "{{ pidfile }}")" 2>/dev/null; then
+        echo "Dev server is already running (PID $(cat "{{ pidfile }}"))"
         exit 1
     fi
     (
         trap 'kill 0' EXIT
-        uv run uvicorn backend.main:app --reload --host 0.0.0.0 --port {{backend_port}} &
-        cd frontend && npm run dev -- --port {{frontend_port}} &
+        uv run uvicorn backend.main:app --reload --host 0.0.0.0 --port {{ backend_port }} &
+        cd frontend && npm run dev -- --port {{ frontend_port }} &
         wait
     ) &
-    echo "$!" > "{{pidfile}}"
-    echo "Dev server started (PID $!) — backend :{{backend_port}}, frontend :{{frontend_port}}"
+    echo "$!" > "{{ pidfile }}"
+    echo "Dev server started (PID $!) — backend :{{ backend_port }}, frontend :{{ frontend_port }}"
 
 # Stop the running dev server
 stop:
     #!/usr/bin/env bash
-    if [ ! -f "{{pidfile}}" ]; then
+    if [ ! -f "{{ pidfile }}" ]; then
         echo "No dev server pidfile found"
         exit 1
     fi
-    pid=$(cat "{{pidfile}}")
+    pid=$(cat "{{ pidfile }}")
     if kill -0 "$pid" 2>/dev/null; then
         kill -- -"$pid" 2>/dev/null || kill "$pid" 2>/dev/null
         echo "Dev server stopped (PID $pid)"
     else
         echo "Dev server was not running (stale pidfile)"
     fi
-    rm -f "{{pidfile}}"
+    rm -f "{{ pidfile }}"
