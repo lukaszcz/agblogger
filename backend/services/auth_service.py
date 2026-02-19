@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
@@ -18,6 +19,8 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from backend.config import Settings
+
+logger = logging.getLogger(__name__)
 
 ALGORITHM = "HS256"
 _DUMMY_PASSWORD_HASH = bcrypt.hashpw(b"agblogger-dummy-password", bcrypt.gensalt()).decode("utf-8")
@@ -47,7 +50,7 @@ def create_refresh_token_value() -> str:
 
 
 def hash_token(token: str) -> str:
-    """Hash a refresh token for storage."""
+    """Hash a token value (SHA-256) for safe storage."""
     return hashlib.sha256(token.encode()).hexdigest()
 
 
@@ -59,6 +62,7 @@ def decode_access_token(token: str, secret_key: str) -> dict[str, Any] | None:
             return None
         return payload
     except JWTError:
+        logger.debug("Failed to decode access token", exc_info=True)
         return None
 
 
@@ -116,14 +120,11 @@ async def refresh_tokens(
     if stored_token is None:
         return None
 
-    try:
-        expires = datetime.fromisoformat(stored_token.expires_at)
-    except ValueError:
+    expires = _parse_iso_datetime(stored_token.expires_at)
+    if expires is None:
         await session.delete(stored_token)
         await session.commit()
         return None
-    if expires.tzinfo is None:
-        expires = expires.replace(tzinfo=UTC)
     if expires < datetime.now(UTC):
         await session.delete(stored_token)
         await session.commit()
@@ -285,6 +286,8 @@ async def authenticate_personal_access_token(
     if user is None:
         return None
 
+    pat.last_used_at = format_iso(now_utc())
+    await session.commit()
     return user
 
 

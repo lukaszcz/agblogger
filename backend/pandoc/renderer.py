@@ -49,8 +49,10 @@ def _render_markdown_sync(markdown: str) -> str:
             f"Pandoc rendering failed with return code {result.returncode}: {result.stderr[:200]}"
         )
     except FileNotFoundError:
-        logger.warning("Pandoc not installed, using fallback renderer")
-        return _fallback_render(markdown)
+        raise RuntimeError(
+            "Pandoc is not installed. Install pandoc to enable markdown rendering. "
+            "See https://pandoc.org/installing.html"
+        ) from None
     except subprocess.TimeoutExpired:
         raise RuntimeError("Pandoc rendering timed out after 30 seconds") from None
 

@@ -159,6 +159,18 @@ class SyncClient:
             print(f"  ERROR: Failed to upload {file_path} (HTTP {exc.response.status_code})")
             return False
 
+    def _download_file(self, file_path: str) -> bool:
+        """Download a single file from the server. Returns True if successful."""
+        local_path = _is_safe_local_path(self.content_dir, file_path)
+        if local_path is None:
+            print(f"  Skip (path traversal): {file_path}")
+            return False
+        resp = self.client.get(f"/api/sync/download/{file_path}")
+        resp.raise_for_status()
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+        local_path.write_bytes(resp.content)
+        return True
+
     def push(self) -> None:
         """Push local changes to server."""
         plan = self.status()
@@ -175,7 +187,6 @@ class SyncClient:
         resp = self.client.post(
             "/api/sync/commit",
             json={
-                "resolutions": {},
                 "uploaded_files": uploaded_files,
                 "deleted_files": to_delete_remote,
                 "last_sync_commit": last_sync_commit,
@@ -198,17 +209,9 @@ class SyncClient:
 
         downloaded = 0
         for file_path in plan.get("to_download", []):
-            local_path = _is_safe_local_path(self.content_dir, file_path)
-            if local_path is None:
-                print(f"  Skip (path traversal): {file_path}")
-                continue
-            resp = self.client.get(f"/api/sync/download/{file_path}")
-            resp.raise_for_status()
-
-            local_path.parent.mkdir(parents=True, exist_ok=True)
-            local_path.write_bytes(resp.content)
-            print(f"  Downloaded: {file_path}")
-            downloaded += 1
+            if self._download_file(file_path):
+                print(f"  Downloaded: {file_path}")
+                downloaded += 1
 
         for file_path in plan.get("to_delete_local", []):
             local_path = _is_safe_local_path(self.content_dir, file_path)
@@ -222,7 +225,6 @@ class SyncClient:
         resp = self.client.post(
             "/api/sync/commit",
             json={
-                "resolutions": {},
                 "uploaded_files": [],
                 "last_sync_commit": last_sync_commit,
             },
@@ -261,15 +263,8 @@ class SyncClient:
 
         # Pull remote changes
         for file_path in plan.get("to_download", []):
-            local_path = _is_safe_local_path(self.content_dir, file_path)
-            if local_path is None:
-                print(f"  Skip (path traversal): {file_path}")
-                continue
-            resp = self.client.get(f"/api/sync/download/{file_path}")
-            resp.raise_for_status()
-            local_path.parent.mkdir(parents=True, exist_ok=True)
-            local_path.write_bytes(resp.content)
-            print(f"  Pulled: {file_path}")
+            if self._download_file(file_path):
+                print(f"  Pulled: {file_path}")
 
         # Delete local files
         for file_path in plan.get("to_delete_local", []):
@@ -284,7 +279,6 @@ class SyncClient:
         resp = self.client.post(
             "/api/sync/commit",
             json={
-                "resolutions": {},
                 "uploaded_files": uploaded_files,
                 "deleted_files": to_delete_remote,
                 "conflict_files": conflict_files,

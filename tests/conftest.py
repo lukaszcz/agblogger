@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
 import pytest
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -13,11 +15,68 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from backend.config import Settings
+from backend.main import create_app
 from backend.services.git_service import GitService
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
     from pathlib import Path
+
+
+@asynccontextmanager
+async def create_test_client(settings: Settings) -> AsyncGenerator[AsyncClient]:
+    """Create an HTTP test client with a fully initialized app.
+
+    Manually performs the work of the application lifespan (DB, FTS, git,
+    admin user, cache rebuild) because ASGITransport does not trigger it.
+    """
+    from sqlalchemy import text
+
+    from backend.database import create_engine as create_db_engine
+    from backend.filesystem.content_manager import ContentManager
+    from backend.models.base import Base
+    from backend.services.auth_service import ensure_admin_user
+    from backend.services.cache_service import rebuild_cache
+
+    app = create_app(settings)
+
+    engine, session_factory = create_db_engine(settings)
+    app.state.engine = engine
+    app.state.session_factory = session_factory
+    app.state.settings = settings
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    async with session_factory() as session:
+        await session.execute(
+            text(
+                "CREATE VIRTUAL TABLE IF NOT EXISTS posts_fts USING fts5("
+                "title, content, content='posts_cache', content_rowid='id')"
+            )
+        )
+        await session.commit()
+
+    content_manager = ContentManager(content_dir=settings.content_dir)
+    app.state.content_manager = content_manager
+
+    git_service = GitService(content_dir=settings.content_dir)
+    git_service.init_repo()
+    app.state.git_service = git_service
+
+    async with session_factory() as session:
+        await ensure_admin_user(session, settings)
+
+    async with session_factory() as session:
+        await rebuild_cache(session, content_manager)
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+    ) as ac:
+        yield ac
+
+    await engine.dispose()
 
 
 @pytest.fixture

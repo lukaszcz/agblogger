@@ -39,25 +39,18 @@ export default function TimelinePage() {
   )
 
   useEffect(() => {
-    const currentPage = Number(searchParams.get('page') ?? '1')
-    const labels = searchParams.get('labels')?.split(',').filter(Boolean) ?? []
-    const labelMode = (searchParams.get('labelMode') as 'or' | 'and') ?? 'or'
-    const author = searchParams.get('author') ?? ''
-    const fromDate = searchParams.get('from') ?? ''
-    const toDate = searchParams.get('to') ?? ''
-
     void (async () => {
       setLoading(true)
       setError(null)
       try {
         const d = await fetchPosts({
-          page: currentPage,
+          page,
           per_page: 10,
-          labels: labels.length > 0 ? labels.join(',') : undefined,
-          labelMode: labelMode !== 'or' ? labelMode : undefined,
-          author: author || undefined,
-          from: fromDate || undefined,
-          to: toDate || undefined,
+          labels: filterState.labels.length > 0 ? filterState.labels.join(',') : undefined,
+          labelMode: filterState.labelMode !== 'or' ? filterState.labelMode : undefined,
+          author: filterState.author || undefined,
+          from: filterState.fromDate || undefined,
+          to: filterState.toDate || undefined,
         })
         setData(d)
       } catch (err) {

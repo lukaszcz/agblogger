@@ -6,14 +6,15 @@ import io
 from typing import TYPE_CHECKING
 
 import pytest
-from httpx import ASGITransport, AsyncClient
 
 from backend.config import Settings
-from backend.main import create_app
+from tests.conftest import create_test_client
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
     from pathlib import Path
+
+    from httpx import AsyncClient
 
 
 @pytest.fixture
@@ -39,53 +40,8 @@ def merge_settings(tmp_content_dir: Path, tmp_path: Path) -> Settings:
 @pytest.fixture
 async def merge_client(merge_settings: Settings) -> AsyncGenerator[AsyncClient]:
     """Create test HTTP client with git service for merge tests."""
-    app = create_app(merge_settings)
-
-    from backend.database import create_engine as create_db_engine
-    from backend.filesystem.content_manager import ContentManager
-    from backend.models.base import Base
-    from backend.services.auth_service import ensure_admin_user
-    from backend.services.cache_service import rebuild_cache
-    from backend.services.git_service import GitService
-
-    engine, session_factory = create_db_engine(merge_settings)
-    app.state.engine = engine
-    app.state.session_factory = session_factory
-
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    from sqlalchemy import text
-
-    async with session_factory() as session:
-        await session.execute(
-            text(
-                "CREATE VIRTUAL TABLE IF NOT EXISTS posts_fts USING fts5("
-                "title, content, content='posts_cache', content_rowid='id')"
-            )
-        )
-        await session.commit()
-
-    content_manager = ContentManager(content_dir=merge_settings.content_dir)
-    app.state.content_manager = content_manager
-
-    git_service = GitService(content_dir=merge_settings.content_dir)
-    git_service.init_repo()
-    app.state.git_service = git_service
-
-    async with session_factory() as session:
-        await ensure_admin_user(session, merge_settings)
-
-    async with session_factory() as session:
-        await rebuild_cache(session, content_manager)
-
-    async with AsyncClient(
-        transport=ASGITransport(app=app),
-        base_url="http://test",
-    ) as ac:
+    async with create_test_client(merge_settings) as ac:
         yield ac
-
-    await engine.dispose()
 
 
 async def _login(client: AsyncClient) -> str:

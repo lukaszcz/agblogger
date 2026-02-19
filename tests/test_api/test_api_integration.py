@@ -6,14 +6,15 @@ import io
 from typing import TYPE_CHECKING
 
 import pytest
-from httpx import ASGITransport, AsyncClient
 
 from backend.config import Settings
-from backend.main import create_app
+from tests.conftest import create_test_client
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
     from pathlib import Path
+
+    from httpx import AsyncClient
 
 
 @pytest.fixture
@@ -45,56 +46,8 @@ def app_settings(tmp_content_dir: Path, tmp_path: Path) -> Settings:
 @pytest.fixture
 async def client(app_settings: Settings) -> AsyncGenerator[AsyncClient]:
     """Create test HTTP client with lifespan triggered."""
-    app = create_app(app_settings)
-
-    # Manually trigger lifespan since ASGITransport doesn't
-
-    from backend.database import create_engine as create_db_engine
-    from backend.filesystem.content_manager import ContentManager
-    from backend.models.base import Base
-    from backend.services.auth_service import ensure_admin_user
-    from backend.services.cache_service import rebuild_cache
-
-    engine, session_factory = create_db_engine(app_settings)
-    app.state.engine = engine
-    app.state.session_factory = session_factory
-
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    from sqlalchemy import text
-
-    async with session_factory() as session:
-        await session.execute(
-            text(
-                "CREATE VIRTUAL TABLE IF NOT EXISTS posts_fts USING fts5("
-                "title, content, content='posts_cache', content_rowid='id')"
-            )
-        )
-        await session.commit()
-
-    content_manager = ContentManager(content_dir=app_settings.content_dir)
-    app.state.content_manager = content_manager
-
-    from backend.services.git_service import GitService
-
-    git_service = GitService(content_dir=app_settings.content_dir)
-    git_service.init_repo()
-    app.state.git_service = git_service
-
-    async with session_factory() as session:
-        await ensure_admin_user(session, app_settings)
-
-    async with session_factory() as session:
-        await rebuild_cache(session, content_manager)
-
-    async with AsyncClient(
-        transport=ASGITransport(app=app),
-        base_url="http://test",
-    ) as ac:
+    async with create_test_client(app_settings) as ac:
         yield ac
-
-    await engine.dispose()
 
 
 class TestHealth:
@@ -346,7 +299,7 @@ class TestSync:
         # Commit with uploaded_files so normalization runs
         resp = await client.post(
             "/api/sync/commit",
-            json={"resolutions": {}, "uploaded_files": ["posts/synced-new.md"]},
+            json={"uploaded_files": ["posts/synced-new.md"]},
             headers=headers,
         )
         assert resp.status_code == 200
@@ -381,7 +334,7 @@ class TestSync:
         # Commit with uploaded_files
         resp = await client.post(
             "/api/sync/commit",
-            json={"resolutions": {}, "uploaded_files": ["posts/custom-fields.md"]},
+            json={"uploaded_files": ["posts/custom-fields.md"]},
             headers=headers,
         )
         assert resp.status_code == 200
@@ -421,7 +374,7 @@ class TestSync:
 
         commit_resp = await client.post(
             "/api/sync/commit",
-            json={"resolutions": {}, "deleted_files": ["posts/hello.md"]},
+            json={"deleted_files": ["posts/hello.md"]},
             headers=headers,
         )
         assert commit_resp.status_code == 200
@@ -1372,7 +1325,7 @@ class TestSyncSecurity:
 
         resp = await client.post(
             "/api/sync/commit",
-            json={"resolutions": {}, "deleted_files": ["../../../etc/passwd"]},
+            json={"deleted_files": ["../../../etc/passwd"]},
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 400
@@ -1389,7 +1342,7 @@ class TestSyncSecurity:
 
         resp = await client.post(
             "/api/sync/commit",
-            json={"resolutions": {}, "conflict_files": ["../../../etc/passwd"]},
+            json={"conflict_files": ["../../../etc/passwd"]},
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 400

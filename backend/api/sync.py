@@ -33,6 +33,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/sync", tags=["sync"])
 
+# Serialize sync commits to prevent concurrent modifications to the content
+# directory and server manifest.
 _sync_lock = asyncio.Lock()
 
 
@@ -91,9 +93,11 @@ class MergeResult(BaseModel):
 
 
 class SyncCommitRequest(BaseModel):
-    """Resolution decisions for conflicts."""
+    """Request payload for finalizing a sync.
 
-    resolutions: dict[str, str]
+    Contains uploaded files, deletions, and conflict merge inputs.
+    """
+
     uploaded_files: list[str] = Field(default_factory=list)
     deleted_files: list[str] = Field(default_factory=list)
     conflict_files: list[str] = Field(default_factory=list)
@@ -311,6 +315,7 @@ async def _sync_commit_inner(
     )
 
     # Git commit after all file changes
+    git_failed = False
     username = user.display_name or user.username
     try:
         git_service.commit_all(f"Sync commit by {username}")
@@ -325,6 +330,7 @@ async def _sync_commit_inner(
             "Git commit failed; sync history may be degraded. "
             "Three-way merge on the next sync may produce incorrect results."
         )
+        git_failed = True
 
     # Scan current server state after uploads/downloads + normalization
     current_files = scan_content_files(content_dir)
@@ -341,9 +347,9 @@ async def _sync_commit_inner(
     _post_count, cache_warnings = await rebuild_cache(session, content_manager)
 
     return SyncCommitResponse(
-        status="ok",
+        status="warning" if git_failed else "ok",
         files_synced=len(current_files),
         warnings=fm_warnings + cache_warnings,
-        commit_hash=git_service.head_commit(),
+        commit_hash=None if git_failed else git_service.head_commit(),
         merge_results=merge_results,
     )

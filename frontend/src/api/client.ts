@@ -31,7 +31,8 @@ async function refreshAccessToken(): Promise<boolean> {
       json: {},
     })
     return true
-  } catch {
+  } catch (err) {
+    console.error('Token refresh failed:', err)
     return false
   }
 }
@@ -73,7 +74,8 @@ const api = ky.create({
               credentials: 'include',
               retry: 0,
             })
-          } catch {
+          } catch (retryErr) {
+            console.error('Request retry after refresh failed:', retryErr)
             return response
           }
         }

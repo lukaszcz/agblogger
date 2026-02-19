@@ -33,6 +33,30 @@ from backend.services.post_service import get_posts_by_label
 
 logger = logging.getLogger(__name__)
 
+
+async def _persist_labels_and_commit(
+    session: AsyncSession,
+    content_manager: ContentManager,
+    git_service: GitService,
+    labels: dict[str, LabelDef],
+    commit_message: str,
+    error_context: str,
+) -> None:
+    """Write labels to TOML, commit DB changes, and create a git commit."""
+    try:
+        write_labels_config(content_manager.content_dir, labels)
+        content_manager.reload_config()
+    except Exception as exc:
+        await session.rollback()
+        logger.error("Failed to write labels.toml for %s: %s", error_context, exc)
+        raise HTTPException(
+            status_code=500, detail="Failed to persist label to filesystem"
+        ) from exc
+
+    await session.commit()
+    git_service.try_commit(commit_message)
+
+
 router = APIRouter(prefix="/api/labels", tags=["labels"])
 
 
@@ -82,18 +106,14 @@ async def create_label_endpoint(
         names=body.names if body.names else [body.id],
         parents=body.parents,
     )
-    try:
-        write_labels_config(content_manager.content_dir, labels)
-        content_manager.reload_config()
-    except Exception as exc:
-        await session.rollback()
-        logger.error("Failed to write labels.toml for label %s: %s", body.id, exc)
-        raise HTTPException(
-            status_code=500, detail="Failed to persist label to filesystem"
-        ) from exc
-
-    await session.commit()
-    git_service.try_commit(f"Create label: {body.id}")
+    await _persist_labels_and_commit(
+        session,
+        content_manager,
+        git_service,
+        labels,
+        f"Create label: {body.id}",
+        f"label {body.id}",
+    )
     return result
 
 
@@ -133,18 +153,14 @@ async def update_label_endpoint(
         names=body.names if body.names else [label_id],
         parents=body.parents,
     )
-    try:
-        write_labels_config(content_manager.content_dir, labels)
-        content_manager.reload_config()
-    except Exception as exc:
-        await session.rollback()
-        logger.error("Failed to write labels.toml for label %s: %s", label_id, exc)
-        raise HTTPException(
-            status_code=500, detail="Failed to persist label to filesystem"
-        ) from exc
-
-    await session.commit()
-    git_service.try_commit(f"Update label: {label_id}")
+    await _persist_labels_and_commit(
+        session,
+        content_manager,
+        git_service,
+        labels,
+        f"Update label: {label_id}",
+        f"label {label_id}",
+    )
     return result
 
 
@@ -171,18 +187,14 @@ async def delete_label_endpoint(
                 names=label_def.names,
                 parents=[p for p in label_def.parents if p != label_id],
             )
-    try:
-        write_labels_config(content_manager.content_dir, labels)
-        content_manager.reload_config()
-    except Exception as exc:
-        await session.rollback()
-        logger.error("Failed to update labels.toml after deleting %s: %s", label_id, exc)
-        raise HTTPException(
-            status_code=500, detail="Failed to persist label deletion to filesystem"
-        ) from exc
-
-    await session.commit()
-    git_service.try_commit(f"Delete label: {label_id}")
+    await _persist_labels_and_commit(
+        session,
+        content_manager,
+        git_service,
+        labels,
+        f"Delete label: {label_id}",
+        f"deleting {label_id}",
+    )
     return LabelDeleteResponse(id=label_id)
 
 

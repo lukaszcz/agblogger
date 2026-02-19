@@ -9,7 +9,7 @@ from cryptography.fernet import Fernet, InvalidToken
 
 
 def _derive_key(secret_key: str) -> bytes:
-    """Derive a 32-byte Fernet key from the application secret."""
+    """Derive a Fernet key from the application secret using SHA-256."""
     digest = hashlib.sha256(secret_key.encode()).digest()
     return base64.urlsafe_b64encode(digest)
 

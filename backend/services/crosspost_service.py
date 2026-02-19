@@ -158,8 +158,36 @@ async def crosspost(
         try:
             credentials = json.loads(decrypt_value(account.credentials, secret_key))
         except ValueError:
-            # Fall back to plaintext for pre-encryption credentials
-            credentials = json.loads(account.credentials)
+            logger.warning(
+                "Failed to decrypt credentials for %s account %s; "
+                "re-enter credentials if SECRET_KEY was changed",
+                platform_name,
+                account.account_name,
+            )
+            try:
+                credentials = json.loads(account.credentials)
+            except json.JSONDecodeError, TypeError:
+                error_msg = (
+                    f"Credentials for {platform_name} are corrupted or unreadable. "
+                    "Please reconnect the account."
+                )
+                cp = CrossPost(
+                    post_path=post_path,
+                    platform=platform_name,
+                    status="failed",
+                    error=error_msg,
+                    created_at=now,
+                )
+                session.add(cp)
+                results.append(
+                    CrossPostResult(
+                        platform_id="",
+                        url="",
+                        success=False,
+                        error=error_msg,
+                    )
+                )
+                continue
         try:
             poster = await get_poster(platform_name, credentials)
             post_result = await poster.post(content)

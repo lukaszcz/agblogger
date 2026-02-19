@@ -53,12 +53,10 @@ export const useAuthStore = create<AuthState>((set) => ({
       const user = await fetchMe()
       set({ user, isInitialized: true })
     } catch (err) {
-      if (err instanceof HTTPError && err.response.status === 401) {
-        set({ user: null, isInitialized: true })
-      } else {
+      if (!(err instanceof HTTPError) || err.response.status !== 401) {
         console.error('Auth check failed:', err)
-        set({ user: null, isInitialized: true })
       }
+      set({ user: null, isInitialized: true })
     }
   },
 }))

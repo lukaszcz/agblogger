@@ -312,7 +312,7 @@ def normalize_post_frontmatter(
         try:
             raw = full_path.read_text(encoding="utf-8")
             post = fm.loads(raw)
-        except (UnicodeDecodeError, Exception) as exc:
+        except (UnicodeDecodeError, ValueError) as exc:
             logger.warning("Failed to parse %s: %s", file_path, exc)
             warnings.append(f"{file_path}: skipped normalization due to parse error")
             continue

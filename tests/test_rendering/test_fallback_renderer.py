@@ -68,3 +68,17 @@ class TestFallbackRendererBasic:
         html = _fallback_render("This is **bold** and *italic*")
         assert "<strong>bold</strong>" in html
         assert "<em>italic</em>" in html
+
+
+class TestPandocMissingRaises:
+    def test_missing_pandoc_raises_runtime_error(self) -> None:
+        from unittest.mock import patch
+
+        from backend.pandoc.renderer import _render_markdown_sync
+
+        with patch("subprocess.run", side_effect=FileNotFoundError("No such file")):
+            try:
+                _render_markdown_sync("# Hello")
+                raise AssertionError("Expected RuntimeError was not raised")
+            except RuntimeError as exc:
+                assert "Pandoc is not installed" in str(exc)

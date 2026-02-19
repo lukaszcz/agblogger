@@ -210,8 +210,6 @@ async def create_post_endpoint(
     user: Annotated[User, Depends(require_auth)],
 ) -> PostDetail:
     """Create a new post."""
-    from sqlalchemy import select
-
     existing = await session.execute(select(PostCache).where(PostCache.file_path == body.file_path))
     if existing.scalar_one_or_none() is not None:
         raise HTTPException(status_code=409, detail="A post with this file path already exists")

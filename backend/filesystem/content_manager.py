@@ -8,6 +8,8 @@ import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+import yaml
+
 from backend.filesystem.frontmatter import PostData, generate_markdown_excerpt, parse_post
 from backend.filesystem.toml_manager import (
     LabelDef,
@@ -104,8 +106,8 @@ class ContentManager:
                     default_tz=self.site_config.timezone,
                     default_author=self.site_config.default_author,
                 )
-            except Exception:
-                logger.exception("Skipping post %s due to parse error", rel_path)
+            except (UnicodeDecodeError, ValueError, yaml.YAMLError) as exc:
+                logger.warning("Skipping post %s due to parse error: %s", rel_path, exc)
                 continue
             # Add directory-based implicit labels
             dir_labels = get_directory_labels(rel_path)

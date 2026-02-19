@@ -100,6 +100,35 @@ def _get_client_ip(request: Request) -> str:
     return "unknown"
 
 
+def _check_rate_limit(
+    limiter: InMemoryRateLimiter,
+    key: str,
+    max_failures: int,
+    window_seconds: int,
+    detail: str,
+) -> None:
+    """Raise 429 if the key is rate-limited."""
+    limited, retry_after = limiter.is_limited(key, max_failures, window_seconds)
+    if limited:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=detail,
+            headers={"Retry-After": str(retry_after)},
+        )
+
+
+def _record_failure_and_check(
+    limiter: InMemoryRateLimiter,
+    key: str,
+    max_failures: int,
+    window_seconds: int,
+    detail: str,
+) -> None:
+    """Record a failed attempt and raise 429 if now rate-limited."""
+    limiter.add_failure(key, window_seconds)
+    _check_rate_limit(limiter, key, max_failures, window_seconds, detail)
+
+
 @router.post("/login", response_model=TokenResponse)
 async def login(
     body: LoginRequest,
@@ -111,32 +140,23 @@ async def login(
     """Login with username and password."""
     limiter: InMemoryRateLimiter = request.app.state.rate_limiter
     client_key = f"login:{_get_client_ip(request)}:{body.username.lower()}"
-    limited, retry_after = limiter.is_limited(
+    _check_rate_limit(
+        limiter,
         client_key,
         settings.auth_login_max_failures,
         settings.auth_rate_limit_window_seconds,
+        "Too many failed login attempts",
     )
-    if limited:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Too many failed login attempts",
-            headers={"Retry-After": str(retry_after)},
-        )
 
     user = await authenticate_user(session, body.username, body.password)
     if user is None:
-        limiter.add_failure(client_key, settings.auth_rate_limit_window_seconds)
-        limited, retry_after = limiter.is_limited(
+        _record_failure_and_check(
+            limiter,
             client_key,
             settings.auth_login_max_failures,
             settings.auth_rate_limit_window_seconds,
+            "Too many failed login attempts",
         )
-        if limited:
-            raise HTTPException(
-                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail="Too many failed login attempts",
-                headers={"Retry-After": str(retry_after)},
-            )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password",
@@ -223,17 +243,13 @@ async def refresh(
     """Refresh access token using refresh token."""
     limiter: InMemoryRateLimiter = request.app.state.rate_limiter
     client_key = f"refresh:{_get_client_ip(request)}"
-    limited, retry_after = limiter.is_limited(
+    _check_rate_limit(
+        limiter,
         client_key,
         settings.auth_refresh_max_failures,
         settings.auth_rate_limit_window_seconds,
+        "Too many failed refresh attempts",
     )
-    if limited:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Too many failed refresh attempts",
-            headers={"Retry-After": str(retry_after)},
-        )
 
     refresh_token = body.refresh_token if body is not None else None
     if refresh_token is None:
@@ -246,18 +262,13 @@ async def refresh(
 
     tokens = await refresh_tokens(session, refresh_token, settings)
     if tokens is None:
-        limiter.add_failure(client_key, settings.auth_rate_limit_window_seconds)
-        limited, retry_after = limiter.is_limited(
+        _record_failure_and_check(
+            limiter,
             client_key,
             settings.auth_refresh_max_failures,
             settings.auth_rate_limit_window_seconds,
+            "Too many failed refresh attempts",
         )
-        if limited:
-            raise HTTPException(
-                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail="Too many failed refresh attempts",
-                headers={"Retry-After": str(retry_after)},
-            )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired refresh token",

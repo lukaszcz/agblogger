@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 
 def _configure_logging(debug: bool) -> None:
-    """Configure structured logging."""
+    """Configure application logging."""
     level = logging.DEBUG if debug else logging.INFO
     fmt = "%(asctime)s %(levelname)-8s %(name)s: %(message)s"
     logging.basicConfig(

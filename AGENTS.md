@@ -62,6 +62,7 @@ cd frontend && npm run test:coverage
 ## Testing Guidelines
 
 - **IMPORTANT**: Every new feature should include tests that verify its correctness at the appropriate levels (unit, integration, and possibly system level).
+- **IMPORTANT**: Follow Test Driven Development (TDD). Write failing tests first, implement changes later to make the tests pass.
 - **IMPORTANT**: For every bug found, add a regression test that fails because of the bug, then fix the bug and ensure the test passes.
 - Avoid brittle tests. Test user workflows, not implementation details.
 - Don't leak expected error output into test run output.
