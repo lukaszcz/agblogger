@@ -1,0 +1,213 @@
+"""Auth hardening integration tests."""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+import pytest
+from httpx import ASGITransport, AsyncClient
+
+from backend.config import Settings
+from backend.main import create_app
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
+    from pathlib import Path
+
+
+@pytest.fixture
+def app_settings(tmp_content_dir: Path, tmp_path: Path) -> Settings:
+    """Create hardened auth settings for tests."""
+    posts_dir = tmp_content_dir / "posts"
+    (posts_dir / "hello.md").write_text("# Hello\n")
+    (tmp_content_dir / "labels.toml").write_text("[labels]\n")
+
+    db_path = tmp_path / "test.db"
+    return Settings(
+        secret_key="test-secret",
+        debug=True,
+        database_url=f"sqlite+aiosqlite:///{db_path}",
+        content_dir=tmp_content_dir,
+        frontend_dir=tmp_path / "frontend",
+        admin_username="admin",
+        admin_password="admin123",
+        auth_self_registration=False,
+        auth_invites_enabled=True,
+        auth_login_max_failures=2,
+        auth_refresh_max_failures=2,
+        auth_rate_limit_window_seconds=300,
+    )
+
+
+@pytest.fixture
+async def client(app_settings: Settings) -> AsyncGenerator[AsyncClient]:
+    """Create test HTTP client with initialized app state."""
+    app = create_app(app_settings)
+
+    from backend.database import create_engine as create_db_engine
+    from backend.filesystem.content_manager import ContentManager
+    from backend.models.base import Base
+    from backend.services.auth_service import ensure_admin_user
+    from backend.services.cache_service import rebuild_cache
+
+    engine, session_factory = create_db_engine(app_settings)
+    app.state.engine = engine
+    app.state.session_factory = session_factory
+    app.state.settings = app_settings
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    from sqlalchemy import text
+
+    async with session_factory() as session:
+        await session.execute(
+            text(
+                "CREATE VIRTUAL TABLE IF NOT EXISTS posts_fts USING fts5("
+                "title, excerpt, content, content='posts_cache', content_rowid='id')"
+            )
+        )
+        await session.commit()
+
+    content_manager = ContentManager(content_dir=app_settings.content_dir)
+    app.state.content_manager = content_manager
+
+    async with session_factory() as session:
+        await ensure_admin_user(session, app_settings)
+
+    async with session_factory() as session:
+        await rebuild_cache(session, content_manager)
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+    ) as ac:
+        yield ac
+
+    await engine.dispose()
+
+
+class TestRegistrationPolicy:
+    @pytest.mark.asyncio
+    async def test_register_requires_invite_when_self_registration_disabled(
+        self, client: AsyncClient
+    ) -> None:
+        resp = await client.post(
+            "/api/auth/register",
+            json={
+                "username": "newuser",
+                "email": "new@test.com",
+                "password": "password123",
+            },
+        )
+        assert resp.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_invite_code_allows_registration(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        assert login_resp.status_code == 200
+        access_token = login_resp.json()["access_token"]
+
+        invite_resp = await client.post(
+            "/api/auth/invites",
+            json={},
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+        assert invite_resp.status_code == 201
+        invite_code = invite_resp.json()["invite_code"]
+        csrf_token = client.cookies.get("csrf_token")
+        assert csrf_token is not None
+
+        register_resp = await client.post(
+            "/api/auth/register",
+            json={
+                "username": "invited-user",
+                "email": "invited@test.com",
+                "password": "password123",
+                "invite_code": invite_code,
+            },
+            headers={"X-CSRF-Token": csrf_token},
+        )
+        assert register_resp.status_code == 201
+
+
+class TestCsrf:
+    @pytest.mark.asyncio
+    async def test_cookie_authenticated_post_requires_csrf(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        assert login_resp.status_code == 200
+
+        without_csrf = await client.post(
+            "/api/render/preview",
+            json={"markdown": "# Hello"},
+        )
+        assert without_csrf.status_code == 403
+
+        csrf_token = client.cookies.get("csrf_token")
+        assert csrf_token is not None
+
+        with_csrf = await client.post(
+            "/api/render/preview",
+            json={"markdown": "# Hello"},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+        assert with_csrf.status_code == 200
+
+
+class TestPersonalAccessTokens:
+    @pytest.mark.asyncio
+    async def test_pat_can_authenticate(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        access_token = login_resp.json()["access_token"]
+
+        pat_resp = await client.post(
+            "/api/auth/pats",
+            json={"name": "cli", "expires_days": 30},
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+        assert pat_resp.status_code == 201
+        pat_token = pat_resp.json()["token"]
+
+        me_resp = await client.get(
+            "/api/auth/me",
+            headers={"Authorization": f"Bearer {pat_token}"},
+        )
+        assert me_resp.status_code == 200
+        assert me_resp.json()["username"] == "admin"
+
+
+class TestRateLimiting:
+    @pytest.mark.asyncio
+    async def test_login_failed_attempts_rate_limited(self, client: AsyncClient) -> None:
+        first = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "wrong"},
+        )
+        second = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "wrong"},
+        )
+        assert first.status_code == 401
+        assert second.status_code == 429
+
+    @pytest.mark.asyncio
+    async def test_refresh_failed_attempts_rate_limited(self, client: AsyncClient) -> None:
+        first = await client.post(
+            "/api/auth/refresh",
+            json={"refresh_token": "bad-token"},
+        )
+        second = await client.post(
+            "/api/auth/refresh",
+            json={"refresh_token": "bad-token"},
+        )
+        assert first.status_code == 401
+        assert second.status_code == 429

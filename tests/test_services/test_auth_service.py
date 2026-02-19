@@ -134,6 +134,24 @@ class TestAuthenticateUser:
         await _create_user(session, username="locked", password="realpass")
         assert await authenticate_user(session, "locked", "wrongpass") is None
 
+    async def test_authenticate_user_missing_user_still_checks_password(
+        self, session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        calls: list[tuple[str, str]] = []
+
+        def fake_verify_password(plain_password: str, hashed_password: str) -> bool:
+            calls.append((plain_password, hashed_password))
+            return False
+
+        monkeypatch.setattr(
+            "backend.services.auth_service.verify_password",
+            fake_verify_password,
+        )
+
+        assert await authenticate_user(session, "missing-user", "guess123") is None
+        assert len(calls) == 1
+        assert calls[0][0] == "guess123"
+
 
 class TestTokenLifecycle:
     async def test_create_tokens_stores_refresh_in_db(

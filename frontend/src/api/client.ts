@@ -1,50 +1,80 @@
 import ky, { HTTPError } from 'ky'
 
-async function refreshAccessToken(): Promise<string | null> {
-  const refreshToken = localStorage.getItem('refresh_token')
-  if (!refreshToken) return null
+const UNSAFE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
+
+function readCookie(name: string): string | null {
+  if (typeof document === 'undefined') {
+    return null
+  }
+  const prefix = `${encodeURIComponent(name)}=`
+  const part = document.cookie
+    .split('; ')
+    .find((cookiePart) => cookiePart.startsWith(prefix))
+  if (!part) {
+    return null
+  }
+  return decodeURIComponent(part.slice(prefix.length))
+}
+
+async function refreshAccessToken(): Promise<boolean> {
+  const csrfToken = readCookie('csrf_token')
+  const headers = new Headers()
+  if (csrfToken) {
+    headers.set('X-CSRF-Token', csrfToken)
+  }
 
   try {
-    const resp = await ky
-      .post('api/auth/refresh', {
-        prefixUrl: '/',
-        json: { refresh_token: refreshToken },
-      })
-      .json<{ access_token: string; refresh_token: string; token_type: string }>()
-    localStorage.setItem('access_token', resp.access_token)
-    localStorage.setItem('refresh_token', resp.refresh_token)
-    return resp.access_token
+    await ky.post('auth/refresh', {
+      prefixUrl: '/api',
+      credentials: 'include',
+      headers,
+      json: {},
+    })
+    return true
   } catch {
-    localStorage.removeItem('access_token')
-    localStorage.removeItem('refresh_token')
-    return null
+    return false
   }
 }
 
 const api = ky.create({
   prefixUrl: '/api',
+  credentials: 'include',
   hooks: {
     beforeRequest: [
       (request) => {
-        const token = localStorage.getItem('access_token')
-        if (token) {
-          request.headers.set('Authorization', `Bearer ${token}`)
+        if (UNSAFE_METHODS.has(request.method)) {
+          const csrfToken = readCookie('csrf_token')
+          if (csrfToken) {
+            request.headers.set('X-CSRF-Token', csrfToken)
+          }
         }
       },
     ],
     afterResponse: [
       async (request, _options, response) => {
-        if (response.status === 401 && !request.url.includes('/auth/refresh')) {
-          const newToken = await refreshAccessToken()
-          if (newToken) {
+        const alreadyRetried = request.headers.get('X-Auth-Retry') === '1'
+        if (response.status === 401 && !request.url.includes('/auth/refresh') && !alreadyRetried) {
+          const refreshed = await refreshAccessToken()
+          if (!refreshed) {
+            return response
+          }
+
+          try {
             const headers = new Headers(request.headers)
-            headers.set('Authorization', `Bearer ${newToken}`)
-            return ky(request.url, {
-              method: request.method,
-              headers,
-              body: request.bodyUsed ? undefined : request.body,
+            headers.set('X-Auth-Retry', '1')
+            if (UNSAFE_METHODS.has(request.method)) {
+              const csrfToken = readCookie('csrf_token')
+              if (csrfToken) {
+                headers.set('X-CSRF-Token', csrfToken)
+              }
+            }
+            const retryRequest = new Request(request, { headers })
+            return ky(retryRequest, {
+              credentials: 'include',
               retry: 0,
             })
+          } catch {
+            return response
           }
         }
         return response

@@ -19,8 +19,9 @@ class RegisterRequest(BaseModel):
 
     username: str = Field(min_length=3, max_length=50)
     email: EmailStr
-    password: str = Field(min_length=6)
+    password: str = Field(min_length=6, max_length=200)
     display_name: str | None = None
+    invite_code: str | None = Field(default=None, min_length=1, max_length=200)
 
 
 class TokenResponse(BaseModel):
@@ -34,7 +35,51 @@ class TokenResponse(BaseModel):
 class RefreshRequest(BaseModel):
     """Token refresh request."""
 
-    refresh_token: str
+    refresh_token: str | None = Field(default=None, min_length=1, max_length=512)
+
+
+class LogoutRequest(BaseModel):
+    """Logout request."""
+
+    refresh_token: str | None = Field(default=None, min_length=1, max_length=512)
+
+
+class InviteCreateRequest(BaseModel):
+    """Request to create a registration invite code."""
+
+    expires_days: int | None = Field(default=None, ge=1, le=90)
+
+
+class InviteCreateResponse(BaseModel):
+    """Response containing a new invite code."""
+
+    invite_code: str
+    created_at: str
+    expires_at: str
+
+
+class PersonalAccessTokenCreateRequest(BaseModel):
+    """Request to create a personal access token."""
+
+    name: str = Field(min_length=1, max_length=100)
+    expires_days: int | None = Field(default=30, ge=1, le=3650)
+
+
+class PersonalAccessTokenResponse(BaseModel):
+    """Personal access token metadata."""
+
+    id: int
+    name: str
+    created_at: str
+    expires_at: str | None = None
+    last_used_at: str | None = None
+    revoked_at: str | None = None
+
+
+class PersonalAccessTokenCreateResponse(PersonalAccessTokenResponse):
+    """Created token metadata including one-time plaintext token."""
+
+    token: str
 
 
 class UserResponse(BaseModel):

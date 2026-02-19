@@ -2,10 +2,7 @@ import api from './client'
 import type { TokenResponse, UserResponse } from './client'
 
 export async function login(username: string, password: string): Promise<TokenResponse> {
-  const response = await api.post('auth/login', { json: { username, password } }).json<TokenResponse>()
-  localStorage.setItem('access_token', response.access_token)
-  localStorage.setItem('refresh_token', response.refresh_token)
-  return response
+  return api.post('auth/login', { json: { username, password } }).json<TokenResponse>()
 }
 
 export async function register(
@@ -25,11 +22,6 @@ export async function fetchMe(): Promise<UserResponse> {
   return api.get('auth/me').json<UserResponse>()
 }
 
-export function logout(): void {
-  localStorage.removeItem('access_token')
-  localStorage.removeItem('refresh_token')
-}
-
-export function isAuthenticated(): boolean {
-  return !!localStorage.getItem('access_token')
+export async function logout(): Promise<void> {
+  await api.post('auth/logout', { json: {} })
 }
