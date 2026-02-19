@@ -36,6 +36,25 @@ build:
     uv sync
     @echo "\n✓ Production build complete (frontend/dist/)"
 
+# Build standalone CLI executable for the current platform
+build-cli:
+    uv run pyinstaller \
+        --onefile \
+        --name agblogger-sync \
+        --strip \
+        --distpath dist/cli \
+        --workpath build/cli \
+        --specpath build/cli \
+        --clean \
+        --noconfirm \
+        --exclude-module tkinter \
+        --exclude-module test \
+        --exclude-module unittest \
+        --exclude-module pydoc \
+        --exclude-module multiprocessing \
+        --exclude-module sqlite3 \
+        cli/sync_client.py
+
 # ── Development server ──────────────────────────────────────────────
 
 backend_port := "8000"
