@@ -78,6 +78,7 @@ export default function Header() {
                   onClick={logout}
                   className="p-2 text-muted hover:text-ink transition-colors rounded-lg hover:bg-paper-warm"
                   aria-label="Logout"
+                  title="Log out"
                 >
                   <LogOut size={18} />
                 </button>

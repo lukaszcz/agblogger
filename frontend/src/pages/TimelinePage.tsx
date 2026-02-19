@@ -80,8 +80,25 @@ export default function TimelinePage() {
       <FilterPanel value={filterState} onChange={setFilter} />
 
       {loading ? (
-        <div className="flex items-center justify-center py-24">
-          <div className="w-6 h-6 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
+        <div className="divide-y divide-border/60">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="py-6 animate-pulse">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1 min-w-0 space-y-3">
+                  <div className="h-5 bg-border/50 rounded w-3/5" />
+                  <div className="space-y-2">
+                    <div className="h-3.5 bg-border/40 rounded w-full" />
+                    <div className="h-3.5 bg-border/40 rounded w-4/5" />
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="h-3 bg-border/30 rounded w-20" />
+                    <div className="h-3 bg-border/30 rounded w-16" />
+                  </div>
+                </div>
+                <div className="hidden sm:block w-1 h-12 rounded-full bg-border/30 shrink-0 mt-1" />
+              </div>
+            </div>
+          ))}
         </div>
       ) : error ? (
         <div className="text-center py-24">

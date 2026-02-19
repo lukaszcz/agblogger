@@ -5,11 +5,24 @@ import { searchPosts } from '@/api/posts'
 import type { SearchResult } from '@/api/client'
 
 export default function SearchPage() {
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const query = searchParams.get('q') ?? ''
+  const [inputValue, setInputValue] = useState(query)
   const [results, setResults] = useState<SearchResult[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setInputValue(query)
+  }, [query])
+
+  function handleSearchSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    const trimmed = inputValue.trim()
+    if (trimmed) {
+      setSearchParams({ q: trimmed })
+    }
+  }
 
   useEffect(() => {
     if (!query.trim()) {
@@ -34,17 +47,33 @@ export default function SearchPage() {
 
   return (
     <div className="animate-fade-in">
-      <div className="flex items-center gap-3 mb-8">
-        <Search size={20} className="text-muted" />
-        <h1 className="font-display text-3xl text-ink">
-          {query ? (
-            <>
-              Results for <span className="italic text-accent">"{query}"</span>
-            </>
-          ) : (
-            'Search'
-          )}
-        </h1>
+      <div className="mb-8">
+        <form onSubmit={handleSearchSubmit} className="flex items-center gap-3">
+          <Search size={20} className="text-muted shrink-0" />
+          <input
+            type="text"
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            placeholder="Search posts..."
+            className="flex-1 px-4 py-2.5 text-lg bg-paper-warm border border-border rounded-lg
+                     font-body text-ink placeholder:text-muted
+                     focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20"
+          />
+          <button
+            type="submit"
+            disabled={!inputValue.trim() || loading}
+            className="px-4 py-2.5 text-sm font-medium bg-accent text-white rounded-lg
+                     hover:bg-accent-light disabled:opacity-50 transition-colors"
+          >
+            Search
+          </button>
+        </form>
+        {query && results.length > 0 && !loading && (
+          <p className="mt-3 text-sm text-muted">
+            {results.length} result{results.length !== 1 ? 's' : ''} for{' '}
+            <span className="italic text-accent">&ldquo;{query}&rdquo;</span>
+          </p>
+        )}
       </div>
 
       {loading ? (

@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
@@ -89,12 +90,48 @@ describe('SearchPage', () => {
     consoleSpy.mockRestore()
   })
 
-  it('shows query in heading', async () => {
+  it('shows search input with current query', () => {
+    mockSearchPosts.mockResolvedValue([])
+    renderSearch('react')
+
+    const input = screen.getByPlaceholderText('Search posts...')
+    expect(input).toHaveValue('react')
+  })
+
+  it('shows search input when no query', () => {
+    renderSearch()
+
+    const input = screen.getByPlaceholderText('Search posts...')
+    expect(input).toHaveValue('')
+  })
+
+  it('submit button is disabled when input is empty', () => {
+    renderSearch()
+
+    const button = screen.getByRole('button', { name: 'Search' })
+    expect(button).toBeDisabled()
+  })
+
+  it('allows refining search via input', async () => {
     mockSearchPosts.mockResolvedValue([])
     renderSearch('react')
 
     await waitFor(() => {
-      expect(screen.getByText('"react"')).toBeInTheDocument()
+      expect(screen.getByPlaceholderText('Search posts...')).toHaveValue('react')
+    })
+
+    const input = screen.getByPlaceholderText('Search posts...')
+    await userEvent.clear(input)
+    await userEvent.type(input, 'vue')
+    expect(input).toHaveValue('vue')
+  })
+
+  it('shows result count', async () => {
+    mockSearchPosts.mockResolvedValue(mockResults)
+    renderSearch('react')
+
+    await waitFor(() => {
+      expect(screen.getByText(/2 results for/)).toBeInTheDocument()
     })
   })
 })

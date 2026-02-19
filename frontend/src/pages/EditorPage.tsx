@@ -158,6 +158,23 @@ export default function EditorPage() {
     )
   }
 
+  if (!isNew && error) {
+    return (
+      <div className="animate-fade-in text-center py-24">
+        <p className="font-display text-3xl text-muted italic">
+          {error === 'Post not found' ? '404' : 'Error'}
+        </p>
+        <p className="text-sm text-muted mt-2">{error}</p>
+        <button
+          onClick={() => void navigate(-1)}
+          className="text-accent text-sm hover:underline mt-4 inline-block"
+        >
+          Go back
+        </button>
+      </div>
+    )
+  }
+
   return (
     <div className="animate-fade-in">
       <div className="flex items-center justify-between mb-4">
