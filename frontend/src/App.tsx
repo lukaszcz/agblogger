@@ -6,9 +6,8 @@ import PostPage from '@/pages/PostPage'
 import PageViewPage from '@/pages/PageViewPage'
 import SearchPage from '@/pages/SearchPage'
 import LoginPage from '@/pages/LoginPage'
-import LabelListPage from '@/pages/LabelListPage'
 import LabelPostsPage from '@/pages/LabelPostsPage'
-import LabelGraphPage from '@/pages/LabelGraphPage'
+import LabelsPage from '@/pages/LabelsPage'
 import LabelSettingsPage from '@/pages/LabelSettingsPage'
 import EditorPage from '@/pages/EditorPage'
 import { useSiteStore } from '@/stores/siteStore'
@@ -34,8 +33,7 @@ export default function App() {
             <Route path="/page/:pageId" element={<PageViewPage />} />
             <Route path="/search" element={<SearchPage />} />
             <Route path="/login" element={<LoginPage />} />
-            <Route path="/labels" element={<LabelListPage />} />
-            <Route path="/labels/graph" element={<LabelGraphPage />} />
+            <Route path="/labels" element={<LabelsPage />} />
             <Route path="/labels/:labelId/settings" element={<LabelSettingsPage />} />
             <Route path="/labels/:labelId" element={<LabelPostsPage />} />
             <Route path="/editor/*" element={<EditorPage />} />
