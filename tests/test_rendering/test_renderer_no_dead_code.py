@@ -29,16 +29,16 @@ class TestRendererModule:
 
         assert inspect.iscoroutinefunction(render_markdown)
 
-    def test_module_exports_only_render_markdown(self) -> None:
-        """The only public function should be render_markdown."""
+    def test_module_public_functions(self) -> None:
+        """The public functions should be render_markdown and rewrite_relative_urls."""
         from backend.pandoc import renderer
 
-        public_functions = [
+        public_functions = sorted(
             name
             for name, obj in inspect.getmembers(renderer, inspect.isfunction)
             if not name.startswith("_")
-        ]
-        assert public_functions == ["render_markdown"]
+        )
+        assert public_functions == ["render_markdown", "rewrite_relative_urls"]
 
     def test_missing_pandoc_raises_runtime_error(self) -> None:
         """FileNotFoundError from subprocess should become RuntimeError."""

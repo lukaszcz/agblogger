@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import html
 import logging
+import posixpath
 import re
 import subprocess
 from html.parser import HTMLParser
@@ -236,3 +237,35 @@ def _add_heading_anchors(html: str) -> str:
         html,
         flags=re.DOTALL,
     )
+
+
+_SKIP_PREFIXES = ("/", "#", "data:", "http:", "https:", "mailto:", "tel:")
+
+
+def rewrite_relative_urls(html: str, file_path: str) -> str:
+    """Rewrite relative src and href attributes in HTML to absolute /api/content/ paths.
+
+    Args:
+        html: Rendered HTML string.
+        file_path: Post's path relative to the content directory,
+            e.g. ``posts/2026-02-20-my-post/index.md``.
+
+    Returns:
+        HTML with relative URLs resolved to ``/api/content/{resolved_path}``.
+    """
+    base_dir = posixpath.dirname(file_path)
+
+    def _replace(match: re.Match[str]) -> str:
+        attr = match.group(1)
+        value = match.group(2)
+
+        if any(value.startswith(prefix) for prefix in _SKIP_PREFIXES):
+            return match.group(0)
+
+        # Strip leading ./ if present
+        relative = value.lstrip("./") if value.startswith("./") else value
+
+        resolved = posixpath.normpath(posixpath.join(base_dir, relative))
+        return f'{attr}="/api/content/{resolved}"'
+
+    return re.sub(r'(src|href)="([^"]*)"', _replace, html)

@@ -11,7 +11,7 @@ from sqlalchemy import delete, text
 from backend.filesystem.content_manager import ContentManager, hash_content
 from backend.models.label import LabelCache, LabelParentCache, PostLabelCache
 from backend.models.post import PostCache
-from backend.pandoc.renderer import render_markdown
+from backend.pandoc.renderer import render_markdown, rewrite_relative_urls
 from backend.services.dag import break_cycles
 from backend.services.label_service import ensure_label_cache_entry
 
@@ -90,6 +90,8 @@ async def rebuild_cache(
         # Render HTML
         rendered_html = await render_markdown(post_data.content)
         rendered_excerpt = await render_markdown(content_manager.get_markdown_excerpt(post_data))
+        rendered_html = rewrite_relative_urls(rendered_html, post_data.file_path)
+        rendered_excerpt = rewrite_relative_urls(rendered_excerpt, post_data.file_path)
 
         post = PostCache(
             file_path=post_data.file_path,

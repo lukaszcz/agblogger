@@ -26,7 +26,7 @@ from backend.filesystem.frontmatter import (
 from backend.models.label import PostLabelCache
 from backend.models.post import PostCache
 from backend.models.user import User
-from backend.pandoc.renderer import render_markdown
+from backend.pandoc.renderer import render_markdown, rewrite_relative_urls
 from backend.schemas.post import (
     PostCreate,
     PostDetail,
@@ -218,6 +218,8 @@ async def create_post_endpoint(
     md_excerpt = generate_markdown_excerpt(post_data.content)
     rendered_excerpt = await render_markdown(md_excerpt) if md_excerpt else ""
     rendered_html = await render_markdown(post_data.content)
+    rendered_excerpt = rewrite_relative_urls(rendered_excerpt, body.file_path)
+    rendered_html = rewrite_relative_urls(rendered_html, body.file_path)
 
     serialized = serialize_post(post_data)
     post = PostCache(
@@ -314,6 +316,8 @@ async def update_post_endpoint(
     md_excerpt = generate_markdown_excerpt(post_data.content)
     rendered_excerpt = await render_markdown(md_excerpt) if md_excerpt else ""
     rendered_html = await render_markdown(post_data.content)
+    rendered_excerpt = rewrite_relative_urls(rendered_excerpt, file_path)
+    rendered_html = rewrite_relative_urls(rendered_html, file_path)
     previous_title = existing.title
     previous_content = existing_post_data.content if existing_post_data else ""
 
