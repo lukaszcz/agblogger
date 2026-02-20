@@ -1348,6 +1348,246 @@ class TestSyncSecurity:
         assert resp.status_code == 400
 
 
+class TestAdmin:
+    @pytest.mark.asyncio
+    async def test_get_site_settings_requires_admin(self, client: AsyncClient) -> None:
+        resp = await client.get("/api/admin/site")
+        assert resp.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_get_site_settings(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+
+        resp = await client.get(
+            "/api/admin/site",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["title"] == "Test Blog"
+        assert "timezone" in data
+
+    @pytest.mark.asyncio
+    async def test_update_site_settings(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+
+        resp = await client.put(
+            "/api/admin/site",
+            json={
+                "title": "Updated Blog",
+                "description": "New desc",
+                "default_author": "Admin",
+                "timezone": "US/Eastern",
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["title"] == "Updated Blog"
+
+        config_resp = await client.get("/api/pages")
+        assert config_resp.json()["title"] == "Updated Blog"
+
+    @pytest.mark.asyncio
+    async def test_get_admin_pages(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+
+        resp = await client.get(
+            "/api/admin/pages",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "pages" in data
+        assert len(data["pages"]) >= 1
+
+    @pytest.mark.asyncio
+    async def test_create_page(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+
+        resp = await client.post(
+            "/api/admin/pages",
+            json={"id": "contact", "title": "Contact"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 201
+        assert resp.json()["id"] == "contact"
+
+    @pytest.mark.asyncio
+    async def test_create_duplicate_page_returns_409(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        await client.post(
+            "/api/admin/pages",
+            json={"id": "dup-page", "title": "Dup"},
+            headers=headers,
+        )
+        resp = await client.post(
+            "/api/admin/pages",
+            json={"id": "dup-page", "title": "Dup"},
+            headers=headers,
+        )
+        assert resp.status_code == 409
+
+    @pytest.mark.asyncio
+    async def test_update_page(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        await client.post(
+            "/api/admin/pages",
+            json={"id": "editable", "title": "Editable"},
+            headers=headers,
+        )
+
+        resp = await client.put(
+            "/api/admin/pages/editable",
+            json={"title": "Updated Title", "content": "# Updated\n\nNew content."},
+            headers=headers,
+        )
+        assert resp.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_delete_page(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        await client.post(
+            "/api/admin/pages",
+            json={"id": "deleteme", "title": "Delete Me"},
+            headers=headers,
+        )
+        resp = await client.delete(
+            "/api/admin/pages/deleteme",
+            headers=headers,
+        )
+        assert resp.status_code == 204
+
+    @pytest.mark.asyncio
+    async def test_delete_builtin_page_returns_400(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+
+        resp = await client.delete(
+            "/api/admin/pages/timeline",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_update_page_order(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+
+        resp = await client.put(
+            "/api/admin/pages/order",
+            json={
+                "pages": [
+                    {"id": "timeline", "title": "Home"},
+                ]
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_change_password(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+
+        resp = await client.put(
+            "/api/admin/password",
+            json={
+                "current_password": "admin123",
+                "new_password": "newpassword123",
+                "confirm_password": "newpassword123",
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+
+        login2 = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "newpassword123"},
+        )
+        assert login2.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_change_password_wrong_current(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+
+        resp = await client.put(
+            "/api/admin/password",
+            json={
+                "current_password": "wrongpassword",
+                "new_password": "newpassword123",
+                "confirm_password": "newpassword123",
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_change_password_mismatch(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+
+        resp = await client.put(
+            "/api/admin/password",
+            json={
+                "current_password": "admin123",
+                "new_password": "newpassword123",
+                "confirm_password": "differentpassword",
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 400
+
+
 class TestSearchAfterDelete:
     @pytest.mark.asyncio
     async def test_search_does_not_find_deleted_post(self, client: AsyncClient) -> None:
