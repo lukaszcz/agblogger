@@ -39,6 +39,7 @@ from backend.services.datetime_service import format_iso, now_utc
 from backend.services.git_service import GitService
 from backend.services.label_service import ensure_label_cache_entry
 from backend.services.post_service import get_post, list_posts, search_posts
+from backend.services.slug_service import generate_post_path
 
 logger = logging.getLogger(__name__)
 
@@ -196,7 +197,11 @@ async def create_post_endpoint(
     user: Annotated[User, Depends(require_auth)],
 ) -> PostDetail:
     """Create a new post."""
-    existing = await session.execute(select(PostCache).where(PostCache.file_path == body.file_path))
+    posts_dir = content_manager.content_dir / "posts"
+    post_path = generate_post_path(body.title, posts_dir)
+    file_path = str(post_path.relative_to(content_manager.content_dir))
+
+    existing = await session.execute(select(PostCache).where(PostCache.file_path == file_path))
     if existing.scalar_one_or_none() is not None:
         raise HTTPException(status_code=409, detail="A post with this file path already exists")
 
@@ -212,18 +217,18 @@ async def create_post_endpoint(
         author=author,
         labels=body.labels,
         is_draft=body.is_draft,
-        file_path=body.file_path,
+        file_path=file_path,
     )
 
     md_excerpt = generate_markdown_excerpt(post_data.content)
     rendered_excerpt = await render_markdown(md_excerpt) if md_excerpt else ""
     rendered_html = await render_markdown(post_data.content)
-    rendered_excerpt = rewrite_relative_urls(rendered_excerpt, body.file_path)
-    rendered_html = rewrite_relative_urls(rendered_html, body.file_path)
+    rendered_excerpt = rewrite_relative_urls(rendered_excerpt, file_path)
+    rendered_html = rewrite_relative_urls(rendered_html, file_path)
 
     serialized = serialize_post(post_data)
     post = PostCache(
-        file_path=body.file_path,
+        file_path=file_path,
         title=post_data.title,
         author=post_data.author,
         created_at=post_data.created_at,
@@ -244,15 +249,15 @@ async def create_post_endpoint(
     )
 
     try:
-        content_manager.write_post(body.file_path, post_data)
+        content_manager.write_post(file_path, post_data)
     except Exception as exc:
-        logger.error("Failed to write post %s: %s", body.file_path, exc)
+        logger.error("Failed to write post %s: %s", file_path, exc)
         await session.rollback()
         raise HTTPException(status_code=500, detail="Failed to write post file") from exc
 
     await session.commit()
     await session.refresh(post)
-    git_service.try_commit(f"Create post: {body.file_path}")
+    git_service.try_commit(f"Create post: {file_path}")
 
     return PostDetail(
         id=post.id,

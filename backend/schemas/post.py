@@ -42,12 +42,6 @@ class PostEditResponse(BaseModel):
 class PostCreate(BaseModel):
     """Request to create a new post."""
 
-    file_path: str = Field(
-        min_length=1,
-        max_length=500,
-        pattern=r"^posts/.*\.md$",
-        description="Relative path under content/, e.g. posts/my-post.md",
-    )
     title: str = Field(
         min_length=1,
         max_length=500,

@@ -482,7 +482,6 @@ class TestPostCRUD:
         resp = await client.post(
             "/api/posts",
             json={
-                "file_path": "posts/new-test.md",
                 "title": "New Post",
                 "body": "Content here.\n",
                 "labels": [],
@@ -498,7 +497,6 @@ class TestPostCRUD:
         resp = await client.post(
             "/api/posts",
             json={
-                "file_path": "posts/no-auth.md",
                 "title": "No Auth",
                 "body": "Content.\n",
                 "labels": [],
@@ -557,10 +555,9 @@ class TestPostCRUD:
         token = login_resp.json()["access_token"]
 
         # Create a post to delete
-        await client.post(
+        create_resp = await client.post(
             "/api/posts",
             json={
-                "file_path": "posts/to-delete.md",
                 "title": "Delete Me",
                 "body": "Content.\n",
                 "labels": [],
@@ -568,9 +565,10 @@ class TestPostCRUD:
             },
             headers={"Authorization": f"Bearer {token}"},
         )
+        file_path = create_resp.json()["file_path"]
 
         resp = await client.delete(
-            "/api/posts/posts/to-delete.md",
+            f"/api/posts/{file_path}",
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 204
@@ -640,7 +638,6 @@ class TestPostCRUD:
         resp = await client.post(
             "/api/posts",
             json={
-                "file_path": "posts/title-test.md",
                 "title": "My Explicit Title",
                 "body": "Content without heading.",
                 "labels": [],
@@ -661,7 +658,6 @@ class TestPostCRUD:
         resp = await client.post(
             "/api/posts",
             json={
-                "file_path": "posts/no-title.md",
                 "body": "Content.",
                 "labels": [],
                 "is_draft": False,
@@ -680,7 +676,6 @@ class TestPostCRUD:
         resp = await client.post(
             "/api/posts",
             json={
-                "file_path": "posts/ws-title.md",
                 "title": "   ",
                 "body": "Content.",
                 "labels": [],
@@ -700,7 +695,6 @@ class TestPostCRUD:
         resp = await client.post(
             "/api/posts",
             json={
-                "file_path": "posts/long-title.md",
                 "title": "A" * 501,
                 "body": "Content.",
                 "labels": [],
@@ -756,7 +750,6 @@ class TestPostCRUD:
         resp = await client.post(
             "/api/posts",
             json={
-                "file_path": "posts/structured-new.md",
                 "title": "Structured Post",
                 "body": "Content here.",
                 "labels": ["swe"],
@@ -803,10 +796,9 @@ class TestPostCRUD:
         token = login_resp.json()["access_token"]
 
         # Create a post with labels and draft
-        await client.post(
+        create_resp = await client.post(
             "/api/posts",
             json={
-                "file_path": "posts/roundtrip-test.md",
                 "title": "Roundtrip",
                 "body": "Verify all fields survive.",
                 "labels": ["swe"],
@@ -814,15 +806,16 @@ class TestPostCRUD:
             },
             headers={"Authorization": f"Bearer {token}"},
         )
+        file_path = create_resp.json()["file_path"]
 
         # Retrieve via /edit and verify all fields round-tripped
         resp = await client.get(
-            "/api/posts/posts/roundtrip-test.md/edit",
+            f"/api/posts/{file_path}/edit",
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 200
         data = resp.json()
-        assert data["file_path"] == "posts/roundtrip-test.md"
+        assert data["file_path"] == file_path
         assert data["title"] == "Roundtrip"
         assert "Verify all fields survive." in data["body"]
         assert "# Roundtrip" not in data["body"]
@@ -843,7 +836,6 @@ class TestPostCRUD:
         resp = await client.post(
             "/api/posts",
             json={
-                "file_path": "posts/draft-test.md",
                 "title": "Draft Post",
                 "body": "This is a draft.",
                 "labels": [],
@@ -854,10 +846,11 @@ class TestPostCRUD:
         assert resp.status_code == 201
         data = resp.json()
         assert data["is_draft"] is True
+        file_path = data["file_path"]
 
         # Verify via /edit endpoint
         edit_resp = await client.get(
-            "/api/posts/posts/draft-test.md/edit",
+            f"/api/posts/{file_path}/edit",
             headers={"Authorization": f"Bearer {token}"},
         )
         assert edit_resp.status_code == 200
@@ -876,7 +869,6 @@ class TestPostCRUD:
         create_resp = await client.post(
             "/api/posts",
             json={
-                "file_path": "posts/cache-create.md",
                 "title": "Cache Create",
                 "body": "Body.\n",
                 "labels": ["cache-create"],
@@ -885,11 +877,12 @@ class TestPostCRUD:
             headers=headers,
         )
         assert create_resp.status_code == 201
+        created_file_path = create_resp.json()["file_path"]
 
         filtered_resp = await client.get("/api/posts", params={"labels": "cache-create"})
         assert filtered_resp.status_code == 200
         filtered_paths = [post["file_path"] for post in filtered_resp.json()["posts"]]
-        assert "posts/cache-create.md" in filtered_paths
+        assert created_file_path in filtered_paths
 
         label_resp = await client.get("/api/labels/cache-create")
         assert label_resp.status_code == 200
@@ -1266,7 +1259,6 @@ class TestSearch:
         create_resp = await client.post(
             "/api/posts",
             json={
-                "file_path": "posts/search-fresh.md",
                 "title": "Search Fresh",
                 "body": "uniquekeycreate987\n",
                 "labels": [],
@@ -1275,11 +1267,12 @@ class TestSearch:
             headers={"Authorization": f"Bearer {token}"},
         )
         assert create_resp.status_code == 201
+        created_file_path = create_resp.json()["file_path"]
 
         search_resp = await client.get("/api/posts/search", params={"q": "uniquekeycreate987"})
         assert search_resp.status_code == 200
         file_paths = [result["file_path"] for result in search_resp.json()]
-        assert "posts/search-fresh.md" in file_paths
+        assert created_file_path in file_paths
 
     @pytest.mark.asyncio
     async def test_search_reflects_post_update(self, client: AsyncClient) -> None:
@@ -1733,7 +1726,6 @@ class TestSearchAfterDelete:
         create_resp = await client.post(
             "/api/posts",
             json={
-                "file_path": "posts/fts-delete-test.md",
                 "title": "FTS Delete Test",
                 "body": "uniqueftsdeletekey999\n",
                 "labels": [],
@@ -1742,6 +1734,7 @@ class TestSearchAfterDelete:
             headers=headers,
         )
         assert create_resp.status_code == 201
+        file_path = create_resp.json()["file_path"]
 
         # Verify it's searchable
         search_resp = await client.get("/api/posts/search", params={"q": "uniqueftsdeletekey999"})
@@ -1749,7 +1742,7 @@ class TestSearchAfterDelete:
         assert len(search_resp.json()) >= 1
 
         # Delete the post
-        delete_resp = await client.delete("/api/posts/posts/fts-delete-test.md", headers=headers)
+        delete_resp = await client.delete(f"/api/posts/{file_path}", headers=headers)
         assert delete_resp.status_code == 204
 
         # Verify it's no longer searchable

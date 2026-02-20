@@ -136,7 +136,6 @@ class TestDraftVisibility:
         create_resp = await client.post(
             "/api/posts",
             json={
-                "file_path": "posts/private-draft.md",
                 "title": "Private Draft",
                 "body": "Top secret.",
                 "labels": [],
@@ -145,13 +144,14 @@ class TestDraftVisibility:
             headers={"Authorization": f"Bearer {token}"},
         )
         assert create_resp.status_code == 201
+        file_path = create_resp.json()["file_path"]
 
         client.cookies.clear()
-        unauth_resp = await client.get("/api/posts/posts/private-draft.md")
+        unauth_resp = await client.get(f"/api/posts/{file_path}")
         assert unauth_resp.status_code == 404
 
         auth_resp = await client.get(
-            "/api/posts/posts/private-draft.md",
+            f"/api/posts/{file_path}",
             headers={"Authorization": f"Bearer {token}"},
         )
         assert auth_resp.status_code == 200
