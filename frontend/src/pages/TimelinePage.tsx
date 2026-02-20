@@ -1,17 +1,27 @@
-import { useEffect, useState, useCallback } from 'react'
-import { useSearchParams } from 'react-router-dom'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { useEffect, useState, useCallback, useRef } from 'react'
+import { useSearchParams, useNavigate } from 'react-router-dom'
+import { ChevronLeft, ChevronRight, Upload } from 'lucide-react'
 import PostCard from '@/components/posts/PostCard'
 import FilterPanel, { EMPTY_FILTER, type FilterState } from '@/components/filters/FilterPanel'
-import { fetchPosts } from '@/api/posts'
+import { fetchPosts, uploadPost } from '@/api/posts'
+import { HTTPError } from '@/api/client'
 import type { PostListResponse } from '@/api/client'
+import { useAuthStore } from '@/stores/authStore'
 
 export default function TimelinePage() {
   const [searchParams, setSearchParams] = useSearchParams()
+  const navigate = useNavigate()
+  const user = useAuthStore((s) => s.user)
   const [data, setData] = useState<PostListResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [retryCount, setRetryCount] = useState(0)
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const [titlePrompt, setTitlePrompt] = useState<{ files: File[] } | null>(null)
+  const [promptTitle, setPromptTitle] = useState('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const folderInputRef = useRef<HTMLInputElement>(null)
 
   // Parse filter state from URL
   const page = Number(searchParams.get('page') ?? '1')
@@ -75,9 +85,115 @@ export default function TimelinePage() {
     setSearchParams(params)
   }
 
+  async function handleUpload(files: FileList | File[]) {
+    const fileArray = Array.from(files)
+    if (fileArray.length === 0) return
+
+    setUploading(true)
+    setUploadError(null)
+    try {
+      const result = await uploadPost(fileArray)
+      void navigate(`/post/${result.file_path}`)
+    } catch (err) {
+      if (err instanceof HTTPError) {
+        if (err.response.status === 422) {
+          const body: { detail: string } = await err.response.json()
+          if (body.detail === 'no_title') {
+            setTitlePrompt({ files: fileArray })
+            setPromptTitle('')
+            return
+          }
+          setUploadError(body.detail || 'Invalid file format.')
+        } else if (err.response.status === 413) {
+          setUploadError('File too large. Maximum size is 10 MB per file.')
+        } else if (err.response.status === 401) {
+          setUploadError('Session expired. Please log in again.')
+        } else {
+          setUploadError('Failed to upload post.')
+        }
+      } else {
+        setUploadError('Failed to upload post.')
+      }
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  async function handleTitleSubmit() {
+    if (!titlePrompt || !promptTitle.trim()) return
+
+    setUploading(true)
+    setUploadError(null)
+    try {
+      const result = await uploadPost(titlePrompt.files, promptTitle.trim())
+      setTitlePrompt(null)
+      void navigate(`/post/${result.file_path}`)
+    } catch {
+      setUploadError('Failed to upload post.')
+      setTitlePrompt(null)
+    } finally {
+      setUploading(false)
+    }
+  }
+
   return (
     <div>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".md,.markdown"
+        className="hidden"
+        onChange={(e) => {
+          if (e.target.files) void handleUpload(e.target.files)
+          e.target.value = ''
+        }}
+      />
+      <input
+        ref={folderInputRef}
+        type="file"
+        // @ts-expect-error webkitdirectory is not in React types
+        webkitdirectory=""
+        className="hidden"
+        onChange={(e) => {
+          if (e.target.files) void handleUpload(e.target.files)
+          e.target.value = ''
+        }}
+      />
+
       <FilterPanel value={filterState} onChange={setFilter} />
+
+      {user && (
+        <div className="flex items-center gap-2 mb-4">
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium
+                     text-muted border border-border rounded-lg
+                     hover:text-ink hover:bg-paper-warm
+                     disabled:opacity-50 transition-colors"
+          >
+            <Upload size={14} />
+            {uploading ? 'Uploading...' : 'Upload file'}
+          </button>
+          <button
+            onClick={() => folderInputRef.current?.click()}
+            disabled={uploading}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium
+                     text-muted border border-border rounded-lg
+                     hover:text-ink hover:bg-paper-warm
+                     disabled:opacity-50 transition-colors"
+          >
+            <Upload size={14} />
+            {uploading ? 'Uploading...' : 'Upload folder'}
+          </button>
+        </div>
+      )}
+
+      {uploadError && (
+        <div className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+          {uploadError}
+        </div>
+      )}
 
       {loading ? (
         <div className="divide-y divide-border/60">
@@ -161,6 +277,48 @@ export default function TimelinePage() {
             </div>
           )}
         </>
+      )}
+
+      {titlePrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-paper border border-border rounded-xl shadow-xl p-6 max-w-sm mx-4 animate-fade-in">
+            <h2 className="font-display text-xl text-ink mb-2">Enter post title</h2>
+            <p className="text-sm text-muted mb-4">
+              This markdown file has no title. Please enter one:
+            </p>
+            <input
+              type="text"
+              value={promptTitle}
+              onChange={(e) => setPromptTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && promptTitle.trim()) void handleTitleSubmit()
+              }}
+              placeholder="Post title"
+              autoFocus
+              className="w-full px-3 py-2 mb-4 bg-paper-warm border border-border rounded-lg
+                       text-ink text-sm
+                       focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20"
+            />
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setTitlePrompt(null)}
+                disabled={uploading}
+                className="px-4 py-2 text-sm font-medium text-muted hover:text-ink
+                         border border-border rounded-lg transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void handleTitleSubmit()}
+                disabled={uploading || !promptTitle.trim()}
+                className="px-4 py-2 text-sm font-medium text-white bg-accent hover:bg-accent-light
+                         rounded-lg transition-colors disabled:opacity-50"
+              >
+                {uploading ? 'Uploading...' : 'Upload'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

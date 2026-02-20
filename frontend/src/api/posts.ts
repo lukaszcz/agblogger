@@ -59,6 +59,15 @@ export async function deletePost(filePath: string, deleteAssets = false): Promis
   await api.delete(`posts/${filePath}`, { searchParams })
 }
 
+export async function uploadPost(files: File[], title?: string): Promise<PostDetail> {
+  const form = new FormData()
+  for (const file of files) {
+    form.append('files', file)
+  }
+  const searchParams = title ? { title } : undefined
+  return api.post('posts/upload', { body: form, searchParams }).json<PostDetail>()
+}
+
 export async function uploadAssets(
   filePath: string,
   files: File[],
