@@ -40,6 +40,7 @@ export async function searchPosts(query: string, limit = 20): Promise<SearchResu
 
 export async function createPost(params: {
   file_path: string
+  title: string
   body: string
   labels: string[]
   is_draft: boolean
@@ -49,7 +50,7 @@ export async function createPost(params: {
 
 export async function updatePost(
   filePath: string,
-  params: { body: string; labels: string[]; is_draft: boolean },
+  params: { title: string; body: string; labels: string[]; is_draft: boolean },
 ): Promise<PostDetail> {
   return api.put(`posts/${filePath}`, { json: params }).json<PostDetail>()
 }

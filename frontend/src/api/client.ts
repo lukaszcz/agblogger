@@ -199,6 +199,7 @@ export interface SearchResult {
 
 export interface PostEditResponse {
   file_path: string
+  title: string
   body: string
   labels: string[]
   is_draft: boolean
