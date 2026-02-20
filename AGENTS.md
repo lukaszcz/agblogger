@@ -59,6 +59,7 @@ Always start a dev server with `just start`. Remeber to stop a running dev serve
 - PR title format same as commit format (`type: subject`).
 - PR descriptions should summarize changes, rationale and impact. Do not summarize validation or testing. Unless the PR updates documentation only, do not describe documentation changes.
 - Keep commits focused; avoid mixing unrelated changes.
+- Use `git add`, `git commit`, `git merge`, etc. Do NOT use `-C` option with `git`.
 
 ## Security Guidelines
 
@@ -77,5 +78,6 @@ Always start a dev server with `just start`. Remeber to stop a running dev serve
 - Use the frontend-design skill to design the user interface and user experience.
 - Ensure the application works end-to-end. Use the playwright mcp to test in the browser.
 - While waiting on an async operation, UI controls should **ALWAYS** be disabled.
+- Do NOT try to circumvent static analysis tools. Adapt the code to pass `just check` properly - do not ignore checks.
 - When finished browser testing, remove any leftover *.png screenshot files.
 - When finished, verify with `just check` that there are no compilation, formatting or test errors.

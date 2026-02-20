@@ -1,0 +1,1 @@
+Review current usage of type-checking and linting tools across the codebase (frontend/backend/cli). We're aiming for a very strict typing and linting discipline. Could current type-checking and linting options be hardened and made more strict? Provide recommendations.
