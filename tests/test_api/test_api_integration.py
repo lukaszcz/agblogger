@@ -699,7 +699,7 @@ class TestPostCRUD:
         assert resp.status_code == 200
         data = resp.json()
         assert data["file_path"] == "posts/roundtrip-test.md"
-        assert "# Roundtrip" in data["body"]
+        assert "Verify all fields survive." in data["body"]
         assert data["labels"] == ["swe"]
         assert data["is_draft"] is True
         assert data["author"] == "Admin"

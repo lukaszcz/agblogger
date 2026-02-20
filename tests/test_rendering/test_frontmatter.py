@@ -6,7 +6,13 @@ import datetime
 
 import frontmatter
 
-from backend.filesystem.frontmatter import RECOGNIZED_FIELDS, PostData, parse_post, serialize_post
+from backend.filesystem.frontmatter import (
+    RECOGNIZED_FIELDS,
+    PostData,
+    parse_post,
+    serialize_post,
+    strip_leading_heading,
+)
 from backend.services.datetime_service import now_utc
 
 
@@ -248,3 +254,58 @@ class TestSerializePost:
         assert reparsed.is_draft is True
         assert reparsed.author == "Admin"
         assert "Full content here." in reparsed.content
+
+    def test_title_written_to_frontmatter(self) -> None:
+        now = now_utc()
+        post_data = PostData(
+            title="My Title",
+            content="Body content here.",
+            raw_content="",
+            created_at=now,
+            modified_at=now,
+        )
+        result = serialize_post(post_data)
+        parsed = frontmatter.loads(result)
+        assert parsed["title"] == "My Title"
+
+    def test_leading_heading_stripped_from_body(self) -> None:
+        now = now_utc()
+        post_data = PostData(
+            title="My Title",
+            content="# My Title\n\nBody content here.",
+            raw_content="",
+            created_at=now,
+            modified_at=now,
+        )
+        result = serialize_post(post_data)
+        parsed = frontmatter.loads(result)
+        assert not parsed.content.lstrip().startswith("# ")
+        assert "Body content here." in parsed.content
+
+    def test_heading_not_stripped_when_different_from_title(self) -> None:
+        now = now_utc()
+        post_data = PostData(
+            title="My Title",
+            content="# Different Heading\n\nBody content.",
+            raw_content="",
+            created_at=now,
+            modified_at=now,
+        )
+        result = serialize_post(post_data)
+        parsed = frontmatter.loads(result)
+        assert "# Different Heading" in parsed.content
+
+
+class TestStripLeadingHeading:
+    def test_strips_matching_heading(self) -> None:
+        assert strip_leading_heading("# Hello\n\nContent", "Hello") == "\nContent"
+
+    def test_no_strip_when_no_heading(self) -> None:
+        assert strip_leading_heading("Just content", "Title") == "Just content"
+
+    def test_no_strip_when_heading_differs(self) -> None:
+        content = "# Other\n\nContent"
+        assert strip_leading_heading(content, "Title") == content
+
+    def test_strips_with_leading_whitespace(self) -> None:
+        assert strip_leading_heading("\n# Hello\n\nContent", "Hello") == "\nContent"

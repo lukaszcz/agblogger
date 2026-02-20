@@ -56,6 +56,22 @@ def extract_title(content: str, file_path: str = "") -> str:
     return "Untitled"
 
 
+def strip_leading_heading(content: str, title: str) -> str:
+    """Remove the first # heading from content if it matches the title."""
+    lines = content.split("\n")
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("# ") and not stripped.startswith("## "):
+            heading_text = stripped.removeprefix("# ").strip()
+            if heading_text == title:
+                rest = lines[i + 1 :]
+                return "\n".join(rest)
+        break  # First non-blank line isn't a heading — stop
+    return content
+
+
 def parse_labels(raw_labels: list[Any] | None) -> list[str]:
     """Parse label references from front matter.
 
@@ -128,6 +144,7 @@ def parse_post(
 def serialize_post(post_data: PostData) -> str:
     """Serialize PostData back to markdown with YAML front matter."""
     metadata: dict[str, Any] = {
+        "title": post_data.title,
         "created_at": format_datetime(post_data.created_at),
         "modified_at": format_datetime(post_data.modified_at),
     }
@@ -138,7 +155,8 @@ def serialize_post(post_data: PostData) -> str:
     if post_data.is_draft:
         metadata["draft"] = True
 
-    post = frontmatter.Post(post_data.content, **metadata)
+    body = strip_leading_heading(post_data.content, post_data.title)
+    post = frontmatter.Post(body, **metadata)
     return str(frontmatter.dumps(post)) + "\n"
 
 
