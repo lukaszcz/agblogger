@@ -149,6 +149,21 @@ class TestContentServing:
         assert resp.headers["content-type"] == "application/pdf"
 
     @pytest.mark.asyncio
+    async def test_symlink_escape_outside_content_dir_blocked(
+        self, client: AsyncClient, tmp_content_dir: Path, tmp_path: Path
+    ) -> None:
+        """Symlinks pointing outside the content directory are rejected."""
+        outside_file = tmp_path / "secret.txt"
+        outside_file.write_text("sensitive data")
+
+        post_dir = tmp_content_dir / "posts" / "escape"
+        post_dir.mkdir(parents=True, exist_ok=True)
+        (post_dir / "secret.txt").symlink_to(outside_file)
+
+        resp = await client.get("/api/content/posts/escape/secret.txt")
+        assert resp.status_code == 400
+
+    @pytest.mark.asyncio
     async def test_empty_path_returns_403(self, client: AsyncClient) -> None:
         """An empty or root-level path is forbidden."""
         resp = await client.get("/api/content/")

@@ -41,8 +41,7 @@ def _validate_path(file_path: str, content_dir: Path) -> Path:
     full_path = (content_dir / file_path).resolve()
 
     # Verify resolved path stays within the content directory
-    content_resolved = content_dir.resolve()
-    if not str(full_path).startswith(str(content_resolved) + "/"):
+    if not full_path.is_relative_to(content_dir.resolve()):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Path traversal is not allowed",
