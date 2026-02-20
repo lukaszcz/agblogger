@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Save, ArrowLeft } from 'lucide-react'
+import { Save, ArrowLeft, Upload } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 
-import { fetchPostForEdit, createPost, updatePost } from '@/api/posts'
+import { fetchPostForEdit, createPost, updatePost, uploadAssets } from '@/api/posts'
 import { HTTPError } from '@/api/client'
 import api from '@/api/client'
 import { useEditorAutoSave } from '@/hooks/useEditorAutoSave'
@@ -28,10 +28,13 @@ export default function EditorPage() {
   const [modifiedAt, setModifiedAt] = useState<string | null>(null)
   const [loading, setLoading] = useState(!isNew)
   const [saving, setSaving] = useState(false)
+  const [uploading, setUploading] = useState(false)
   const [preview, setPreview] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const renderedPreview = useRenderedHtml(preview)
   const previewRequestRef = useRef(0)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const autoSaveKey = isNew ? 'agblogger:draft:new' : `agblogger:draft:${filePath}`
   const currentState = useMemo<DraftData>(
@@ -163,6 +166,55 @@ export default function EditorPage() {
     } finally {
       setSaving(false)
     }
+  }
+
+  async function handleFileUpload(files: FileList | File[]) {
+    if (!filePath || isNew) return
+    const fileArray = Array.from(files)
+    if (fileArray.length === 0) return
+
+    setUploading(true)
+    setError(null)
+    try {
+      const result = await uploadAssets(filePath, fileArray)
+      // Insert markdown at cursor
+      const textarea = textareaRef.current
+      if (textarea) {
+        const pos = textarea.selectionStart
+        const insertions = result.uploaded.map((name) => {
+          const ext = name.split('.').pop()?.toLowerCase() ?? ''
+          const isImage = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'avif'].includes(ext)
+          return isImage ? `![${name}](${name})` : `[${name}](${name})`
+        })
+        const insertText = insertions.join('\n') + '\n'
+        const before = body.slice(0, pos)
+        const after = body.slice(pos)
+        setBody(before + insertText + after)
+      }
+    } catch (err) {
+      if (err instanceof HTTPError) {
+        if (err.response.status === 413) {
+          setError('File too large. Maximum size is 10 MB.')
+        } else {
+          setError('Failed to upload file. Please try again.')
+        }
+      } else {
+        setError('Failed to upload file.')
+      }
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  function handleDrop(e: React.DragEvent<HTMLTextAreaElement>) {
+    e.preventDefault()
+    if (e.dataTransfer.files.length > 0) {
+      void handleFileUpload(e.dataTransfer.files)
+    }
+  }
+
+  function handleDragOver(e: React.DragEvent<HTMLTextAreaElement>) {
+    e.preventDefault()
   }
 
   function formatDate(iso: string): string {
@@ -310,12 +362,47 @@ export default function EditorPage() {
         </div>
       </div>
 
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          if (e.target.files) {
+            void handleFileUpload(e.target.files)
+          }
+          e.target.value = ''
+        }}
+      />
+
+      {!isNew && filePath && (
+        <div className="mb-4 flex items-center gap-2">
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={saving || uploading}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium
+                     text-muted border border-border rounded-lg
+                     hover:text-ink hover:bg-paper-warm
+                     disabled:opacity-50 transition-colors"
+          >
+            <Upload size={14} />
+            {uploading ? 'Uploading...' : 'Upload files'}
+          </button>
+          {uploading && (
+            <span className="text-xs text-muted">Uploading...</span>
+          )}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4" style={{ minHeight: '60vh' }}>
         <div>
           <textarea
+            ref={textareaRef}
             value={body}
             onChange={(e) => setBody(e.target.value)}
-            disabled={saving}
+            onDrop={handleDrop}
+            onDragOver={handleDragOver}
+            disabled={saving || uploading}
             className="w-full h-full min-h-[60vh] p-4 bg-paper-warm border border-border rounded-lg
                      font-mono text-sm leading-relaxed text-ink resize-none
                      focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20
