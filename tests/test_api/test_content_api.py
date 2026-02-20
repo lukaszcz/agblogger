@@ -1,0 +1,155 @@
+"""Tests for the content file serving endpoint."""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+import pytest
+
+from backend.config import Settings
+from tests.conftest import create_test_client
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
+    from pathlib import Path
+
+    from httpx import AsyncClient
+
+
+@pytest.fixture
+def app_settings(tmp_content_dir: Path, tmp_path: Path) -> Settings:
+    """Create settings for the content API tests."""
+    db_path = tmp_path / "test.db"
+    return Settings(
+        secret_key="test-secret-key",
+        debug=True,
+        database_url=f"sqlite+aiosqlite:///{db_path}",
+        content_dir=tmp_content_dir,
+        frontend_dir=tmp_path / "frontend",
+        admin_username="admin",
+        admin_password="admin123",
+    )
+
+
+@pytest.fixture
+async def client(app_settings: Settings) -> AsyncGenerator[AsyncClient]:
+    """Create test HTTP client with lifespan triggered."""
+    async with create_test_client(app_settings) as ac:
+        yield ac
+
+
+class TestContentServing:
+    """Tests for GET /api/content/{file_path}."""
+
+    @pytest.mark.asyncio
+    async def test_serve_image_from_posts(self, client: AsyncClient, tmp_content_dir: Path) -> None:
+        """Serving an image from posts/ returns 200 with correct content-type."""
+        # Create a post directory with an image
+        post_dir = tmp_content_dir / "posts" / "my-post"
+        post_dir.mkdir(parents=True, exist_ok=True)
+        # Write a minimal 1x1 PNG
+        png_bytes = (
+            b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01"
+            b"\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00"
+            b"\x00\x00\x0cIDATx\x9cc\xf8\x0f\x00\x00\x01\x01\x00"
+            b"\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82"
+        )
+        (post_dir / "photo.png").write_bytes(png_bytes)
+
+        resp = await client.get("/api/content/posts/my-post/photo.png")
+        assert resp.status_code == 200
+        assert resp.headers["content-type"] == "image/png"
+        assert resp.content == png_bytes
+
+    @pytest.mark.asyncio
+    async def test_serve_file_from_assets(self, client: AsyncClient, tmp_content_dir: Path) -> None:
+        """Serving a file from assets/ returns 200."""
+        assets_dir = tmp_content_dir / "assets"
+        assets_dir.mkdir(exist_ok=True)
+        (assets_dir / "style.css").write_text("body { color: red; }")
+
+        resp = await client.get("/api/content/assets/style.css")
+        assert resp.status_code == 200
+        assert "text/css" in resp.headers["content-type"]
+
+    @pytest.mark.asyncio
+    async def test_nonexistent_file_returns_404(self, client: AsyncClient) -> None:
+        """Requesting a file that doesn't exist returns 404."""
+        resp = await client.get("/api/content/posts/no-such-file.png")
+        assert resp.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_path_traversal_is_blocked(self, client: AsyncClient) -> None:
+        """Path traversal attempts with .. are blocked.
+
+        Starlette normalizes ``posts/../index.toml`` to ``index.toml`` before
+        the handler sees it, so the request is rejected as 403 (disallowed
+        prefix) rather than 400.  Either way the traversal is blocked.
+        """
+        resp = await client.get("/api/content/posts/../index.toml")
+        assert resp.status_code in (400, 403)
+
+    @pytest.mark.asyncio
+    async def test_path_traversal_encoded_returns_400(self, client: AsyncClient) -> None:
+        """Path traversal with encoded segments is rejected with 400."""
+        resp = await client.get("/api/content/posts/..%2Findex.toml")
+        assert resp.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_disallowed_prefix_returns_403(self, client: AsyncClient) -> None:
+        """Accessing files outside posts/ and assets/ returns 403."""
+        resp = await client.get("/api/content/index.toml")
+        assert resp.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_labels_toml_returns_403(self, client: AsyncClient) -> None:
+        """Accessing labels.toml is forbidden."""
+        resp = await client.get("/api/content/labels.toml")
+        assert resp.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_no_auth_required(self, client: AsyncClient, tmp_content_dir: Path) -> None:
+        """Content endpoint does not require authentication."""
+        post_dir = tmp_content_dir / "posts" / "public-post"
+        post_dir.mkdir(parents=True, exist_ok=True)
+        (post_dir / "readme.txt").write_text("hello")
+
+        # No auth headers or cookies — should still succeed
+        resp = await client.get("/api/content/posts/public-post/readme.txt")
+        assert resp.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_symlink_following(self, client: AsyncClient, tmp_content_dir: Path) -> None:
+        """Symlinks within the content directory are followed."""
+        # Create a real file
+        post_dir = tmp_content_dir / "posts" / "original"
+        post_dir.mkdir(parents=True, exist_ok=True)
+        real_file = post_dir / "image.png"
+        real_file.write_bytes(b"fake-png-data")
+
+        # Create a symlink in another post directory pointing to the real file
+        link_dir = tmp_content_dir / "posts" / "linked"
+        link_dir.mkdir(parents=True, exist_ok=True)
+        symlink = link_dir / "image.png"
+        symlink.symlink_to(real_file)
+
+        resp = await client.get("/api/content/posts/linked/image.png")
+        assert resp.status_code == 200
+        assert resp.content == b"fake-png-data"
+
+    @pytest.mark.asyncio
+    async def test_serve_pdf_from_posts(self, client: AsyncClient, tmp_content_dir: Path) -> None:
+        """Serving a PDF returns the correct content-type."""
+        post_dir = tmp_content_dir / "posts" / "docs"
+        post_dir.mkdir(parents=True, exist_ok=True)
+        (post_dir / "paper.pdf").write_bytes(b"%PDF-1.4 fake")
+
+        resp = await client.get("/api/content/posts/docs/paper.pdf")
+        assert resp.status_code == 200
+        assert resp.headers["content-type"] == "application/pdf"
+
+    @pytest.mark.asyncio
+    async def test_empty_path_returns_403(self, client: AsyncClient) -> None:
+        """An empty or root-level path is forbidden."""
+        resp = await client.get("/api/content/")
+        assert resp.status_code in (403, 404)

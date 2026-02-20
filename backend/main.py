@@ -18,6 +18,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from backend.api.admin import router as admin_router
 from backend.api.auth import router as auth_router
+from backend.api.content import router as content_router
 from backend.api.crosspost import router as crosspost_router
 from backend.api.health import router as health_router
 from backend.api.labels import router as labels_router
@@ -236,6 +237,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(health_router)
     app.include_router(admin_router)
     app.include_router(auth_router)
+    app.include_router(content_router)
     app.include_router(posts_router)
     app.include_router(labels_router)
     app.include_router(pages_router)
