@@ -45,7 +45,7 @@ agblogger/
 | ORM | SQLAlchemy 2.0 (async) |
 | Database | SQLite via aiosqlite |
 | Migrations | Alembic |
-| Markdown rendering | Pandoc (via pypandoc) |
+| Markdown rendering | Pandoc (via subprocess) |
 | Front matter parsing | python-frontmatter + PyYAML |
 | TOML | stdlib tomllib (read) + tomli-w (write) |
 | Auth | python-jose (JWT) + bcrypt |

@@ -25,3 +25,4 @@
 11. Full codebase review with CodeRabbit (42 issues, ran > 20min) and Codex (4 issues). Improve frontend test coverage.
 12. Proper sync conflict resolution (three-way merge).
 13. Actually look at the code, particularly auth logic. Ask Claude about the codebase.
+14. CodeRabbit review: remove dead code, fix LabelInput error state, update docs.

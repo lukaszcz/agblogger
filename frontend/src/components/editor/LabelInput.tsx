@@ -23,7 +23,10 @@ export default function LabelInput({ value, onChange, disabled }: LabelInputProp
 
   useEffect(() => {
     fetchLabels()
-      .then(setAllLabels)
+      .then((labels) => {
+        setAllLabels(labels)
+        setLoadError(false)
+      })
       .catch(() => setLoadError(true))
   }, [])
 
@@ -69,6 +72,7 @@ export default function LabelInput({ value, onChange, disabled }: LabelInputProp
     try {
       const label = await createLabel({ id: trimmed })
       setAllLabels((prev) => [...prev, label])
+      setLoadError(false)
       addLabel(label.id)
     } catch (err) {
       if (err instanceof HTTPError && err.response.status === 409) {
