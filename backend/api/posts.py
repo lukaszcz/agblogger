@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path as FilePath
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
 from sqlalchemy import delete, select, text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -178,6 +179,45 @@ async def get_post_for_edit(
         modified_at=format_iso(post_data.modified_at),
         author=post_data.author,
     )
+
+
+_MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10 MB
+
+
+@router.post("/{file_path:path}/assets")
+async def upload_assets(
+    file_path: str,
+    files: list[UploadFile],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    content_manager: Annotated[ContentManager, Depends(get_content_manager)],
+    git_service: Annotated[GitService, Depends(get_git_service)],
+    user: Annotated[User, Depends(require_auth)],
+) -> dict[str, list[str]]:
+    """Upload asset files to a post's directory."""
+    # Verify post exists
+    stmt = select(PostCache).where(PostCache.file_path == file_path)
+    result = await session.execute(stmt)
+    if result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="Post not found")
+
+    post_dir = (content_manager.content_dir / file_path).parent
+    uploaded: list[str] = []
+
+    for upload_file in files:
+        content = await upload_file.read()
+        if len(content) > _MAX_UPLOAD_SIZE:
+            raise HTTPException(status_code=413, detail=f"File too large: {upload_file.filename}")
+        filename = FilePath(upload_file.filename or "upload").name
+        if not filename or filename.startswith("."):
+            raise HTTPException(status_code=400, detail=f"Invalid filename: {upload_file.filename}")
+        dest = post_dir / filename
+        dest.write_bytes(content)
+        uploaded.append(filename)
+
+    if uploaded:
+        git_service.try_commit(f"Upload assets to {file_path}: {', '.join(uploaded)}")
+
+    return {"uploaded": uploaded}
 
 
 @router.get("/{file_path:path}", response_model=PostDetail)
