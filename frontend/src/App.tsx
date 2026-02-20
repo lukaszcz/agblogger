@@ -10,13 +10,15 @@ import LabelPostsPage from '@/pages/LabelPostsPage'
 import LabelsPage from '@/pages/LabelsPage'
 import LabelSettingsPage from '@/pages/LabelSettingsPage'
 import EditorPage from '@/pages/EditorPage'
+import AdminPage from '@/pages/AdminPage'
 import { useSiteStore } from '@/stores/siteStore'
 import { useAuthStore } from '@/stores/authStore'
 
 function AppContent() {
   const location = useLocation()
   const isEditor = location.pathname.startsWith('/editor')
-  const mainClass = isEditor
+  const isWide = isEditor || location.pathname === '/admin'
+  const mainClass = isWide
     ? 'max-w-6xl mx-auto px-6 py-10'
     : 'max-w-3xl mx-auto px-6 py-10'
 
@@ -34,6 +36,7 @@ function AppContent() {
           <Route path="/labels/:labelId/settings" element={<LabelSettingsPage />} />
           <Route path="/labels/:labelId" element={<LabelPostsPage />} />
           <Route path="/editor/*" element={<EditorPage />} />
+          <Route path="/admin" element={<AdminPage />} />
         </Routes>
       </main>
 
