@@ -206,7 +206,7 @@ On startup, the lifespan handler:
 | Router | Prefix | Purpose |
 |--------|--------|---------|
 | `auth` | `/api/auth` | Login, invite-based register, refresh/logout, invite management, PAT management, current user |
-| `posts` | `/api/posts` | CRUD, search, listing with pagination/filtering, structured editor data |
+| `posts` | `/api/posts` | CRUD, search, listing with pagination/filtering, structured editor data, file/folder upload |
 | `labels` | `/api/labels` | Label CRUD (create, update, delete), listing, graph data, posts by label |
 | `pages` | `/api/pages` | Site config, rendered page content |
 | `sync` | `/api/sync` | Bidirectional sync protocol (admin-only) |
@@ -405,7 +405,7 @@ Uses `createBrowserRouter` (data router) with `RouterProvider` for full react-ro
 
 | Route | Page | Description |
 |-------|------|-------------|
-| `/` | TimelinePage | Paginated post list with filter panel |
+| `/` | TimelinePage | Paginated post list with filter panel, post upload (file/folder) |
 | `/post/*` | PostPage | Single post view (rendered HTML) |
 | `/page/:pageId` | PageViewPage | Top-level page (About, etc.) |
 | `/search` | SearchPage | Full-text search results |
@@ -574,6 +574,23 @@ GET /api/posts/{path}
     → PostService.get_post()
         → query PostCache (pre-rendered HTML)
         → return cached metadata + HTML
+```
+
+### Uploading a Post (File or Folder)
+
+```
+User selects a .md file or a folder (with index.md + assets) on the Timeline page
+    → POST /api/posts/upload (multipart form data)
+        → Find the markdown file (index.md preferred, else single .md file)
+        → Parse frontmatter via parse_post() (same as sync/cache rebuild)
+        → Normalize: title from frontmatter → first heading → ?title param → 422
+        → Set created_at, modified_at, author, labels, is_draft with defaults
+        → Generate post directory via generate_post_path()
+        → Write all files (normalized markdown + assets)
+        → Create PostCache, render HTML, update FTS index
+        → Git commit
+        → Return PostDetail → frontend navigates to new post
+    → If 422 with "no_title": frontend shows title prompt, retries with ?title=
 ```
 
 ### Uploading Assets (Editor)
