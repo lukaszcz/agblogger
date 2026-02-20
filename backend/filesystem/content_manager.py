@@ -106,6 +106,20 @@ class ContentManager:
             raise ValueError(f"Path traversal detected: {rel_path}")
         return full_path
 
+    def read_post_from_string(
+        self, raw_content: str, *, title_override: str | None = None
+    ) -> PostData:
+        """Parse a post from raw markdown string (for upload)."""
+        post_data = parse_post(
+            raw_content,
+            file_path="",
+            default_tz=self.site_config.timezone,
+            default_author=self.site_config.default_author,
+        )
+        if title_override and (not post_data.title or post_data.title == "Untitled"):
+            post_data.title = title_override
+        return post_data
+
     def read_post(self, rel_path: str) -> PostData | None:
         """Read a single post by relative path."""
         full_path = self._validate_path(rel_path)

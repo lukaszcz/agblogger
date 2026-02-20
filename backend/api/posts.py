@@ -158,6 +158,122 @@ async def search_endpoint(
     return await search_posts(session, q, limit=limit)
 
 
+_MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10 MB
+
+
+@router.post("/upload", response_model=PostDetail, status_code=201)
+async def upload_post(
+    files: list[UploadFile],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    content_manager: Annotated[ContentManager, Depends(get_content_manager)],
+    git_service: Annotated[GitService, Depends(get_git_service)],
+    user: Annotated[User, Depends(require_auth)],
+    title: str | None = Query(None),
+) -> PostDetail:
+    """Upload a markdown post (single file or folder with assets).
+
+    Accepts multipart files. One file must be a ``.md`` file (prefer ``index.md``
+    if multiple). Applies the same YAML frontmatter normalization as the sync
+    protocol: fills missing timestamps, author, and title.
+    """
+    file_data: list[tuple[str, bytes]] = []
+    for upload_file in files:
+        content = await upload_file.read()
+        if len(content) > _MAX_UPLOAD_SIZE:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File too large: {upload_file.filename}",
+            )
+        filename = FilePath(upload_file.filename or "upload").name
+        file_data.append((filename, content))
+
+    md_files = [(name, data) for name, data in file_data if name.endswith(".md")]
+    if not md_files:
+        raise HTTPException(status_code=422, detail="No markdown file found in upload")
+
+    # Prefer index.md
+    md_file = next(
+        ((name, data) for name, data in md_files if name == "index.md"),
+        md_files[0],
+    )
+    md_filename, md_bytes = md_file
+    raw_content = md_bytes.decode("utf-8")
+
+    post_data = content_manager.read_post_from_string(raw_content, title_override=title)
+
+    if post_data.title == "Untitled" and title is None:
+        raise HTTPException(status_code=422, detail="no_title")
+
+    if not post_data.author:
+        post_data.author = user.display_name or user.username
+
+    posts_dir = content_manager.content_dir / "posts"
+    post_path = generate_post_path(post_data.title, posts_dir)
+    file_path = str(post_path.relative_to(content_manager.content_dir))
+    post_data.file_path = file_path
+
+    # Write asset files to directory
+    post_dir = post_path.parent
+    post_dir.mkdir(parents=True, exist_ok=True)
+    for name, data in file_data:
+        if name == md_filename:
+            continue
+        dest = post_dir / FilePath(name).name
+        dest.write_bytes(data)
+
+    md_excerpt = generate_markdown_excerpt(post_data.content)
+    rendered_excerpt = await render_markdown(md_excerpt) if md_excerpt else ""
+    rendered_html = await render_markdown(post_data.content)
+    rendered_excerpt = rewrite_relative_urls(rendered_excerpt, file_path)
+    rendered_html = rewrite_relative_urls(rendered_html, file_path)
+
+    serialized = serialize_post(post_data)
+    post = PostCache(
+        file_path=file_path,
+        title=post_data.title,
+        author=post_data.author,
+        created_at=post_data.created_at,
+        modified_at=post_data.modified_at,
+        is_draft=post_data.is_draft,
+        content_hash=hash_content(serialized),
+        rendered_excerpt=rendered_excerpt,
+        rendered_html=rendered_html,
+    )
+    session.add(post)
+    await session.flush()
+    await _replace_post_labels(session, post_id=post.id, labels=post_data.labels)
+    await _upsert_post_fts(
+        session,
+        post_id=post.id,
+        title=post_data.title,
+        content=post_data.content,
+    )
+
+    try:
+        content_manager.write_post(file_path, post_data)
+    except Exception as exc:
+        logger.error("Failed to write uploaded post %s: %s", file_path, exc)
+        await session.rollback()
+        raise HTTPException(status_code=500, detail="Failed to write post file") from exc
+
+    await session.commit()
+    await session.refresh(post)
+    git_service.try_commit(f"Upload post: {file_path}")
+
+    return PostDetail(
+        id=post.id,
+        file_path=post.file_path,
+        title=post.title,
+        author=post.author,
+        created_at=format_iso(post.created_at),
+        modified_at=format_iso(post.modified_at),
+        is_draft=post.is_draft,
+        rendered_excerpt=post.rendered_excerpt,
+        labels=post_data.labels,
+        rendered_html=rendered_html,
+    )
+
+
 @router.get("/{file_path:path}/edit", response_model=PostEditResponse)
 async def get_post_for_edit(
     file_path: str,
@@ -182,9 +298,6 @@ async def get_post_for_edit(
         modified_at=format_iso(post_data.modified_at),
         author=post_data.author,
     )
-
-
-_MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10 MB
 
 
 @router.post("/{file_path:path}/assets")
