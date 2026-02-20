@@ -17,7 +17,7 @@ from backend.api.deps import (
     get_session,
     require_auth,
 )
-from backend.filesystem.content_manager import ContentManager, get_directory_labels, hash_content
+from backend.filesystem.content_manager import ContentManager, hash_content
 from backend.filesystem.frontmatter import (
     PostData,
     generate_markdown_excerpt,
@@ -53,13 +53,6 @@ _FTS_INSERT_SQL = text(
 )
 
 
-def _merge_post_labels(file_path: str, explicit_labels: list[str]) -> tuple[list[str], set[str]]:
-    """Combine explicit labels with implicit directory labels."""
-    directory_labels = set(get_directory_labels(file_path))
-    merged = list(dict.fromkeys([*explicit_labels, *directory_labels]))
-    return merged, directory_labels
-
-
 async def _ensure_label_cache_entry(session: AsyncSession, label_id: str) -> None:
     """Ensure a label exists in cache tables, creating an implicit label if needed."""
     existing = await session.get(LabelCache, label_id)
@@ -72,17 +65,14 @@ async def _replace_post_labels(
     session: AsyncSession,
     *,
     post_id: int,
-    file_path: str,
-    explicit_labels: list[str],
+    labels: list[str],
 ) -> list[str]:
     """Replace all cached label mappings for a post."""
     await session.execute(delete(PostLabelCache).where(PostLabelCache.post_id == post_id))
-    merged_labels, directory_labels = _merge_post_labels(file_path, explicit_labels)
-    for label_id in merged_labels:
+    for label_id in labels:
         await _ensure_label_cache_entry(session, label_id)
-        source = "directory" if label_id in directory_labels else "frontmatter"
-        session.add(PostLabelCache(post_id=post_id, label_id=label_id, source=source))
-    return merged_labels
+        session.add(PostLabelCache(post_id=post_id, label_id=label_id))
+    return labels
 
 
 async def _upsert_post_fts(
@@ -254,8 +244,7 @@ async def create_post_endpoint(
     cached_labels = await _replace_post_labels(
         session,
         post_id=post.id,
-        file_path=body.file_path,
-        explicit_labels=body.labels,
+        labels=body.labels,
     )
     await _upsert_post_fts(
         session,
@@ -350,8 +339,7 @@ async def update_post_endpoint(
     cached_labels = await _replace_post_labels(
         session,
         post_id=existing.id,
-        file_path=file_path,
-        explicit_labels=body.labels,
+        labels=body.labels,
     )
     await _upsert_post_fts(
         session,

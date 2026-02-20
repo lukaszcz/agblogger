@@ -49,22 +49,6 @@ def discover_posts(content_dir: Path) -> list[Path]:
     return sorted(posts_dir.rglob("*.md"))
 
 
-def get_directory_labels(file_path: str) -> list[str]:
-    """Extract implicit labels from directory path.
-
-    A post at posts/cooking/best-pasta.md gets label 'cooking'.
-    A post at posts/tech/swe/tips.md gets labels 'tech' and 'swe'.
-    """
-    parts = file_path.split("/")
-    # Find 'posts' in path and take directories between posts/ and the file
-    try:
-        posts_idx = parts.index("posts")
-    except ValueError:
-        return []
-    # Directories between posts/ and the file
-    return parts[posts_idx + 1 : -1]
-
-
 @dataclass
 class ContentManager:
     """Manages reading and writing content files."""
@@ -109,11 +93,6 @@ class ContentManager:
             except (UnicodeDecodeError, ValueError, yaml.YAMLError) as exc:
                 logger.warning("Skipping post %s due to parse error: %s", rel_path, exc)
                 continue
-            # Add directory-based implicit labels
-            dir_labels = get_directory_labels(rel_path)
-            for dl in dir_labels:
-                if dl not in post_data.labels:
-                    post_data.labels.append(dl)
             posts.append(post_data)
         return posts
 
@@ -139,10 +118,6 @@ class ContentManager:
             default_tz=self.site_config.timezone,
             default_author=self.site_config.default_author,
         )
-        dir_labels = get_directory_labels(rel_path)
-        for dl in dir_labels:
-            if dl not in post_data.labels:
-                post_data.labels.append(dl)
         return post_data
 
     def write_post(self, rel_path: str, post_data: PostData) -> None:

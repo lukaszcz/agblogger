@@ -99,7 +99,7 @@ content/
 ├── posts/
 │   ├── 2026-02-02-hello-world.md
 │   └── cooking/
-│       └── best-pasta.md   Directory implies #cooking label
+│       └── best-pasta.md
 └── assets/                 Shared assets
 ```
 
@@ -120,7 +120,7 @@ Content here...
 - **Title** is stored as a `title` field in YAML front matter. For backward compatibility, if `title` is absent, it is extracted from the first `# Heading` in the body, falling back to filename derivation. During sync, missing titles are backfilled from the first heading (or filename), and any matching leading heading is stripped from the body.
 - **Labels** are referenced as `#label-id` strings.
 - **Timestamps** use strict ISO output format; lax input is accepted via pendulum.
-- **Directory-based implicit labels**: a post at `posts/cooking/recipe.md` automatically receives the `#cooking` label.
+- **Directories** under `posts/` are for disk organization only — they have no effect on labels or metadata.
 
 ### Label DAG
 
@@ -219,7 +219,7 @@ The database serves as a **cache**, not the source of truth:
 - **`PostsFTS`** — SQLite FTS5 virtual table for full-text search over title and content.
 - **`LabelCache`** — Label with ID, display names (JSON array), and implicit flag.
 - **`LabelParentCache`** — DAG edge table (label_id → parent_id).
-- **`PostLabelCache`** — Many-to-many posts to labels with source tracking ("frontmatter" or "directory").
+- **`PostLabelCache`** — Many-to-many association between posts and labels.
 - **`User`** — Username, email, password hash, display name, admin flag.
 - **`RefreshToken`** — Hashed refresh token with expiry.
 - **`PersonalAccessToken`** — Hashed long-lived API tokens (PATs), with revocation and optional expiry.

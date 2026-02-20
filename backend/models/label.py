@@ -68,7 +68,6 @@ class PostLabelCache(Base):
         ForeignKey("labels_cache.id"),
         primary_key=True,
     )
-    source: Mapped[str] = mapped_column(String, nullable=False, default="frontmatter")
 
     post: Mapped[PostCache] = relationship(back_populates="labels")
     label: Mapped[LabelCache] = relationship(back_populates="post_labels")

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import delete, text
 
-from backend.filesystem.content_manager import ContentManager, get_directory_labels, hash_content
+from backend.filesystem.content_manager import ContentManager, hash_content
 from backend.models.label import LabelCache, LabelParentCache, PostLabelCache
 from backend.models.post import PostCache
 from backend.pandoc.renderer import render_markdown
@@ -123,13 +123,9 @@ async def rebuild_cache(
                 session.add(implicit_label)
                 await session.flush()
 
-            dir_labels = get_directory_labels(post_data.file_path)
-            source = "directory" if label_id in dir_labels else "frontmatter"
-
             post_label = PostLabelCache(
                 post_id=post.id,
                 label_id=label_id,
-                source=source,
             )
             session.add(post_label)
 

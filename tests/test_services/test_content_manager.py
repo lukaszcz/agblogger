@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 from backend.filesystem.content_manager import (
     ContentManager,
     discover_posts,
-    get_directory_labels,
     hash_content,
 )
 from backend.filesystem.frontmatter import (
@@ -30,24 +29,6 @@ class TestHashContent:
 
     def test_hash_different_content(self) -> None:
         assert hash_content("a") != hash_content("b")
-
-
-class TestDirectoryLabels:
-    def test_post_in_subdirectory(self) -> None:
-        labels = get_directory_labels("posts/cooking/best-pasta.md")
-        assert labels == ["cooking"]
-
-    def test_nested_directories(self) -> None:
-        labels = get_directory_labels("posts/tech/swe/tips.md")
-        assert labels == ["tech", "swe"]
-
-    def test_post_in_root(self) -> None:
-        labels = get_directory_labels("posts/hello.md")
-        assert labels == []
-
-    def test_no_posts_dir(self) -> None:
-        labels = get_directory_labels("other/file.md")
-        assert labels == []
 
 
 class TestExtractTitle:
