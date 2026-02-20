@@ -115,6 +115,7 @@ export default function FilterPanel({ value, onChange }: FilterPanelProps) {
             <div className="flex items-center gap-1.5 text-xs font-mono text-muted uppercase tracking-wider mb-2">
               <Tag size={12} />
               Labels
+              <span className="normal-case tracking-normal font-body opacity-70">(incl. sub-labels)</span>
             </div>
 
             <div className="flex items-center gap-2 mb-2">

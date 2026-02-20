@@ -153,6 +153,16 @@ describe('SearchPage', () => {
     expect(excerptEl.innerHTML).toContain('[RENDERED]')
   })
 
+  it('formats dates in human-readable format', async () => {
+    mockSearchPosts.mockResolvedValue(mockResults)
+    renderSearch('react')
+
+    await waitFor(() => {
+      expect(screen.getByText('Feb 1, 2026')).toBeInTheDocument()
+    })
+    expect(screen.getByText('Feb 2, 2026')).toBeInTheDocument()
+  })
+
   it('shows result count', async () => {
     mockSearchPosts.mockResolvedValue(mockResults)
     renderSearch('react')

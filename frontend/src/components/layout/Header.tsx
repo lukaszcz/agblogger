@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { Search, LogIn, LogOut, PenLine, Settings } from 'lucide-react'
+import { Search, LogIn, LogOut, PenLine, Settings, Menu, X } from 'lucide-react'
 import { useState } from 'react'
 import { useSiteStore } from '@/stores/siteStore'
 import { useAuthStore } from '@/stores/authStore'
@@ -13,6 +13,11 @@ export default function Header() {
   const isLoggingOut = useAuthStore((s) => s.isLoggingOut)
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+
+  function closeMobileMenu() {
+    setMobileMenuOpen(false)
+  }
 
   const pages = config?.pages ?? []
   const siteTitle = config?.title ?? 'AgBlogger'
@@ -69,50 +74,60 @@ export default function Header() {
               </button>
             )}
 
-            {user ? (
-              <>
-                <Link
-                  to="/editor/new"
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium
-                           bg-accent text-white rounded-lg hover:bg-accent-light transition-colors"
-                >
-                  <PenLine size={14} />
-                  <span>Write</span>
-                </Link>
-                {user.is_admin && (
+            <div className="hidden md:flex items-center gap-3">
+              {user ? (
+                <>
                   <Link
-                    to="/admin"
-                    className="p-2 text-muted hover:text-ink transition-colors rounded-lg hover:bg-paper-warm"
-                    aria-label="Admin"
-                    title="Admin panel"
+                    to="/editor/new"
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium
+                             bg-accent text-white rounded-lg hover:bg-accent-light transition-colors"
                   >
-                    <Settings size={18} />
+                    <PenLine size={14} />
+                    <span>Write</span>
                   </Link>
-                )}
-                <button
-                  onClick={() => void handleLogout()}
-                  disabled={isLoggingOut}
-                  className="p-2 text-muted hover:text-ink transition-colors rounded-lg hover:bg-paper-warm disabled:opacity-50 disabled:cursor-not-allowed"
-                  aria-label="Logout"
-                  title="Log out"
+                  {user.is_admin && (
+                    <Link
+                      to="/admin"
+                      className="p-2 text-muted hover:text-ink transition-colors rounded-lg hover:bg-paper-warm"
+                      aria-label="Admin"
+                      title="Admin panel"
+                    >
+                      <Settings size={18} />
+                    </Link>
+                  )}
+                  <button
+                    onClick={() => void handleLogout()}
+                    disabled={isLoggingOut}
+                    className="p-2 text-muted hover:text-ink transition-colors rounded-lg hover:bg-paper-warm disabled:opacity-50 disabled:cursor-not-allowed"
+                    aria-label="Logout"
+                    title="Log out"
+                  >
+                    <LogOut size={18} />
+                  </button>
+                </>
+              ) : (
+                <Link
+                  to="/login"
+                  className="p-2 text-muted hover:text-ink transition-colors rounded-lg hover:bg-paper-warm"
+                  aria-label="Login"
                 >
-                  <LogOut size={18} />
-                </button>
-              </>
-            ) : (
-              <Link
-                to="/login"
-                className="p-2 text-muted hover:text-ink transition-colors rounded-lg hover:bg-paper-warm"
-                aria-label="Login"
-              >
-                <LogIn size={18} />
-              </Link>
-            )}
+                  <LogIn size={18} />
+                </Link>
+              )}
+            </div>
+
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="md:hidden p-2 text-muted hover:text-ink transition-colors rounded-lg hover:bg-paper-warm"
+              aria-label="Menu"
+            >
+              {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+            </button>
           </div>
         </div>
 
-        {/* Navigation tabs */}
-        <nav className="flex gap-1 -mb-px">
+        {/* Navigation tabs (desktop) */}
+        <nav className="hidden md:flex gap-1 -mb-px">
           {pages.map((page) => {
             const path =
               page.id === 'timeline'
@@ -144,6 +159,88 @@ export default function Header() {
           })}
         </nav>
       </div>
+
+      {/* Mobile menu */}
+      {mobileMenuOpen && (
+        <div className="md:hidden border-t border-border bg-paper px-6 py-4 space-y-3 animate-fade-in">
+          <nav className="flex flex-col gap-1">
+            {pages.map((page) => {
+              const path =
+                page.id === 'timeline'
+                  ? '/'
+                  : page.id === 'labels'
+                    ? '/labels'
+                    : `/page/${page.id}`
+              const isActive =
+                page.id === 'timeline'
+                  ? location.pathname === '/'
+                  : page.id === 'labels'
+                    ? location.pathname === '/labels' ||
+                      location.pathname.startsWith('/labels/')
+                    : location.pathname === path
+
+              return (
+                <Link
+                  key={page.id}
+                  to={path}
+                  onClick={closeMobileMenu}
+                  className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                    isActive
+                      ? 'bg-accent/10 text-accent'
+                      : 'text-muted hover:text-ink hover:bg-paper-warm'
+                  }`}
+                >
+                  {page.title}
+                </Link>
+              )
+            })}
+          </nav>
+
+          <div className="flex items-center gap-3 pt-2 border-t border-border/50">
+            {user ? (
+              <>
+                <Link
+                  to="/editor/new"
+                  onClick={closeMobileMenu}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium
+                           bg-accent text-white rounded-lg hover:bg-accent-light transition-colors"
+                >
+                  <PenLine size={14} />
+                  <span>Write</span>
+                </Link>
+                {user.is_admin && (
+                  <Link
+                    to="/admin"
+                    onClick={closeMobileMenu}
+                    className="p-2 text-muted hover:text-ink transition-colors rounded-lg hover:bg-paper-warm"
+                    aria-label="Admin"
+                  >
+                    <Settings size={18} />
+                  </Link>
+                )}
+                <button
+                  onClick={() => { closeMobileMenu(); void handleLogout() }}
+                  disabled={isLoggingOut}
+                  className="p-2 text-muted hover:text-ink transition-colors rounded-lg hover:bg-paper-warm disabled:opacity-50"
+                  aria-label="Logout"
+                  title="Log out"
+                >
+                  <LogOut size={18} />
+                </button>
+              </>
+            ) : (
+              <Link
+                to="/login"
+                onClick={closeMobileMenu}
+                className="p-2 text-muted hover:text-ink transition-colors rounded-lg hover:bg-paper-warm"
+                aria-label="Login"
+              >
+                <LogIn size={18} />
+              </Link>
+            )}
+          </div>
+        </div>
+      )}
     </header>
   )
 }

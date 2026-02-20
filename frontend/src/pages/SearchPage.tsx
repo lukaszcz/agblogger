@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import { Search } from 'lucide-react'
+import { format, parseISO } from 'date-fns'
 import { searchPosts } from '@/api/posts'
 import type { SearchResult } from '@/api/client'
 import { useRenderedHtml } from '@/hooks/useKatex'
@@ -98,6 +99,15 @@ export default function SearchPage() {
   )
 }
 
+function formatDate(dateStr: string): string {
+  try {
+    const parsed = parseISO(dateStr.replace(' ', 'T').replace(/([+-])(\d{2})$/, '$1$2:00'))
+    return format(parsed, 'MMM d, yyyy')
+  } catch {
+    return dateStr.split(' ')[0] ?? ''
+  }
+}
+
 function SearchResultItem({ result, index }: { result: SearchResult; index: number }) {
   const renderedExcerpt = useRenderedHtml(result.rendered_excerpt)
 
@@ -115,7 +125,7 @@ function SearchResultItem({ result, index }: { result: SearchResult; index: numb
         />
       )}
       <span className="text-xs text-muted font-mono mt-2 block">
-        {result.created_at.split(' ')[0]}
+        {formatDate(result.created_at)}
       </span>
     </Link>
   )

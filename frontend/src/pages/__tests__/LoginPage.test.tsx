@@ -6,14 +6,26 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 const mockLogin = vi.fn()
 let mockError: string | null = null
 let mockIsLoading = false
+let mockUser: { id: number; username: string } | null = null
+
+const mockNavigate = vi.fn()
+
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom')
+  return {
+    ...actual,
+    useNavigate: () => mockNavigate,
+  }
+})
 
 vi.mock('@/stores/authStore', () => ({
   useAuthStore: (selector: (s: {
     login: typeof mockLogin
     error: string | null
     isLoading: boolean
+    user: typeof mockUser
   }) => unknown) =>
-    selector({ login: mockLogin, error: mockError, isLoading: mockIsLoading }),
+    selector({ login: mockLogin, error: mockError, isLoading: mockIsLoading, user: mockUser }),
 }))
 
 import LoginPage from '../LoginPage'
@@ -29,8 +41,16 @@ function renderLogin() {
 describe('LoginPage', () => {
   beforeEach(() => {
     mockLogin.mockReset()
+    mockNavigate.mockReset()
     mockError = null
     mockIsLoading = false
+    mockUser = null
+  })
+
+  it('redirects to home when already authenticated', () => {
+    mockUser = { id: 1, username: 'admin' }
+    renderLogin()
+    expect(mockNavigate).toHaveBeenCalledWith('/', { replace: true })
   })
 
   it('renders sign in form', () => {

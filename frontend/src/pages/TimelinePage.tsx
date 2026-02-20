@@ -186,6 +186,9 @@ export default function TimelinePage() {
             <Upload size={14} />
             {uploading ? 'Uploading...' : 'Upload folder'}
           </button>
+          {uploading && (
+            <div className="w-4 h-4 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
+          )}
         </div>
       )}
 

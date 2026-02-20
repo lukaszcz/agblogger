@@ -11,6 +11,7 @@ import type { DraftData } from '@/hooks/useEditorAutoSave'
 import { useRenderedHtml } from '@/hooks/useKatex'
 import { useAuthStore } from '@/stores/authStore'
 import LabelInput from '@/components/editor/LabelInput'
+import MarkdownToolbar from '@/components/editor/MarkdownToolbar'
 
 export default function EditorPage() {
   const { '*': filePath } = useParams()
@@ -396,6 +397,12 @@ export default function EditorPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4" style={{ minHeight: '60vh' }}>
         <div>
+          <MarkdownToolbar
+            textareaRef={textareaRef}
+            value={body}
+            onChange={setBody}
+            disabled={saving || uploading}
+          />
           <textarea
             ref={textareaRef}
             value={body}

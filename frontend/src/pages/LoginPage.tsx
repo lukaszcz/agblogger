@@ -1,12 +1,19 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/authStore'
 
 export default function LoginPage() {
   const navigate = useNavigate()
+  const user = useAuthStore((s) => s.user)
   const loginAction = useAuthStore((s) => s.login)
   const error = useAuthStore((s) => s.error)
   const isLoading = useAuthStore((s) => s.isLoading)
+
+  useEffect(() => {
+    if (user) {
+      void navigate('/', { replace: true })
+    }
+  }, [user, navigate])
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
 

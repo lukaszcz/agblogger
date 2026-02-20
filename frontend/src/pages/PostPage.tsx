@@ -110,29 +110,31 @@ export default function PostPage() {
           {post.title}
         </h1>
 
-        <div className="mt-5 flex items-center gap-4 flex-wrap text-sm text-muted">
-          <div className="flex items-center gap-1.5">
-            <Calendar size={14} />
-            <time>{dateStr}</time>
+        <div className="mt-5 text-sm text-muted">
+          <div className="flex items-center gap-4 flex-wrap">
+            <div className="flex items-center gap-1.5">
+              <Calendar size={14} />
+              <time>{dateStr}</time>
+            </div>
+
+            {post.author && (
+              <div className="flex items-center gap-1.5">
+                <User size={14} />
+                <span>{post.author}</span>
+              </div>
+            )}
+
+            {post.labels.length > 0 && (
+              <div className="flex gap-1.5 flex-wrap">
+                {post.labels.map((label) => (
+                  <LabelChip key={label} labelId={label} />
+                ))}
+              </div>
+            )}
           </div>
 
-          {post.author && (
-            <div className="flex items-center gap-1.5">
-              <User size={14} />
-              <span>{post.author}</span>
-            </div>
-          )}
-
-          {post.labels.length > 0 && (
-            <div className="flex gap-1.5 flex-wrap">
-              {post.labels.map((label) => (
-                <LabelChip key={label} labelId={label} />
-              ))}
-            </div>
-          )}
-
           {user && (
-            <div className="flex items-center gap-3 ml-auto">
+            <div className="flex items-center gap-3 mt-3">
               <Link
                 to={`/editor/${post.file_path}`}
                 className="flex items-center gap-1 text-accent hover:underline"
