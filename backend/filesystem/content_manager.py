@@ -128,13 +128,33 @@ class ContentManager:
         full_path.parent.mkdir(parents=True, exist_ok=True)
         full_path.write_text(serialize_post(post_data), encoding="utf-8")
 
-    def delete_post(self, rel_path: str) -> bool:
-        """Delete a post from disk. Returns True if file existed."""
+    def delete_post(self, rel_path: str, *, delete_assets: bool = False) -> bool:
+        """Delete a post from disk.
+
+        If delete_assets is True and the post is index.md, removes the entire
+        directory and any symlinks in the parent directory pointing to it.
+        Otherwise, only the post file itself is removed.
+
+        Returns True if the file existed.
+        """
+        import shutil
+
         full_path = self._validate_path(rel_path)
-        if full_path.exists():
+        if not full_path.exists():
+            return False
+
+        if delete_assets and full_path.name == "index.md":
+            post_dir = full_path.parent
+            resolved_dir = post_dir.resolve()
+            parent = post_dir.parent
+            # Remove symlinks in the parent directory pointing to this directory
+            for item in parent.iterdir():
+                if item.is_symlink() and item.resolve() == resolved_dir:
+                    item.unlink()
+            shutil.rmtree(post_dir)
+        else:
             full_path.unlink()
-            return True
-        return False
+        return True
 
     def read_page(self, page_id: str) -> str | None:
         """Read a top-level page by its ID."""

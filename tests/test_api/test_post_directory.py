@@ -222,3 +222,114 @@ class TestPostDirectoryCreation:
         assert "'" not in dir_name
         assert "?" not in dir_name
         assert "(" not in dir_name
+
+
+class TestPostDirectoryDeletion:
+    """Tests for deleting directory-based posts with and without assets."""
+
+    @pytest.mark.asyncio
+    async def test_delete_with_assets_removes_directory(
+        self, client: AsyncClient, app_settings: Settings
+    ) -> None:
+        """DELETE with delete_assets=true removes entire directory."""
+        token = await _login(client)
+        headers = {"Authorization": f"Bearer {token}"}
+        create_resp = await client.post(
+            "/api/posts",
+            json={"title": "Delete Dir Test", "body": "Content", "labels": [], "is_draft": False},
+            headers=headers,
+        )
+        assert create_resp.status_code == 201
+        file_path = create_resp.json()["file_path"]
+        post_dir = (app_settings.content_dir / file_path).parent
+
+        # Upload an asset
+        await client.post(
+            f"/api/posts/{file_path}/assets",
+            files={"files": ("img.png", b"\x89PNG" + b"\x00" * 10, "image/png")},
+            headers=headers,
+        )
+        assert (post_dir / "img.png").exists()
+
+        resp = await client.delete(
+            f"/api/posts/{file_path}?delete_assets=true",
+            headers=headers,
+        )
+        assert resp.status_code == 204
+        assert not post_dir.exists()
+
+    @pytest.mark.asyncio
+    async def test_delete_without_assets_keeps_directory(
+        self, client: AsyncClient, app_settings: Settings
+    ) -> None:
+        """DELETE without delete_assets keeps directory but removes index.md."""
+        token = await _login(client)
+        headers = {"Authorization": f"Bearer {token}"}
+        create_resp = await client.post(
+            "/api/posts",
+            json={"title": "Keep Dir Test", "body": "Content", "labels": [], "is_draft": False},
+            headers=headers,
+        )
+        assert create_resp.status_code == 201
+        file_path = create_resp.json()["file_path"]
+        post_dir = (app_settings.content_dir / file_path).parent
+
+        # Upload an asset
+        await client.post(
+            f"/api/posts/{file_path}/assets",
+            files={"files": ("img.png", b"\x89PNG" + b"\x00" * 10, "image/png")},
+            headers=headers,
+        )
+
+        resp = await client.delete(
+            f"/api/posts/{file_path}",
+            headers=headers,
+        )
+        assert resp.status_code == 204
+        # Directory still exists with the asset
+        assert post_dir.exists()
+        assert (post_dir / "img.png").exists()
+        # But index.md is gone
+        assert not (post_dir / "index.md").exists()
+
+    @pytest.mark.asyncio
+    async def test_delete_with_assets_cleans_symlinks(
+        self, client: AsyncClient, app_settings: Settings
+    ) -> None:
+        """DELETE with delete_assets=true also removes symlinks pointing to the directory."""
+        token = await _login(client)
+        headers = {"Authorization": f"Bearer {token}"}
+        create_resp = await client.post(
+            "/api/posts",
+            json={"title": "Symlink Cleanup", "body": "Content", "labels": [], "is_draft": False},
+            headers=headers,
+        )
+        assert create_resp.status_code == 201
+        old_path = create_resp.json()["file_path"]
+
+        # Rename to create a symlink
+        update_resp = await client.put(
+            f"/api/posts/{old_path}",
+            json={
+                "title": "Symlink Renamed",
+                "body": "Content",
+                "labels": [],
+                "is_draft": False,
+            },
+            headers=headers,
+        )
+        assert update_resp.status_code == 200
+        new_path = update_resp.json()["file_path"]
+        old_dir = (app_settings.content_dir / old_path).parent
+        assert old_dir.is_symlink()
+
+        # Delete with assets
+        resp = await client.delete(
+            f"/api/posts/{new_path}?delete_assets=true",
+            headers=headers,
+        )
+        assert resp.status_code == 204
+        # Both the actual directory and the symlink should be gone
+        new_dir = (app_settings.content_dir / new_path).parent
+        assert not new_dir.exists()
+        assert not old_dir.exists()

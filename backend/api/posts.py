@@ -474,6 +474,7 @@ async def delete_post_endpoint(
     content_manager: Annotated[ContentManager, Depends(get_content_manager)],
     git_service: Annotated[GitService, Depends(get_git_service)],
     user: Annotated[User, Depends(require_auth)],
+    delete_assets: bool = Query(False),
 ) -> None:
     """Delete a post."""
     stmt = select(PostCache).where(PostCache.file_path == file_path)
@@ -487,7 +488,7 @@ async def delete_post_endpoint(
     old_content = existing_post_data.content if existing_post_data else ""
 
     try:
-        content_manager.delete_post(file_path)
+        content_manager.delete_post(file_path, delete_assets=delete_assets)
     except OSError as exc:
         logger.error("Failed to delete post file %s: %s", file_path, exc)
         raise HTTPException(status_code=500, detail="Failed to delete post file") from exc
