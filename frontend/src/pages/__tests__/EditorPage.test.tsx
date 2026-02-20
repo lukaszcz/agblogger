@@ -115,13 +115,6 @@ describe('EditorPage', () => {
     })
   })
 
-  it('file path input for new post', async () => {
-    renderEditor('/editor/new')
-    await waitFor(() => {
-      expect(screen.getByLabelText('File path')).toHaveValue('posts/')
-    })
-  })
-
   it('default body for new post is empty', async () => {
     renderEditor('/editor/new')
     await waitFor(() => {
@@ -259,38 +252,12 @@ describe('EditorPage', () => {
     })
   })
 
-  it('auto-generates file path from title for new post', async () => {
-    const user = userEvent.setup()
+  it('no file path input for new post', async () => {
     renderEditor('/editor/new')
-
     await waitFor(() => {
       expect(screen.getByLabelText('Title')).toBeInTheDocument()
     })
-
-    await user.type(screen.getByLabelText('Title'), 'My First Post')
-
-    await waitFor(() => {
-      const today = new Date().toISOString().slice(0, 10)
-      expect(screen.getByLabelText('File path')).toHaveValue(`posts/${today}-my-first-post.md`)
-    })
-  })
-
-  it('stops auto-generating path after manual edit', async () => {
-    const user = userEvent.setup()
-    renderEditor('/editor/new')
-
-    await waitFor(() => {
-      expect(screen.getByLabelText('Title')).toBeInTheDocument()
-    })
-
-    // Manually edit the file path
-    await user.clear(screen.getByLabelText('File path'))
-    await user.type(screen.getByLabelText('File path'), 'posts/custom-path.md')
-
-    // Now type a title - path should not change
-    await user.type(screen.getByLabelText('Title'), 'Some Title')
-
-    expect(screen.getByLabelText('File path')).toHaveValue('posts/custom-path.md')
+    expect(screen.queryByLabelText('File path')).not.toBeInTheDocument()
   })
 
   it('enables save button when title is provided', async () => {

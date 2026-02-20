@@ -12,16 +12,6 @@ import { useRenderedHtml } from '@/hooks/useKatex'
 import { useAuthStore } from '@/stores/authStore'
 import LabelInput from '@/components/editor/LabelInput'
 
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .trim()
-    .replace(/[^\w\s-]/g, '')
-    .replace(/[\s_]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-}
-
 export default function EditorPage() {
   const { '*': filePath } = useParams()
   const navigate = useNavigate()
@@ -33,7 +23,6 @@ export default function EditorPage() {
   const [body, setBody] = useState('')
   const [labels, setLabels] = useState<string[]>([])
   const [isDraft, setIsDraft] = useState(false)
-  const [newPath, setNewPath] = useState('posts/')
   const [author, setAuthor] = useState<string | null>(null)
   const [createdAt, setCreatedAt] = useState<string | null>(null)
   const [modifiedAt, setModifiedAt] = useState<string | null>(null)
@@ -43,12 +32,11 @@ export default function EditorPage() {
   const [error, setError] = useState<string | null>(null)
   const renderedPreview = useRenderedHtml(preview)
   const previewRequestRef = useRef(0)
-  const pathManuallyEdited = useRef(false)
 
   const autoSaveKey = isNew ? 'agblogger:draft:new' : `agblogger:draft:${filePath}`
   const currentState = useMemo<DraftData>(
-    () => ({ title, body, labels, isDraft, ...(isNew ? { newPath } : {}) }),
-    [title, body, labels, isDraft, isNew, newPath],
+    () => ({ title, body, labels, isDraft }),
+    [title, body, labels, isDraft],
   )
 
   const handleRestore = useCallback((draft: DraftData) => {
@@ -56,7 +44,6 @@ export default function EditorPage() {
     setBody(draft.body)
     setLabels(draft.labels)
     setIsDraft(draft.isDraft)
-    if (draft.newPath) setNewPath(draft.newPath)
   }, [])
 
   const { isDirty, draftAvailable, draftSavedAt, restoreDraft, discardDraft, markSaved } =
@@ -82,7 +69,6 @@ export default function EditorPage() {
           setBody(data.body)
           setLabels(data.labels)
           setIsDraft(data.is_draft)
-          setNewPath(data.file_path)
           setAuthor(data.author)
           setCreatedAt(data.created_at)
           setModifiedAt(data.modified_at)
@@ -103,16 +89,6 @@ export default function EditorPage() {
       setAuthor(user?.display_name || user?.username || null)
     }
   }, [isNew, user?.display_name, user?.username])
-
-  useEffect(() => {
-    if (isNew && !pathManuallyEdited.current && title) {
-      const date = new Date().toISOString().slice(0, 10)
-      const slug = slugify(title)
-      if (slug) {
-        setNewPath(`posts/${date}-${slug}.md`)
-      }
-    }
-  }, [isNew, title])
 
   useEffect(() => {
     if (!body) return
@@ -136,25 +112,21 @@ export default function EditorPage() {
     setSaving(true)
     setError(null)
     try {
-      const path = isNew ? newPath : filePath
+      let result
       if (isNew) {
-        await createPost({ file_path: path, title, body, labels, is_draft: isDraft })
+        result = await createPost({ title, body, labels, is_draft: isDraft })
       } else {
-        await updatePost(path, { title, body, labels, is_draft: isDraft })
+        result = await updatePost(filePath, { title, body, labels, is_draft: isDraft })
       }
       markSaved()
-      void navigate(`/post/${path}`)
+      void navigate(`/post/${result.file_path}`)
     } catch (err) {
       if (err instanceof HTTPError) {
         const status = err.response.status
         if (status === 401) {
           setError('Session expired. Please log in again.')
         } else if (status === 409) {
-          setError(
-            isNew
-              ? 'A post with this file path already exists.'
-              : 'Conflict: this post was modified elsewhere.',
-          )
+          setError('Conflict: this post was modified elsewhere.')
         } else if (status === 404) {
           setError('Post not found. It may have been deleted.')
         } else if (status === 422) {
@@ -303,29 +275,6 @@ export default function EditorPage() {
                      disabled:opacity-50"
           />
         </div>
-
-        {isNew && (
-          <div>
-            <label htmlFor="filepath" className="block text-xs font-medium text-muted mb-1">
-              File path
-            </label>
-            <input
-              id="filepath"
-              type="text"
-              value={newPath}
-              onChange={(e) => {
-                pathManuallyEdited.current = true
-                setNewPath(e.target.value)
-              }}
-              disabled={saving}
-              placeholder="posts/my-new-post.md"
-              className="w-full px-3 py-2 bg-paper-warm border border-border rounded-lg
-                       text-ink font-mono text-sm
-                       focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20
-                       disabled:opacity-50"
-            />
-          </div>
-        )}
 
         <div>
           <label className="block text-xs font-medium text-muted mb-1">Labels</label>

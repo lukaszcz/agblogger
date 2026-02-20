@@ -8,7 +8,6 @@ export interface DraftData {
   body: string
   labels: string[]
   isDraft: boolean
-  newPath?: string
   savedAt?: string
 }
 
@@ -36,7 +35,6 @@ function statesEqual(a: DraftData, b: DraftData): boolean {
   for (let i = 0; i < a.labels.length; i++) {
     if (a.labels[i] !== b.labels[i]) return false
   }
-  if (a.newPath !== b.newPath) return false
   return true
 }
 

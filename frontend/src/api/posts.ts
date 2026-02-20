@@ -39,7 +39,6 @@ export async function searchPosts(query: string, limit = 20): Promise<SearchResu
 }
 
 export async function createPost(params: {
-  file_path: string
   title: string
   body: string
   labels: string[]
