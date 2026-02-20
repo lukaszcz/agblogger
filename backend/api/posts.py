@@ -19,7 +19,6 @@ from backend.api.deps import (
 from backend.filesystem.content_manager import ContentManager, get_directory_labels, hash_content
 from backend.filesystem.frontmatter import (
     PostData,
-    extract_title,
     generate_markdown_excerpt,
     serialize_post,
 )
@@ -180,6 +179,7 @@ async def get_post_for_edit(
         raise HTTPException(status_code=404, detail="Post not found")
     return PostEditResponse(
         file_path=file_path,
+        title=post_data.title,
         body=post_data.content,
         labels=post_data.labels,
         is_draft=post_data.is_draft,
@@ -218,7 +218,7 @@ async def create_post_endpoint(
     author = user.display_name or user.username
 
     post_data = PostData(
-        title=extract_title(body.body, body.file_path),
+        title=body.title,
         content=body.body,
         raw_content="",
         created_at=now,
@@ -315,7 +315,7 @@ async def update_post_endpoint(
         author = existing.author or user.display_name or user.username
 
     now = now_utc()
-    title = extract_title(body.body, file_path)
+    title = body.title
 
     post_data = PostData(
         title=title,

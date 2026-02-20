@@ -483,7 +483,8 @@ class TestPostCRUD:
             "/api/posts",
             json={
                 "file_path": "posts/new-test.md",
-                "body": "# New Post\n\nContent here.\n",
+                "title": "New Post",
+                "body": "Content here.\n",
                 "labels": [],
                 "is_draft": False,
             },
@@ -498,7 +499,8 @@ class TestPostCRUD:
             "/api/posts",
             json={
                 "file_path": "posts/no-auth.md",
-                "body": "# No Auth\n",
+                "title": "No Auth",
+                "body": "Content.\n",
                 "labels": [],
                 "is_draft": False,
             },
@@ -516,7 +518,8 @@ class TestPostCRUD:
         resp = await client.put(
             "/api/posts/posts/hello.md",
             json={
-                "body": "# Hello World Updated\n\nUpdated content.\n",
+                "title": "Hello World Updated",
+                "body": "Updated content.\n",
                 "labels": ["swe"],
                 "is_draft": False,
             },
@@ -536,7 +539,8 @@ class TestPostCRUD:
         resp = await client.put(
             "/api/posts/posts/nope.md",
             json={
-                "body": "# Nope\n",
+                "title": "Nope",
+                "body": "Content.\n",
                 "labels": [],
                 "is_draft": False,
             },
@@ -557,7 +561,8 @@ class TestPostCRUD:
             "/api/posts",
             json={
                 "file_path": "posts/to-delete.md",
-                "body": "# Delete Me\n",
+                "title": "Delete Me",
+                "body": "Content.\n",
                 "labels": [],
                 "is_draft": False,
             },
@@ -599,6 +604,7 @@ class TestPostCRUD:
         assert resp.status_code == 200
         data = resp.json()
         assert data["file_path"] == "posts/hello.md"
+        assert data["title"] == "Hello World"
         assert "# Hello World" in data["body"]
         assert data["labels"] == ["swe"]
         assert "created_at" in data
@@ -625,6 +631,81 @@ class TestPostCRUD:
         assert resp.status_code == 404
 
     @pytest.mark.asyncio
+    async def test_create_post_with_title_field(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+        resp = await client.post(
+            "/api/posts",
+            json={
+                "file_path": "posts/title-test.md",
+                "title": "My Explicit Title",
+                "body": "Content without heading.",
+                "labels": [],
+                "is_draft": False,
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 201
+        assert resp.json()["title"] == "My Explicit Title"
+
+    @pytest.mark.asyncio
+    async def test_create_post_title_required(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+        resp = await client.post(
+            "/api/posts",
+            json={
+                "file_path": "posts/no-title.md",
+                "body": "Content.",
+                "labels": [],
+                "is_draft": False,
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_get_post_for_edit_returns_title(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+        resp = await client.get(
+            "/api/posts/posts/hello.md/edit",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["title"] == "Hello World"
+
+    @pytest.mark.asyncio
+    async def test_update_post_with_title_field(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+        resp = await client.put(
+            "/api/posts/posts/hello.md",
+            json={
+                "title": "Updated Title",
+                "body": "Updated content.",
+                "labels": ["swe"],
+                "is_draft": False,
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["title"] == "Updated Title"
+
+    @pytest.mark.asyncio
     async def test_create_post_structured(self, client: AsyncClient) -> None:
         login_resp = await client.post(
             "/api/auth/login",
@@ -636,7 +717,8 @@ class TestPostCRUD:
             "/api/posts",
             json={
                 "file_path": "posts/structured-new.md",
-                "body": "# Structured Post\n\nContent here.",
+                "title": "Structured Post",
+                "body": "Content here.",
                 "labels": ["swe"],
                 "is_draft": False,
             },
@@ -660,7 +742,8 @@ class TestPostCRUD:
         resp = await client.put(
             "/api/posts/posts/hello.md",
             json={
-                "body": "# Hello World Structured\n\nUpdated structured content.\n",
+                "title": "Hello World Structured",
+                "body": "Updated structured content.\n",
                 "labels": ["swe"],
                 "is_draft": False,
             },
@@ -684,7 +767,8 @@ class TestPostCRUD:
             "/api/posts",
             json={
                 "file_path": "posts/roundtrip-test.md",
-                "body": "# Roundtrip\n\nVerify all fields survive.",
+                "title": "Roundtrip",
+                "body": "Verify all fields survive.",
                 "labels": ["swe"],
                 "is_draft": True,
             },
@@ -699,6 +783,7 @@ class TestPostCRUD:
         assert resp.status_code == 200
         data = resp.json()
         assert data["file_path"] == "posts/roundtrip-test.md"
+        assert data["title"] == "Roundtrip"
         assert "Verify all fields survive." in data["body"]
         assert data["labels"] == ["swe"]
         assert data["is_draft"] is True
@@ -718,7 +803,8 @@ class TestPostCRUD:
             "/api/posts",
             json={
                 "file_path": "posts/draft-test.md",
-                "body": "# Draft Post\n\nThis is a draft.",
+                "title": "Draft Post",
+                "body": "This is a draft.",
                 "labels": [],
                 "is_draft": True,
             },
@@ -750,7 +836,8 @@ class TestPostCRUD:
             "/api/posts",
             json={
                 "file_path": "posts/cache-create.md",
-                "body": "# Cache Create\n\nBody.\n",
+                "title": "Cache Create",
+                "body": "Body.\n",
                 "labels": ["cache-create"],
                 "is_draft": False,
             },
@@ -780,7 +867,8 @@ class TestPostCRUD:
         update_resp = await client.put(
             "/api/posts/posts/hello.md",
             json={
-                "body": "# Hello World\n\nRetagged.\n",
+                "title": "Hello World",
+                "body": "Retagged.\n",
                 "labels": ["cache-update"],
                 "is_draft": False,
             },
@@ -1138,7 +1226,8 @@ class TestSearch:
             "/api/posts",
             json={
                 "file_path": "posts/search-fresh.md",
-                "body": "# Search Fresh\n\nuniquekeycreate987\n",
+                "title": "Search Fresh",
+                "body": "uniquekeycreate987\n",
                 "labels": [],
                 "is_draft": False,
             },
@@ -1162,7 +1251,8 @@ class TestSearch:
         update_resp = await client.put(
             "/api/posts/posts/hello.md",
             json={
-                "body": "# Hello World\n\nuniquekeyupdate654\n",
+                "title": "Hello World",
+                "body": "uniquekeyupdate654\n",
                 "labels": ["swe"],
                 "is_draft": False,
             },
@@ -1363,7 +1453,8 @@ class TestSearchAfterDelete:
             "/api/posts",
             json={
                 "file_path": "posts/fts-delete-test.md",
-                "body": "# FTS Delete Test\n\nuniqueftsdeletekey999\n",
+                "title": "FTS Delete Test",
+                "body": "uniqueftsdeletekey999\n",
                 "labels": [],
                 "is_draft": False,
             },

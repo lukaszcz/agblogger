@@ -30,6 +30,7 @@ class PostEditResponse(BaseModel):
     """Structured post data for the editor."""
 
     file_path: str
+    title: str
     body: str
     labels: list[str] = Field(default_factory=list)
     is_draft: bool = False
@@ -47,6 +48,11 @@ class PostCreate(BaseModel):
         pattern=r"^posts/.*\.md$",
         description="Relative path under content/, e.g. posts/my-post.md",
     )
+    title: str = Field(
+        min_length=1,
+        max_length=500,
+        description="Post title",
+    )
     body: str = Field(
         min_length=1,
         max_length=500_000,
@@ -59,6 +65,11 @@ class PostCreate(BaseModel):
 class PostUpdate(BaseModel):
     """Request to update an existing post."""
 
+    title: str = Field(
+        min_length=1,
+        max_length=500,
+        description="Post title",
+    )
     body: str = Field(
         min_length=1,
         max_length=500_000,
