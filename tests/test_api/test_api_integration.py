@@ -605,7 +605,7 @@ class TestPostCRUD:
         data = resp.json()
         assert data["file_path"] == "posts/hello.md"
         assert data["title"] == "Hello World"
-        assert "# Hello World" in data["body"]
+        assert "# Hello World" not in data["body"]
         assert data["labels"] == ["swe"]
         assert "created_at" in data
         assert "modified_at" in data

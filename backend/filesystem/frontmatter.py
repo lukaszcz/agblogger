@@ -118,19 +118,23 @@ def parse_post(
     else:
         modified_at = created_at
 
-    # Title: prefer front matter, fall back to heading extraction
+    # Title: prefer front matter (non-empty string), fall back to heading extraction
     fm_title = post.get("title")
     if fm_title and isinstance(fm_title, str) and fm_title.strip():
         title = fm_title.strip()
     else:
         title = extract_title(post.content, file_path)
+
+    # Strip leading heading that matches the title so it is not duplicated
+    content = strip_leading_heading(post.content, title)
+
     labels = parse_labels(post.get("labels"))
     author = post.get("author") or default_author or None
     is_draft = bool(post.get("draft", False))
 
     return PostData(
         title=title,
-        content=post.content,
+        content=content,
         raw_content=raw_content,
         created_at=created_at,
         modified_at=modified_at,

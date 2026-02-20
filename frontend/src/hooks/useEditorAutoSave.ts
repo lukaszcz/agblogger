@@ -44,7 +44,10 @@ function readDraft(key: string): DraftData | null {
   try {
     const stored = localStorage.getItem(key)
     if (stored) {
-      return JSON.parse(stored) as DraftData
+      const parsed = JSON.parse(stored) as DraftData
+      // Ensure title exists for drafts saved before the title field was added
+      parsed.title = parsed.title ?? ''
+      return parsed
     }
   } catch {
     // Ignore invalid JSON

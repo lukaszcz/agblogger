@@ -282,7 +282,8 @@ def normalize_post_frontmatter(
 ) -> list[str]:
     """Normalize YAML front matter for uploaded post files during sync.
 
-    Fills missing fields (timestamps, author) with defaults, normalizes existing
+    Fills missing fields (timestamps, author, title) with defaults, strips the
+    leading heading from the body when backfilling title, normalizes existing
     timestamps to strict format, and warns about unrecognized front matter fields.
 
     Returns a list of warning strings.
@@ -356,7 +357,7 @@ def normalize_post_frontmatter(
         if "title" not in post.metadata or not post.get("title"):
             title = extract_title(post.content, file_path)
             post["title"] = title
-            # Strip the heading from the body since title is now in front matter
+            # Strip the leading heading from the body if it matches the backfilled title
             new_content = strip_leading_heading(post.content, title)
             if new_content != post.content:
                 post.content = new_content

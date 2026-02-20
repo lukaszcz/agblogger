@@ -132,6 +132,7 @@ Body content.
 """
         post = parse_post(content, file_path="posts/test.md")
         assert post.title == "Heading Title"
+        assert "# Heading Title" not in post.content
 
     def test_title_from_frontmatter_takes_precedence_over_heading(self) -> None:
         content = """\
@@ -146,6 +147,8 @@ Body content.
 """
         post = parse_post(content, file_path="posts/test.md")
         assert post.title == "Front Matter Title"
+        # Heading is not stripped because it doesn't match the front matter title
+        assert "# Heading Title" in post.content
 
 
 class TestSerializePost:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class PostSummary(BaseModel):
@@ -61,6 +61,11 @@ class PostCreate(BaseModel):
     labels: list[str] = Field(default_factory=list)
     is_draft: bool = False
 
+    @field_validator("title", mode="before")
+    @classmethod
+    def strip_title(cls, v: str) -> str:
+        return v.strip() if isinstance(v, str) else v
+
 
 class PostUpdate(BaseModel):
     """Request to update an existing post."""
@@ -77,6 +82,11 @@ class PostUpdate(BaseModel):
     )
     labels: list[str] = Field(default_factory=list)
     is_draft: bool = False
+
+    @field_validator("title", mode="before")
+    @classmethod
+    def strip_title(cls, v: str) -> str:
+        return v.strip() if isinstance(v, str) else v
 
 
 class PostListResponse(BaseModel):
