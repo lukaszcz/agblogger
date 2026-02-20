@@ -263,9 +263,12 @@ def rewrite_relative_urls(html: str, file_path: str) -> str:
             return match.group(0)
 
         # Strip leading ./ if present
-        relative = value.lstrip("./") if value.startswith("./") else value
+        relative = value.removeprefix("./")
 
         resolved = posixpath.normpath(posixpath.join(base_dir, relative))
+        # Don't produce URLs that escape the content root
+        if resolved.startswith(".."):
+            return match.group(0)
         return f'{attr}="/api/content/{resolved}"'
 
     return re.sub(r'(src|href)="([^"]*)"', _replace, html)

@@ -100,6 +100,12 @@ class TestRewriteRelativeUrls:
         result = rewrite_relative_urls(html, "posts/2026-02-20-my-post/index.md")
         assert result == '<img src="/api/content/posts/shared/photo.png">'
 
+    def test_deep_traversal_left_unchanged(self) -> None:
+        """Deep ../ traversal that escapes content root is left unchanged."""
+        html = '<img src="../../../../etc/passwd">'
+        result = rewrite_relative_urls(html, "posts/my-post/index.md")
+        assert result == '<img src="../../../../etc/passwd">'
+
     def test_empty_html(self) -> None:
         """Empty HTML string returns empty."""
         result = rewrite_relative_urls("", "posts/hello.md")
