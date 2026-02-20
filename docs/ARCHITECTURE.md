@@ -106,17 +106,17 @@ Posts use YAML front matter:
 
 ```yaml
 ---
+title: Post Title
 created_at: 2026-02-02 22:21:29.975359+00
 modified_at: 2026-02-02 22:21:35.000000+00
 author: Admin
 labels: ["#swe"]
 ---
-# Post Title
 
 Content here...
 ```
 
-- **Title** is extracted from the first `# Heading` in the body, falling back to filename derivation.
+- **Title** is stored as a `title` field in YAML front matter. For backward compatibility, if `title` is absent, it is extracted from the first `# Heading` in the body, falling back to filename derivation. During sync, missing titles are backfilled from headings and the heading is stripped from the body.
 - **Labels** are referenced as `#label-id` strings.
 - **Timestamps** use strict ISO output format; lax input is accepted via pendulum.
 - **Directory-based implicit labels**: a post at `posts/cooking/recipe.md` automatically receives the `#cooking` label.
@@ -315,7 +315,7 @@ During `sync_commit`, before scanning files and updating the manifest, the serve
 - **Edited posts** (in old server manifest): existing fields are preserved, except `modified_at` which is set to the current server time.
 - **Unrecognized fields** in front matter are preserved in the file but generate warnings in the commit response.
 
-Recognized front matter fields: `created_at`, `modified_at`, `author`, `labels`, `draft`.
+Recognized front matter fields: `title`, `created_at`, `modified_at`, `author`, `labels`, `draft`.
 
 ### Git Content Versioning
 
@@ -481,8 +481,9 @@ The `Caddyfile` configures automatic Let's Encrypt TLS, reverse proxy to the bac
 ### Creating a Post (Editor)
 
 ```
-Frontend sends structured data: { file_path, body, labels, is_draft }
+Frontend sends structured data: { file_path, title, body, labels, is_draft }
     → POST /api/posts
+        → Backend uses title from request body
         → Backend sets author from authenticated user
         → Backend sets created_at and modified_at to now
         → Constructs PostData from structured fields
@@ -494,8 +495,9 @@ Frontend sends structured data: { file_path, body, labels, is_draft }
 ### Updating a Post (Editor)
 
 ```
-Frontend sends structured data: { body, labels, is_draft }
+Frontend sends structured data: { title, body, labels, is_draft }
     → PUT /api/posts/{path}
+        → Backend uses title from request body
         → Backend preserves original author and created_at from filesystem
         → Backend sets modified_at to now
         → Constructs PostData from structured fields
@@ -524,7 +526,7 @@ Write .md file → ContentManager.write_post()
 GET /api/posts/{path}/edit (auth required)
     → ContentManager.read_post()
         → parse .md file from filesystem
-        → return structured JSON: body, labels, is_draft, timestamps, author
+        → return structured JSON: title, body, labels, is_draft, timestamps, author
 ```
 
 ### Reading a Post
