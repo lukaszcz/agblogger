@@ -260,7 +260,7 @@ def cli_entry() -> None:
     """CLI entry point for running the server."""
     import uvicorn
 
-    settings = Settings()
+    settings: Settings = app.state.settings
     uvicorn.run(
         "backend.main:app",
         host=settings.host,

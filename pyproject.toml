@@ -11,41 +11,32 @@ dependencies = [
     # Web framework
     "fastapi>=0.115",
     "uvicorn[standard]>=0.34",
-
     # Database
     "sqlalchemy[asyncio]>=2.0",
     "aiosqlite>=0.21",
     "alembic>=1.15",
-
     # Markdown rendering
     "pypandoc>=1.14",
-
     # YAML / front matter
     "pyyaml>=6.0",
     "python-frontmatter>=1.1",
-
     # TOML writing (reading via stdlib tomllib)
     "tomli-w>=1.1",
-
     # Auth
     "python-jose[cryptography]>=3.3",
     "bcrypt>=4.0",
-
     # Validation & settings
     "pydantic[email]>=2.10",
     "pydantic-settings>=2.7",
-
     # Date/time
     "pendulum>=3.0",
-
     # File hashing & diffing
     "merge3>=0.0.15",
-
     # HTTP client (for cross-posting, sync client)
     "httpx>=0.28",
-
     # Multipart file uploads
     "python-multipart>=0.0.20",
+    "grapheme>=0.6.0",
 ]
 
 [project.optional-dependencies]
@@ -119,6 +110,7 @@ strict = true
 warn_return_any = true
 warn_unused_configs = true
 plugins = ["pydantic.mypy"]
+mypy_path = "stubs"
 
 [[tool.mypy.overrides]]
 module = [
@@ -131,6 +123,7 @@ module = [
     "jose.*",
 ]
 ignore_missing_imports = true
+
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

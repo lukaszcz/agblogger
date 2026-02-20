@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import grapheme
+
 from backend.crosspost.base import CrossPostContent
 from backend.crosspost.bluesky import BSKY_CHAR_LIMIT, _build_post_text, _find_facets
 from backend.crosspost.mastodon import MASTODON_CHAR_LIMIT, _build_status_text
@@ -67,6 +69,67 @@ class TestBlueskyEdgeCases:
         suffix_pos = text.rfind("#swe")
         assert suffix_pos > excerpt_pos  # rfind got the suffix one
         assert byte_start == len(text[:suffix_pos].encode("utf-8"))
+
+
+class TestBlueskyGraphemeCounting:
+    """Bluesky enforces a 300-grapheme limit, not 300 code points."""
+
+    def test_emoji_excerpt_not_over_truncated(self) -> None:
+        """Emoji excerpt should be truncated by graphemes, not code points.
+
+        With code-point counting, 283 available code points of family emoji
+        (7 code points each) yields only 40 emoji. With grapheme counting,
+        we should get ~280 emoji (280 graphemes).
+        """
+        # 👨‍👩‍👧‍👦 is 1 grapheme but 7 code points
+        family = "\U0001f468\u200d\U0001f469\u200d\U0001f467\u200d\U0001f466"
+        assert len(family) == 7
+        assert grapheme.length(family) == 1
+
+        excerpt = family * 295  # 295 graphemes, 2065 code points
+        content = CrossPostContent(
+            title="Test",
+            excerpt=excerpt,
+            url="https://x.co/p",
+            labels=[],
+        )
+        text = _build_post_text(content)
+
+        # The result must fit in the grapheme limit
+        assert grapheme.length(text) <= BSKY_CHAR_LIMIT
+
+        # But it should NOT be over-truncated: code-point counting would
+        # yield ~40 emoji; grapheme counting should yield ~275+
+        excerpt_part = text.split("\n\n")[0]
+        excerpt_graphemes = grapheme.length(excerpt_part)
+        assert excerpt_graphemes > 100, (
+            f"Excerpt has only {excerpt_graphemes} graphemes — "
+            "likely truncated by code points instead of graphemes"
+        )
+
+    def test_flag_emoji_not_over_truncated(self) -> None:
+        """Flag emoji (2 code points, 1 grapheme) should not over-truncate."""
+        flag = "\U0001f1fa\U0001f1f8"  # 🇺🇸
+        assert len(flag) == 2
+        assert grapheme.length(flag) == 1
+
+        excerpt = flag * 295  # 295 graphemes, 590 code points
+        content = CrossPostContent(
+            title="Test",
+            excerpt=excerpt,
+            url="https://x.co/p",
+            labels=[],
+        )
+        text = _build_post_text(content)
+
+        assert grapheme.length(text) <= BSKY_CHAR_LIMIT
+
+        excerpt_part = text.split("\n\n")[0]
+        excerpt_graphemes = grapheme.length(excerpt_part)
+        assert excerpt_graphemes > 100, (
+            f"Excerpt has only {excerpt_graphemes} graphemes — "
+            "likely truncated by code points instead of graphemes"
+        )
 
 
 class TestMastodonEdgeCases:

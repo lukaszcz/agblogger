@@ -11,6 +11,7 @@ dependencies = [
     { name = "alembic" },
     { name = "bcrypt" },
     { name = "fastapi" },
+    { name = "grapheme" },
     { name = "httpx" },
     { name = "merge3" },
     { name = "pendulum" },
@@ -51,6 +52,7 @@ requires-dist = [
     { name = "atproto", marker = "extra == 'crosspost'", specifier = ">=0.0.55" },
     { name = "bcrypt", specifier = ">=4.0" },
     { name = "fastapi", specifier = ">=0.115" },
+    { name = "grapheme", specifier = ">=0.6.0" },
     { name = "httpx", specifier = ">=0.28" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.28" },
     { name = "mastodon-py", marker = "extra == 'crosspost'", specifier = ">=1.8" },
@@ -557,6 +559,12 @@ sdist = { url = "https://files.pythonhosted.org/packages/02/a8/dae62680be63cbb3f
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e7/04/a94ebfb4eaaa08db56725a40de2887e95de4e8641b9e902c311bfa00aa39/filelock-3.24.2-py3-none-any.whl", hash = "sha256:667d7dc0b7d1e1064dd5f8f8e80bdac157a6482e8d2e02cd16fd3b6b33bd6556", size = 24152, upload-time = "2026-02-16T02:50:44Z" },
 ]
+
+[[package]]
+name = "grapheme"
+version = "0.6.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ce/e7/bbaab0d2a33e07c8278910c1d0d8d4f3781293dfbc70b5c38197159046bf/grapheme-0.6.0.tar.gz", hash = "sha256:44c2b9f21bbe77cfb05835fec230bd435954275267fea1858013b102f8603cca", size = 207306, upload-time = "2020-03-07T17:13:55.492Z" }
 
 [[package]]
 name = "greenlet"

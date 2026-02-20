@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from unittest.mock import patch
 
 from backend.config import Settings
 
@@ -32,3 +33,21 @@ class TestSettings:
         assert test_settings.secret_key == "test-secret-key"
         assert test_settings.debug is True
         assert test_settings.content_dir.exists()
+
+
+class TestCliEntry:
+    def test_cli_entry_uses_app_settings(self) -> None:
+        """cli_entry() should use the global app's settings, not create a new Settings()."""
+        from backend.main import app, cli_entry
+
+        app.state.settings = Settings(_env_file=None, host="127.0.0.1", port=9999, debug=True)
+
+        with patch("uvicorn.run") as mock_run:
+            cli_entry()
+
+        mock_run.assert_called_once_with(
+            "backend.main:app",
+            host="127.0.0.1",
+            port=9999,
+            reload=True,
+        )

@@ -6,6 +6,7 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
+import grapheme
 import httpx
 
 from backend.crosspost.base import CrossPostContent, CrossPostResult
@@ -32,13 +33,18 @@ def _build_post_text(content: CrossPostContent) -> str:
     suffix_parts.append(link)
     suffix = "\n\n" + "\n".join(suffix_parts)
 
-    available = BSKY_CHAR_LIMIT - len(suffix)
+    available = BSKY_CHAR_LIMIT - grapheme.length(suffix)
 
     excerpt = content.excerpt
     if available <= 3:
-        excerpt = excerpt[: max(available, 0)]
-    elif len(excerpt) > available:
-        excerpt = excerpt[: available - 3].rsplit(" ", maxsplit=1)[0] + "..."
+        excerpt = grapheme.slice(excerpt, 0, max(available, 0))
+    elif grapheme.length(excerpt) > available:
+        truncated = grapheme.slice(excerpt, 0, available - 3)
+        # Try to break at a word boundary
+        space_pos = truncated.rfind(" ")
+        if space_pos > 0:
+            truncated = truncated[:space_pos]
+        excerpt = truncated + "..."
 
     return excerpt + suffix
 
