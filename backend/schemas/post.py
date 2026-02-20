@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class PostSummary(BaseModel):
@@ -30,6 +30,7 @@ class PostEditResponse(BaseModel):
     """Structured post data for the editor."""
 
     file_path: str
+    title: str
     body: str
     labels: list[str] = Field(default_factory=list)
     is_draft: bool = False
@@ -47,6 +48,11 @@ class PostCreate(BaseModel):
         pattern=r"^posts/.*\.md$",
         description="Relative path under content/, e.g. posts/my-post.md",
     )
+    title: str = Field(
+        min_length=1,
+        max_length=500,
+        description="Post title",
+    )
     body: str = Field(
         min_length=1,
         max_length=500_000,
@@ -54,11 +60,21 @@ class PostCreate(BaseModel):
     )
     labels: list[str] = Field(default_factory=list)
     is_draft: bool = False
+
+    @field_validator("title", mode="before")
+    @classmethod
+    def strip_title(cls, v: str) -> str:
+        return v.strip() if isinstance(v, str) else v
 
 
 class PostUpdate(BaseModel):
     """Request to update an existing post."""
 
+    title: str = Field(
+        min_length=1,
+        max_length=500,
+        description="Post title",
+    )
     body: str = Field(
         min_length=1,
         max_length=500_000,
@@ -66,6 +82,11 @@ class PostUpdate(BaseModel):
     )
     labels: list[str] = Field(default_factory=list)
     is_draft: bool = False
+
+    @field_validator("title", mode="before")
+    @classmethod
+    def strip_title(cls, v: str) -> str:
+        return v.strip() if isinstance(v, str) else v
 
 
 class PostListResponse(BaseModel):

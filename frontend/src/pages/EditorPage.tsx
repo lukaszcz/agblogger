@@ -12,6 +12,16 @@ import { useRenderedHtml } from '@/hooks/useKatex'
 import { useAuthStore } from '@/stores/authStore'
 import LabelInput from '@/components/editor/LabelInput'
 
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, '')
+    .replace(/[\s_]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+}
+
 export default function EditorPage() {
   const { '*': filePath } = useParams()
   const navigate = useNavigate()
@@ -19,7 +29,8 @@ export default function EditorPage() {
   const user = useAuthStore((s) => s.user)
   const isInitialized = useAuthStore((s) => s.isInitialized)
 
-  const [body, setBody] = useState(isNew ? '# New Post\n\nStart writing here...\n' : '')
+  const [title, setTitle] = useState('')
+  const [body, setBody] = useState('')
   const [labels, setLabels] = useState<string[]>([])
   const [isDraft, setIsDraft] = useState(false)
   const [newPath, setNewPath] = useState('posts/')
@@ -32,14 +43,16 @@ export default function EditorPage() {
   const [error, setError] = useState<string | null>(null)
   const renderedPreview = useRenderedHtml(preview)
   const previewRequestRef = useRef(0)
+  const pathManuallyEdited = useRef(false)
 
   const autoSaveKey = isNew ? 'agblogger:draft:new' : `agblogger:draft:${filePath}`
   const currentState = useMemo<DraftData>(
-    () => ({ body, labels, isDraft, ...(isNew ? { newPath } : {}) }),
-    [body, labels, isDraft, isNew, newPath],
+    () => ({ title, body, labels, isDraft, ...(isNew ? { newPath } : {}) }),
+    [title, body, labels, isDraft, isNew, newPath],
   )
 
   const handleRestore = useCallback((draft: DraftData) => {
+    setTitle(draft.title)
     setBody(draft.body)
     setLabels(draft.labels)
     setIsDraft(draft.isDraft)
@@ -65,6 +78,7 @@ export default function EditorPage() {
       setLoading(true)
       fetchPostForEdit(filePath)
         .then((data) => {
+          setTitle(data.title)
           setBody(data.body)
           setLabels(data.labels)
           setIsDraft(data.is_draft)
@@ -91,6 +105,16 @@ export default function EditorPage() {
   }, [isNew, user?.display_name, user?.username])
 
   useEffect(() => {
+    if (isNew && !pathManuallyEdited.current && title) {
+      const date = new Date().toISOString().slice(0, 10)
+      const slug = slugify(title)
+      if (slug) {
+        setNewPath(`posts/${date}-${slug}.md`)
+      }
+    }
+  }, [isNew, title])
+
+  useEffect(() => {
     if (!body) return
     const requestId = ++previewRequestRef.current
     const timer = setTimeout(async () => {
@@ -114,9 +138,9 @@ export default function EditorPage() {
     try {
       const path = isNew ? newPath : filePath
       if (isNew) {
-        await createPost({ file_path: path, body, labels, is_draft: isDraft })
+        await createPost({ file_path: path, title, body, labels, is_draft: isDraft })
       } else {
-        await updatePost(path, { body, labels, is_draft: isDraft })
+        await updatePost(path, { title, body, labels, is_draft: isDraft })
       }
       markSaved()
       void navigate(`/post/${path}`)
@@ -223,7 +247,7 @@ export default function EditorPage() {
 
         <button
           onClick={() => void handleSave()}
-          disabled={saving}
+          disabled={saving || !title.trim()}
           className="flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium
                    bg-accent text-white rounded-lg hover:bg-accent-light disabled:opacity-50 transition-colors"
         >
@@ -262,6 +286,24 @@ export default function EditorPage() {
       )}
 
       <div className="mb-4 space-y-3 p-4 bg-paper border border-border rounded-lg">
+        <div>
+          <label htmlFor="title" className="block text-xs font-medium text-muted mb-1">
+            Title
+          </label>
+          <input
+            id="title"
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            disabled={saving}
+            placeholder="Post title"
+            className="w-full px-3 py-2 bg-paper-warm border border-border rounded-lg
+                     text-ink text-sm
+                     focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20
+                     disabled:opacity-50"
+          />
+        </div>
+
         {isNew && (
           <div>
             <label htmlFor="filepath" className="block text-xs font-medium text-muted mb-1">
@@ -271,7 +313,10 @@ export default function EditorPage() {
               id="filepath"
               type="text"
               value={newPath}
-              onChange={(e) => setNewPath(e.target.value)}
+              onChange={(e) => {
+                pathManuallyEdited.current = true
+                setNewPath(e.target.value)
+              }}
               disabled={saving}
               placeholder="posts/my-new-post.md"
               className="w-full px-3 py-2 bg-paper-warm border border-border rounded-lg

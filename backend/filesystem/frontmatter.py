@@ -13,6 +13,7 @@ from backend.services.datetime_service import format_datetime, parse_datetime
 
 RECOGNIZED_FIELDS: frozenset[str] = frozenset(
     {
+        "title",
         "created_at",
         "modified_at",
         "author",
@@ -53,6 +54,26 @@ def extract_title(content: str, file_path: str = "") -> str:
         name = name.removesuffix(".md")
         return name.replace("-", " ").replace("_", " ").title()
     return "Untitled"
+
+
+def strip_leading_heading(content: str, title: str) -> str:
+    """Remove the first ``# heading`` from content if it matches the title.
+
+    Skips leading blank lines. If the first non-blank line is not a level-1
+    heading or does not match *title*, the content is returned unchanged.
+    """
+    lines = content.split("\n")
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("# ") and not stripped.startswith("## "):
+            heading_text = stripped.removeprefix("# ").strip()
+            if heading_text == title:
+                rest = lines[i + 1 :]
+                return "\n".join(rest)
+        break  # First non-blank line isn't a heading — stop
+    return content
 
 
 def parse_labels(raw_labels: list[Any] | None) -> list[str]:
@@ -101,14 +122,26 @@ def parse_post(
     else:
         modified_at = created_at
 
-    title = extract_title(post.content, file_path)
+    # Title: prefer front matter (non-empty string), fall back to heading extraction.
+    # Non-string values (e.g. title: 42) are coerced to string.
+    fm_title = post.get("title")
+    if fm_title is not None and not isinstance(fm_title, str):
+        fm_title = str(fm_title)
+    if fm_title and isinstance(fm_title, str) and fm_title.strip():
+        title = fm_title.strip()
+    else:
+        title = extract_title(post.content, file_path)
+
+    # Strip leading heading that matches the title so it is not duplicated
+    content = strip_leading_heading(post.content, title)
+
     labels = parse_labels(post.get("labels"))
     author = post.get("author") or default_author or None
     is_draft = bool(post.get("draft", False))
 
     return PostData(
         title=title,
-        content=post.content,
+        content=content,
         raw_content=raw_content,
         created_at=created_at,
         modified_at=modified_at,
@@ -122,6 +155,7 @@ def parse_post(
 def serialize_post(post_data: PostData) -> str:
     """Serialize PostData back to markdown with YAML front matter."""
     metadata: dict[str, Any] = {
+        "title": post_data.title,
         "created_at": format_datetime(post_data.created_at),
         "modified_at": format_datetime(post_data.modified_at),
     }
@@ -132,7 +166,8 @@ def serialize_post(post_data: PostData) -> str:
     if post_data.is_draft:
         metadata["draft"] = True
 
-    post = frontmatter.Post(post_data.content, **metadata)
+    body = strip_leading_heading(post_data.content, post_data.title)
+    post = frontmatter.Post(body, **metadata)
     return str(frontmatter.dumps(post)) + "\n"
 
 

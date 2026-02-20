@@ -4,6 +4,7 @@ import { useBlocker } from 'react-router-dom'
 const AUTO_SAVE_DEBOUNCE_MS = 3000
 
 export interface DraftData {
+  title: string
   body: string
   labels: string[]
   isDraft: boolean
@@ -28,6 +29,7 @@ interface UseEditorAutoSaveReturn {
 }
 
 function statesEqual(a: DraftData, b: DraftData): boolean {
+  if (a.title !== b.title) return false
   if (a.body !== b.body) return false
   if (a.isDraft !== b.isDraft) return false
   if (a.labels.length !== b.labels.length) return false
@@ -42,7 +44,10 @@ function readDraft(key: string): DraftData | null {
   try {
     const stored = localStorage.getItem(key)
     if (stored) {
-      return JSON.parse(stored) as DraftData
+      const parsed = JSON.parse(stored) as DraftData
+      // Ensure title exists for drafts saved before the title field was added
+      parsed.title = parsed.title ?? ''
+      return parsed
     }
   } catch {
     // Ignore invalid JSON

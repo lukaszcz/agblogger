@@ -37,6 +37,7 @@ function createWrapper() {
 }
 
 const baseState: DraftData = {
+  title: 'Hello',
   body: '# Hello\n\nWorld',
   labels: ['swe'],
   isDraft: false,
@@ -88,6 +89,17 @@ describe('useEditorAutoSave', () => {
       )
 
       rerender({ state: { ...baseState, isDraft: true } })
+      expect(result.current.isDirty).toBe(true)
+    })
+
+    it('is dirty when title changes', () => {
+      const onRestore = vi.fn()
+      const { result, rerender } = renderHook(
+        ({ state }) => useEditorAutoSave({ key: 'test-key', currentState: state, onRestore }),
+        { wrapper: createWrapper(), initialProps: { state: baseState } },
+      )
+
+      rerender({ state: { ...baseState, title: 'Changed Title' } })
       expect(result.current.isDirty).toBe(true)
     })
 

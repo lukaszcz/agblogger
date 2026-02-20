@@ -81,7 +81,8 @@ function renderEditor(path = '/editor/new') {
 
 const editResponse: PostEditResponse = {
   file_path: 'posts/existing.md',
-  body: '# Existing Post\n\nContent here.',
+  title: 'Existing Post',
+  body: 'Content here.',
   labels: ['swe'],
   is_draft: false,
   created_at: '2026-02-01 12:00:00+00:00',
@@ -121,12 +122,12 @@ describe('EditorPage', () => {
     })
   })
 
-  it('default body for new post', async () => {
+  it('default body for new post is empty', async () => {
     renderEditor('/editor/new')
     await waitFor(() => {
       const textareas = document.querySelectorAll('textarea')
-      const bodyTextarea = Array.from(textareas).find((t) => t.value.includes('# New Post'))
-      expect(bodyTextarea).toBeTruthy()
+      expect(textareas.length).toBeGreaterThan(0)
+      expect(textareas[0]).toHaveValue('')
     })
   })
 
@@ -168,7 +169,8 @@ describe('EditorPage', () => {
 
   it('shows recovery banner when draft exists', async () => {
     const draft = {
-      body: '# Draft content',
+      title: 'Draft Title',
+      body: 'Draft content',
       labels: ['swe'],
       isDraft: false,
       savedAt: '2026-02-20T15:45:00.000Z',
@@ -187,7 +189,8 @@ describe('EditorPage', () => {
   it('restores draft content when Restore is clicked', async () => {
     const user = userEvent.setup()
     const draft = {
-      body: '# Restored draft',
+      title: 'Restored Title',
+      body: 'Restored draft',
       labels: ['cs'],
       isDraft: true,
       savedAt: '2026-02-20T15:45:00.000Z',
@@ -206,15 +209,18 @@ describe('EditorPage', () => {
 
     // Body should be restored
     const textareas = document.querySelectorAll('textarea')
-    const bodyTextarea = Array.from(textareas).find((t) => t.value.includes('# Restored draft'))
+    const bodyTextarea = Array.from(textareas).find((t) => t.value.includes('Restored draft'))
     expect(bodyTextarea).toBeTruthy()
+
+    // Title should be restored
+    expect(screen.getByLabelText('Title')).toHaveValue('Restored Title')
   })
 
   it('dismisses banner and clears draft when Discard is clicked', async () => {
     const user = userEvent.setup()
     localStorage.setItem(
       'agblogger:draft:new',
-      JSON.stringify({ body: '# Old', labels: [], isDraft: false, savedAt: '2026-02-20T15:45:00.000Z' }),
+      JSON.stringify({ title: 'Old', body: 'Old body', labels: [], isDraft: false, savedAt: '2026-02-20T15:45:00.000Z' }),
     )
 
     renderEditor('/editor/new')
@@ -226,5 +232,79 @@ describe('EditorPage', () => {
 
     expect(screen.queryByText(/unsaved changes/i)).not.toBeInTheDocument()
     expect(localStorage.getItem('agblogger:draft:new')).toBeNull()
+  })
+
+  it('renders title input for new post', async () => {
+    renderEditor('/editor/new')
+    await waitFor(() => {
+      expect(screen.getByLabelText('Title')).toBeInTheDocument()
+    })
+  })
+
+  it('save disabled when title is empty', async () => {
+    renderEditor('/editor/new')
+    await waitFor(() => {
+      expect(screen.getByLabelText('Title')).toBeInTheDocument()
+    })
+    // Title is initially empty for new posts
+    const saveButton = screen.getByRole('button', { name: /save/i })
+    expect(saveButton).toBeDisabled()
+  })
+
+  it('loads title for existing post', async () => {
+    mockFetchPostForEdit.mockResolvedValue(editResponse)
+    renderEditor('/editor/posts/existing.md')
+    await waitFor(() => {
+      expect(screen.getByLabelText('Title')).toHaveValue('Existing Post')
+    })
+  })
+
+  it('auto-generates file path from title for new post', async () => {
+    const user = userEvent.setup()
+    renderEditor('/editor/new')
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Title')).toBeInTheDocument()
+    })
+
+    await user.type(screen.getByLabelText('Title'), 'My First Post')
+
+    await waitFor(() => {
+      const today = new Date().toISOString().slice(0, 10)
+      expect(screen.getByLabelText('File path')).toHaveValue(`posts/${today}-my-first-post.md`)
+    })
+  })
+
+  it('stops auto-generating path after manual edit', async () => {
+    const user = userEvent.setup()
+    renderEditor('/editor/new')
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Title')).toBeInTheDocument()
+    })
+
+    // Manually edit the file path
+    await user.clear(screen.getByLabelText('File path'))
+    await user.type(screen.getByLabelText('File path'), 'posts/custom-path.md')
+
+    // Now type a title - path should not change
+    await user.type(screen.getByLabelText('Title'), 'Some Title')
+
+    expect(screen.getByLabelText('File path')).toHaveValue('posts/custom-path.md')
+  })
+
+  it('enables save button when title is provided', async () => {
+    const user = userEvent.setup()
+    renderEditor('/editor/new')
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Title')).toBeInTheDocument()
+    })
+
+    const saveButton = screen.getByRole('button', { name: /save/i })
+    expect(saveButton).toBeDisabled()
+
+    await user.type(screen.getByLabelText('Title'), 'A Title')
+    expect(saveButton).toBeEnabled()
   })
 })

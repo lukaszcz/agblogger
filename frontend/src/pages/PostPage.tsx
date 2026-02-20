@@ -165,7 +165,7 @@ export default function PostPage() {
         ref={contentRef}
         className="prose max-w-none"
         dangerouslySetInnerHTML={{
-          __html: renderedHtml.replace(/<h1[^>]*>[\s\S]*?<\/h1>\s*/i, ''),
+          __html: renderedHtml,
         }}
       />
 

@@ -277,6 +277,127 @@ class TestNormalizeUnrecognizedFields:
         assert post["custom_field"] == "hello"
 
 
+class TestNormalizeTitleBackfill:
+    """Tests for title backfill during sync normalization."""
+
+    def test_title_backfilled_from_heading(self, tmp_path: Path) -> None:
+        """Post without title in front matter gets it from first heading."""
+        content_dir = tmp_path / "content"
+        (content_dir / "posts").mkdir(parents=True)
+        _write_post(content_dir, "posts/hello.md", "---\n---\n# My Post Title\n\nContent.\n")
+
+        with patch("backend.services.sync_service.now_utc") as mock_now:
+            from datetime import UTC, datetime
+
+            mock_now.return_value = datetime(2026, 2, 18, 12, 0, 0, tzinfo=UTC)
+            normalize_post_frontmatter(
+                uploaded_files=["posts/hello.md"],
+                old_manifest={},
+                content_dir=content_dir,
+                default_author="Admin",
+            )
+
+        post = _read_post(content_dir, "posts/hello.md")
+        assert post["title"] == "My Post Title"
+        assert not post.content.lstrip().startswith("# ")
+
+    def test_title_preserved_when_already_present(self, tmp_path: Path) -> None:
+        """Post with title in front matter keeps it unchanged."""
+        content_dir = tmp_path / "content"
+        (content_dir / "posts").mkdir(parents=True)
+        _write_post(
+            content_dir,
+            "posts/hello.md",
+            "---\ntitle: Explicit Title\n---\n\nContent.\n",
+        )
+
+        with patch("backend.services.sync_service.now_utc") as mock_now:
+            from datetime import UTC, datetime
+
+            mock_now.return_value = datetime(2026, 2, 18, 12, 0, 0, tzinfo=UTC)
+            normalize_post_frontmatter(
+                uploaded_files=["posts/hello.md"],
+                old_manifest={},
+                content_dir=content_dir,
+                default_author="Admin",
+            )
+
+        post = _read_post(content_dir, "posts/hello.md")
+        assert post["title"] == "Explicit Title"
+
+    def test_title_from_filename_when_no_heading(self, tmp_path: Path) -> None:
+        """Post without title or heading gets title derived from filename."""
+        content_dir = tmp_path / "content"
+        (content_dir / "posts").mkdir(parents=True)
+        _write_post(content_dir, "posts/my-cool-post.md", "---\n---\nJust content.\n")
+
+        with patch("backend.services.sync_service.now_utc") as mock_now:
+            from datetime import UTC, datetime
+
+            mock_now.return_value = datetime(2026, 2, 18, 12, 0, 0, tzinfo=UTC)
+            normalize_post_frontmatter(
+                uploaded_files=["posts/my-cool-post.md"],
+                old_manifest={},
+                content_dir=content_dir,
+                default_author="Admin",
+            )
+
+        post = _read_post(content_dir, "posts/my-cool-post.md")
+        assert post["title"] == "My Cool Post"
+
+    def test_title_backfill_on_edited_post(self, tmp_path: Path) -> None:
+        """Edited post without title gets it backfilled from heading."""
+        content_dir = tmp_path / "content"
+        (content_dir / "posts").mkdir(parents=True)
+        _write_post(
+            content_dir,
+            "posts/hello.md",
+            "---\ncreated_at: 2026-01-01 10:00:00.000000+00:00\n"
+            "author: Admin\n---\n# Edited Title\n\nContent.\n",
+        )
+        old_manifest = {"posts/hello.md": _entry("posts/hello.md")}
+
+        with patch("backend.services.sync_service.now_utc") as mock_now:
+            from datetime import UTC, datetime
+
+            mock_now.return_value = datetime(2026, 2, 18, 12, 0, 0, tzinfo=UTC)
+            normalize_post_frontmatter(
+                uploaded_files=["posts/hello.md"],
+                old_manifest=old_manifest,
+                content_dir=content_dir,
+                default_author="Admin",
+            )
+
+        post = _read_post(content_dir, "posts/hello.md")
+        assert post["title"] == "Edited Title"
+        assert not post.content.lstrip().startswith("# ")
+
+    def test_empty_title_in_frontmatter_gets_backfilled(self, tmp_path: Path) -> None:
+        """Post with empty title string in front matter gets it from heading."""
+        content_dir = tmp_path / "content"
+        (content_dir / "posts").mkdir(parents=True)
+        _write_post(
+            content_dir,
+            "posts/hello.md",
+            "---\ntitle: ''\n---\n# Real Title\n\nContent.\n",
+        )
+
+        with patch("backend.services.sync_service.now_utc") as mock_now:
+            from datetime import UTC, datetime
+
+            mock_now.return_value = datetime(2026, 2, 18, 12, 0, 0, tzinfo=UTC)
+            normalize_post_frontmatter(
+                uploaded_files=["posts/hello.md"],
+                old_manifest={},
+                content_dir=content_dir,
+                default_author="Admin",
+            )
+
+        post = _read_post(content_dir, "posts/hello.md")
+        assert post["title"] == "Real Title"
+        assert not post.content.lstrip().startswith("# ")
+
+
 class TestNormalizeSkipNonPosts:
     """Tests for files that should be skipped."""
 

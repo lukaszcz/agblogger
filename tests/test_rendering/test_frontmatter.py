@@ -6,7 +6,13 @@ import datetime
 
 import frontmatter
 
-from backend.filesystem.frontmatter import RECOGNIZED_FIELDS, PostData, parse_post, serialize_post
+from backend.filesystem.frontmatter import (
+    RECOGNIZED_FIELDS,
+    PostData,
+    parse_post,
+    serialize_post,
+    strip_leading_heading,
+)
 from backend.services.datetime_service import now_utc
 
 
@@ -17,6 +23,9 @@ class TestRecognizedFields:
         assert "author" in RECOGNIZED_FIELDS
         assert "labels" in RECOGNIZED_FIELDS
         assert "draft" in RECOGNIZED_FIELDS
+
+    def test_title_in_recognized_fields(self) -> None:
+        assert "title" in RECOGNIZED_FIELDS
 
     def test_recognized_fields_is_frozenset(self) -> None:
         assert isinstance(RECOGNIZED_FIELDS, frozenset)
@@ -95,6 +104,77 @@ Content follows the title.
         assert reparsed["created_at"] == "2026-02-02 22:21:29.975359+00"
         assert reparsed["labels"] == ["#swe"]
         assert "# Title" in reparsed.content
+
+
+class TestTitleFromFrontMatter:
+    def test_title_from_frontmatter_field(self) -> None:
+        content = """\
+---
+created_at: 2026-02-02 22:21:29.975359+00
+modified_at: 2026-02-02 22:21:35.000000+00
+title: My Front Matter Title
+---
+
+Body content without a heading.
+"""
+        post = parse_post(content, file_path="posts/test.md")
+        assert post.title == "My Front Matter Title"
+
+    def test_title_fallback_to_heading_when_not_in_frontmatter(self) -> None:
+        content = """\
+---
+created_at: 2026-02-02 22:21:29.975359+00
+modified_at: 2026-02-02 22:21:35.000000+00
+---
+# Heading Title
+
+Body content.
+"""
+        post = parse_post(content, file_path="posts/test.md")
+        assert post.title == "Heading Title"
+        assert "# Heading Title" not in post.content
+
+    def test_whitespace_title_falls_back_to_heading(self) -> None:
+        content = """\
+---
+created_at: 2026-02-02 22:21:29.975359+00
+title: "   "
+---
+# Heading Title
+
+Body.
+"""
+        post = parse_post(content, file_path="posts/test.md")
+        assert post.title == "Heading Title"
+        assert "# Heading Title" not in post.content
+
+    def test_numeric_title_coerced_to_string(self) -> None:
+        content = """\
+---
+created_at: 2026-02-02 22:21:29.975359+00
+title: 42
+---
+
+Body.
+"""
+        post = parse_post(content, file_path="posts/test.md")
+        assert post.title == "42"
+
+    def test_title_from_frontmatter_takes_precedence_over_heading(self) -> None:
+        content = """\
+---
+created_at: 2026-02-02 22:21:29.975359+00
+modified_at: 2026-02-02 22:21:35.000000+00
+title: Front Matter Title
+---
+# Heading Title
+
+Body content.
+"""
+        post = parse_post(content, file_path="posts/test.md")
+        assert post.title == "Front Matter Title"
+        # Heading is not stripped because it doesn't match the front matter title
+        assert "# Heading Title" in post.content
 
 
 class TestSerializePost:
@@ -203,3 +283,62 @@ class TestSerializePost:
         assert reparsed.is_draft is True
         assert reparsed.author == "Admin"
         assert "Full content here." in reparsed.content
+
+    def test_title_written_to_frontmatter(self) -> None:
+        now = now_utc()
+        post_data = PostData(
+            title="My Title",
+            content="Body content here.",
+            raw_content="",
+            created_at=now,
+            modified_at=now,
+        )
+        result = serialize_post(post_data)
+        parsed = frontmatter.loads(result)
+        assert parsed["title"] == "My Title"
+
+    def test_leading_heading_stripped_from_body(self) -> None:
+        now = now_utc()
+        post_data = PostData(
+            title="My Title",
+            content="# My Title\n\nBody content here.",
+            raw_content="",
+            created_at=now,
+            modified_at=now,
+        )
+        result = serialize_post(post_data)
+        parsed = frontmatter.loads(result)
+        assert not parsed.content.lstrip().startswith("# ")
+        assert "Body content here." in parsed.content
+
+    def test_heading_not_stripped_when_different_from_title(self) -> None:
+        now = now_utc()
+        post_data = PostData(
+            title="My Title",
+            content="# Different Heading\n\nBody content.",
+            raw_content="",
+            created_at=now,
+            modified_at=now,
+        )
+        result = serialize_post(post_data)
+        parsed = frontmatter.loads(result)
+        assert "# Different Heading" in parsed.content
+
+
+class TestStripLeadingHeading:
+    def test_strips_matching_heading(self) -> None:
+        assert strip_leading_heading("# Hello\n\nContent", "Hello") == "\nContent"
+
+    def test_no_strip_when_no_heading(self) -> None:
+        assert strip_leading_heading("Just content", "Title") == "Just content"
+
+    def test_no_strip_when_heading_differs(self) -> None:
+        content = "# Other\n\nContent"
+        assert strip_leading_heading(content, "Title") == content
+
+    def test_strips_with_leading_whitespace(self) -> None:
+        assert strip_leading_heading("\n# Hello\n\nContent", "Hello") == "\nContent"
+
+    def test_no_strip_for_h2_heading(self) -> None:
+        content = "## Hello\n\nContent"
+        assert strip_leading_heading(content, "Hello") == content

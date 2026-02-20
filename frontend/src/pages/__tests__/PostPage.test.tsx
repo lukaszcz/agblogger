@@ -64,8 +64,8 @@ const postDetail: PostDetail = {
   is_draft: false,
   rendered_excerpt: '<p>First post</p>',
   labels: [],
-  rendered_html: '<h1>Hello World</h1><p>Content here</p>',
-  content: '# Hello World\n\nContent here',
+  rendered_html: '<p>Content here</p>',
+  content: 'Content here',
 }
 
 let navigatedTo: string | number | null = null
@@ -201,6 +201,20 @@ describe('PostPage', () => {
       expect(mockDeletePost).toHaveBeenCalledWith('posts/hello.md')
     })
     expect(navigatedTo).toBe('/')
+  })
+
+  it('renders title from metadata not from rendered HTML', async () => {
+    const postWithNoH1 = {
+      ...postDetail,
+      rendered_html: '<p>Just body content</p>',
+    }
+    mockFetchPost.mockResolvedValue(postWithNoH1)
+    renderPostPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Hello World')
+    })
+    expect(screen.getByText('Just body content')).toBeInTheDocument()
   })
 
   it('shows error on delete failure', async () => {
