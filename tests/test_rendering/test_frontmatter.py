@@ -18,6 +18,9 @@ class TestRecognizedFields:
         assert "labels" in RECOGNIZED_FIELDS
         assert "draft" in RECOGNIZED_FIELDS
 
+    def test_title_in_recognized_fields(self) -> None:
+        assert "title" in RECOGNIZED_FIELDS
+
     def test_recognized_fields_is_frozenset(self) -> None:
         assert isinstance(RECOGNIZED_FIELDS, frozenset)
 
@@ -95,6 +98,48 @@ Content follows the title.
         assert reparsed["created_at"] == "2026-02-02 22:21:29.975359+00"
         assert reparsed["labels"] == ["#swe"]
         assert "# Title" in reparsed.content
+
+
+class TestTitleFromFrontMatter:
+    def test_title_from_frontmatter_field(self) -> None:
+        content = """\
+---
+created_at: 2026-02-02 22:21:29.975359+00
+modified_at: 2026-02-02 22:21:35.000000+00
+title: My Front Matter Title
+---
+
+Body content without a heading.
+"""
+        post = parse_post(content, file_path="posts/test.md")
+        assert post.title == "My Front Matter Title"
+
+    def test_title_fallback_to_heading_when_not_in_frontmatter(self) -> None:
+        content = """\
+---
+created_at: 2026-02-02 22:21:29.975359+00
+modified_at: 2026-02-02 22:21:35.000000+00
+---
+# Heading Title
+
+Body content.
+"""
+        post = parse_post(content, file_path="posts/test.md")
+        assert post.title == "Heading Title"
+
+    def test_title_from_frontmatter_takes_precedence_over_heading(self) -> None:
+        content = """\
+---
+created_at: 2026-02-02 22:21:29.975359+00
+modified_at: 2026-02-02 22:21:35.000000+00
+title: Front Matter Title
+---
+# Heading Title
+
+Body content.
+"""
+        post = parse_post(content, file_path="posts/test.md")
+        assert post.title == "Front Matter Title"
 
 
 class TestSerializePost:

@@ -13,6 +13,7 @@ from backend.services.datetime_service import format_datetime, parse_datetime
 
 RECOGNIZED_FIELDS: frozenset[str] = frozenset(
     {
+        "title",
         "created_at",
         "modified_at",
         "author",
@@ -101,7 +102,12 @@ def parse_post(
     else:
         modified_at = created_at
 
-    title = extract_title(post.content, file_path)
+    # Title: prefer front matter, fall back to heading extraction
+    fm_title = post.get("title")
+    if fm_title and isinstance(fm_title, str) and fm_title.strip():
+        title = fm_title.strip()
+    else:
+        title = extract_title(post.content, file_path)
     labels = parse_labels(post.get("labels"))
     author = post.get("author") or default_author or None
     is_draft = bool(post.get("draft", False))
