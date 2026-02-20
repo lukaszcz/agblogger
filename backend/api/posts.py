@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import logging
+import os
+import re
+import shutil
 from pathlib import Path as FilePath
 from typing import Annotated
 
@@ -40,7 +43,7 @@ from backend.services.datetime_service import format_iso, now_utc
 from backend.services.git_service import GitService
 from backend.services.label_service import ensure_label_cache_entry
 from backend.services.post_service import get_post, list_posts, search_posts
-from backend.services.slug_service import generate_post_path
+from backend.services.slug_service import generate_post_path, generate_post_slug
 
 logger = logging.getLogger(__name__)
 
@@ -401,9 +404,54 @@ async def update_post_endpoint(
         await session.rollback()
         raise HTTPException(status_code=500, detail="Failed to write post file") from exc
 
+    # Rename directory if title changed and this is a directory-based post
+    new_file_path = file_path
+    if file_path.endswith("/index.md"):
+        new_slug = generate_post_slug(title)
+        old_dir_name = FilePath(file_path).parent.name
+        # Extract date prefix (YYYY-MM-DD) from directory name
+        date_prefix_match = re.match(r"^(\d{4}-\d{2}-\d{2})-(.+)$", old_dir_name)
+        if date_prefix_match:
+            date_prefix = date_prefix_match.group(1)
+            old_slug = date_prefix_match.group(2)
+            if new_slug != old_slug:
+                old_dir = content_manager.content_dir / FilePath(file_path).parent
+                posts_parent = old_dir.parent
+                new_dir_name = f"{date_prefix}-{new_slug}"
+                new_dir = posts_parent / new_dir_name
+
+                # Handle collision: append -2, -3, etc.
+                if new_dir.exists():
+                    counter = 2
+                    while True:
+                        candidate = posts_parent / f"{new_dir_name}-{counter}"
+                        if not candidate.exists():
+                            new_dir = candidate
+                            break
+                        counter += 1
+
+                shutil.move(str(old_dir), str(new_dir))
+                os.symlink(new_dir.name, str(old_dir))
+
+                new_file_path = str((new_dir / "index.md").relative_to(content_manager.content_dir))
+                existing.file_path = new_file_path
+                post_data.file_path = new_file_path
+
+                # Re-apply URL rewriting with new file_path
+                rendered_excerpt = rewrite_relative_urls(
+                    await render_markdown(md_excerpt) if md_excerpt else "",
+                    new_file_path,
+                )
+                rendered_html = rewrite_relative_urls(
+                    await render_markdown(post_data.content),
+                    new_file_path,
+                )
+                existing.rendered_excerpt = rendered_excerpt
+                existing.rendered_html = rendered_html
+
     await session.commit()
     await session.refresh(existing)
-    git_service.try_commit(f"Update post: {file_path}")
+    git_service.try_commit(f"Update post: {new_file_path}")
 
     return PostDetail(
         id=existing.id,
