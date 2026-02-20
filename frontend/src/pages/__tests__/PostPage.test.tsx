@@ -198,7 +198,7 @@ describe('PostPage', () => {
     await userEvent.click(confirmButton)
 
     await waitFor(() => {
-      expect(mockDeletePost).toHaveBeenCalledWith('posts/hello.md')
+      expect(mockDeletePost).toHaveBeenCalledWith('posts/hello.md', false)
     })
     expect(navigatedTo).toBe('/')
   })

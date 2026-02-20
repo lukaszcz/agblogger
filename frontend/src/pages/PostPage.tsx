@@ -17,18 +17,18 @@ export default function PostPage() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
-  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleteMode, setDeleteMode] = useState<'post' | 'all' | null>(null)
   const [deleting, setDeleting] = useState(false)
   const user = useAuthStore((s) => s.user)
   const contentRef = useRef<HTMLDivElement>(null)
   const renderedHtml = useRenderedHtml(post?.rendered_html)
 
-  async function handleDelete() {
+  async function handleDelete(withAssets: boolean) {
     if (!filePath) return
     setDeleting(true)
     setDeleteError(null)
     try {
-      await deletePost(filePath)
+      await deletePost(filePath, withAssets)
       void navigate('/', { replace: true })
     } catch (err) {
       if (err instanceof HTTPError && err.response.status === 401) {
@@ -36,7 +36,7 @@ export default function PostPage() {
       } else {
         setDeleteError('Failed to delete post. Please try again.')
       }
-      setConfirmDelete(false)
+      setDeleteMode(null)
     } finally {
       setDeleting(false)
     }
@@ -141,7 +141,7 @@ export default function PostPage() {
                 Edit
               </Link>
               <button
-                onClick={() => setConfirmDelete(true)}
+                onClick={() => setDeleteMode('post')}
                 disabled={deleting}
                 className="flex items-center gap-1 text-muted hover:text-red-600 transition-colors disabled:opacity-50"
               >
@@ -179,31 +179,70 @@ export default function PostPage() {
         </Link>
       </footer>
 
-      {confirmDelete && (
+      {deleteMode && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
           <div className="bg-paper border border-border rounded-xl shadow-xl p-6 max-w-sm mx-4 animate-fade-in">
             <h2 className="font-display text-xl text-ink mb-2">Delete post?</h2>
-            <p className="text-sm text-muted mb-6">
-              This will permanently delete &ldquo;{post.title}&rdquo;. This cannot be undone.
-            </p>
+            {post.file_path.endsWith('/index.md') ? (
+              <>
+                <p className="text-sm text-muted mb-6">
+                  This post has a directory that may contain uploaded files.
+                </p>
+                <div className="flex flex-col gap-2 mb-4">
+                  <button
+                    onClick={() => void handleDelete(false)}
+                    disabled={deleting}
+                    className="w-full px-4 py-2 text-sm font-medium text-ink
+                             border border-border rounded-lg hover:bg-paper-warm
+                             transition-colors disabled:opacity-50 text-left"
+                  >
+                    Delete post only
+                    <span className="block text-xs text-muted font-normal mt-0.5">
+                      Removes the markdown file, keeps uploaded files
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => void handleDelete(true)}
+                    disabled={deleting}
+                    className="w-full px-4 py-2 text-sm font-medium text-red-600
+                             border border-red-200 rounded-lg hover:bg-red-50
+                             transition-colors disabled:opacity-50 text-left"
+                  >
+                    Delete with all files
+                    <span className="block text-xs text-red-400 font-normal mt-0.5">
+                      Removes the post and all uploaded assets
+                    </span>
+                  </button>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-muted mb-6">
+                This will permanently delete &ldquo;{post.title}&rdquo;. This cannot be undone.
+              </p>
+            )}
             <div className="flex justify-end gap-3">
               <button
-                onClick={() => setConfirmDelete(false)}
+                onClick={() => setDeleteMode(null)}
                 disabled={deleting}
                 className="px-4 py-2 text-sm font-medium text-muted hover:text-ink
                          border border-border rounded-lg transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>
-              <button
-                onClick={() => void handleDelete()}
-                disabled={deleting}
-                className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700
-                         rounded-lg transition-colors disabled:opacity-50"
-              >
-                {deleting ? 'Deleting...' : 'Delete'}
-              </button>
+              {!post.file_path.endsWith('/index.md') && (
+                <button
+                  onClick={() => void handleDelete(false)}
+                  disabled={deleting}
+                  className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700
+                           rounded-lg transition-colors disabled:opacity-50"
+                >
+                  {deleting ? 'Deleting...' : 'Delete'}
+                </button>
+              )}
             </div>
+            {deleting && (
+              <p className="text-xs text-muted mt-3 text-center">Deleting...</p>
+            )}
           </div>
         </div>
       )}
