@@ -126,6 +126,26 @@ describe('TableOfContents', () => {
     })
   })
 
+  it('highlights the active heading', async () => {
+    mockActiveId = 'b'
+    const ref = makeContentRef(
+      { tag: 'h2', id: 'a', text: 'Section A' },
+      { tag: 'h2', id: 'b', text: 'Section B' },
+      { tag: 'h2', id: 'c', text: 'Section C' },
+    )
+    render(<TableOfContents contentRef={ref} />)
+
+    await userEvent.click(screen.getByRole('button', { name: /table of contents/i }))
+
+    const activeButton = screen.getByText('Section B')
+    expect(activeButton.className).toContain('text-accent')
+    expect(activeButton.className).toContain('font-medium')
+
+    const inactiveButton = screen.getByText('Section A')
+    expect(inactiveButton.className).toContain('text-muted')
+    expect(inactiveButton.className).not.toContain('text-accent')
+  })
+
   it('indents h3 entries', async () => {
     const ref = makeContentRef(
       { tag: 'h2', id: 'a', text: 'Section A' },

@@ -86,6 +86,7 @@ export default function TableOfContents({ contentRef }: TableOfContentsProps) {
       <button
         ref={buttonRef}
         aria-label="Table of contents"
+        aria-expanded={isOpen}
         onClick={() => setIsOpen((prev) => !prev)}
         className="flex items-center gap-1.5 text-sm text-muted hover:text-ink transition-colors"
       >
@@ -106,11 +107,11 @@ export default function TableOfContents({ contentRef }: TableOfContentsProps) {
         </div>
         <nav className="px-2 py-2 max-h-80 overflow-y-auto">
           <ul className="space-y-0.5">
-            {headings.map((heading) => {
+            {headings.map((heading, index) => {
               const isActive = activeId === heading.id
               return (
                 <li
-                  key={heading.id}
+                  key={`${heading.id}-${index}`}
                   className={heading.level === 3 ? 'pl-4' : ''}
                 >
                   <button
