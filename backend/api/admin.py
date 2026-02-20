@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
-_PAGE_ID_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
+_PAGE_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 
 
 @router.get("/site", response_model=SiteSettingsResponse)
