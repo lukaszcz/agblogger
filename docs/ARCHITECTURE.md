@@ -200,6 +200,7 @@ On startup, the lifespan handler:
 | `sync` | `/api/sync` | Bidirectional sync protocol |
 | `crosspost` | `/api/crosspost` | Social account management, cross-posting |
 | `render` | `/api/render` | Server-side Pandoc preview for the editor |
+| `admin` | `/api/admin` | Site settings, page management, password change (admin-only) |
 | `health` | `/api/health` | Health check with DB verification |
 
 ### Database Models
@@ -389,6 +390,7 @@ A platform registry maps names to poster classes. Each cross-post attempt is rec
 | `/labels/:labelId` | LabelPostsPage | Posts filtered by label |
 | `/labels/:labelId/settings` | LabelSettingsPage | Label names, parents, delete (auth required) |
 | `/editor/*` | EditorPage | Structured metadata bar + split-pane markdown editor |
+| `/admin` | AdminPage | Admin panel: site settings, pages, password (admin required) |
 
 ### State Management
 
