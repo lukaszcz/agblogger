@@ -116,7 +116,7 @@ labels: ["#swe"]
 Content here...
 ```
 
-- **Title** is stored as a `title` field in YAML front matter. For backward compatibility, if `title` is absent, it is extracted from the first `# Heading` in the body, falling back to filename derivation. During sync, missing titles are backfilled from headings and the heading is stripped from the body.
+- **Title** is stored as a `title` field in YAML front matter. For backward compatibility, if `title` is absent, it is extracted from the first `# Heading` in the body, falling back to filename derivation. During sync, missing titles are backfilled from the first heading (or filename), and any matching leading heading is stripped from the body.
 - **Labels** are referenced as `#label-id` strings.
 - **Timestamps** use strict ISO output format; lax input is accepted via pendulum.
 - **Directory-based implicit labels**: a post at `posts/cooking/recipe.md` automatically receives the `#cooking` label.

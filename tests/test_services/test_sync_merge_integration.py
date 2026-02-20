@@ -72,7 +72,7 @@ class TestThreeWayMerge:
             "/api/posts/posts/shared.md",
             json={
                 "title": "Shared Post",
-                "body": "\nParagraph one (server edit).\n\nParagraph two.\n",
+                "body": "Paragraph one (server edit).\n\nParagraph two.\n",
                 "labels": [],
                 "is_draft": False,
             },
@@ -135,7 +135,7 @@ class TestThreeWayMerge:
             "/api/posts/posts/shared.md",
             json={
                 "title": "Shared Post",
-                "body": "\nServer version of paragraph one.\n\nParagraph two.\n",
+                "body": "Server version of paragraph one.\n\nParagraph two.\n",
                 "labels": [],
                 "is_draft": False,
             },
@@ -324,7 +324,7 @@ class TestThreeWayMerge:
             "/api/posts/posts/shared.md",
             json={
                 "title": "Shared Post",
-                "body": "\nParagraph one (server).\n\nParagraph two.\n",
+                "body": "Paragraph one (server).\n\nParagraph two.\n",
                 "labels": [],
                 "is_draft": False,
             },

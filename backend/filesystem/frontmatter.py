@@ -57,7 +57,11 @@ def extract_title(content: str, file_path: str = "") -> str:
 
 
 def strip_leading_heading(content: str, title: str) -> str:
-    """Remove the first # heading from content if it matches the title."""
+    """Remove the first ``# heading`` from content if it matches the title.
+
+    Skips leading blank lines. If the first non-blank line is not a level-1
+    heading or does not match *title*, the content is returned unchanged.
+    """
     lines = content.split("\n")
     for i, line in enumerate(lines):
         stripped = line.strip()
@@ -118,8 +122,11 @@ def parse_post(
     else:
         modified_at = created_at
 
-    # Title: prefer front matter (non-empty string), fall back to heading extraction
+    # Title: prefer front matter (non-empty string), fall back to heading extraction.
+    # Non-string values (e.g. title: 42) are coerced to string.
     fm_title = post.get("title")
+    if fm_title is not None and not isinstance(fm_title, str):
+        fm_title = str(fm_title)
     if fm_title and isinstance(fm_title, str) and fm_title.strip():
         title = fm_title.strip()
     else:

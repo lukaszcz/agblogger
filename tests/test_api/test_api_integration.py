@@ -671,6 +671,46 @@ class TestPostCRUD:
         assert resp.status_code == 422
 
     @pytest.mark.asyncio
+    async def test_create_post_whitespace_title_rejected(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+        resp = await client.post(
+            "/api/posts",
+            json={
+                "file_path": "posts/ws-title.md",
+                "title": "   ",
+                "body": "Content.",
+                "labels": [],
+                "is_draft": False,
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_create_post_title_too_long_rejected(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+        resp = await client.post(
+            "/api/posts",
+            json={
+                "file_path": "posts/long-title.md",
+                "title": "A" * 501,
+                "body": "Content.",
+                "labels": [],
+                "is_draft": False,
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 422
+
+    @pytest.mark.asyncio
     async def test_get_post_for_edit_returns_title(self, client: AsyncClient) -> None:
         login_resp = await client.post(
             "/api/auth/login",
@@ -785,6 +825,7 @@ class TestPostCRUD:
         assert data["file_path"] == "posts/roundtrip-test.md"
         assert data["title"] == "Roundtrip"
         assert "Verify all fields survive." in data["body"]
+        assert "# Roundtrip" not in data["body"]
         assert data["labels"] == ["swe"]
         assert data["is_draft"] is True
         assert data["author"] == "Admin"

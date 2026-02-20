@@ -353,8 +353,9 @@ def normalize_post_frontmatter(
             if "author" not in post.metadata and default_author:
                 post["author"] = default_author
 
-        # Backfill title from first heading if not present
-        if "title" not in post.metadata or not post.get("title"):
+        # Backfill title from first heading if not present or not a valid string
+        raw_title = post.get("title")
+        if not raw_title or not isinstance(raw_title, str) or not raw_title.strip():
             title = extract_title(post.content, file_path)
             post["title"] = title
             # Strip the leading heading from the body if it matches the backfilled title

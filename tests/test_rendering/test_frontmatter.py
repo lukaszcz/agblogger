@@ -134,6 +134,32 @@ Body content.
         assert post.title == "Heading Title"
         assert "# Heading Title" not in post.content
 
+    def test_whitespace_title_falls_back_to_heading(self) -> None:
+        content = """\
+---
+created_at: 2026-02-02 22:21:29.975359+00
+title: "   "
+---
+# Heading Title
+
+Body.
+"""
+        post = parse_post(content, file_path="posts/test.md")
+        assert post.title == "Heading Title"
+        assert "# Heading Title" not in post.content
+
+    def test_numeric_title_coerced_to_string(self) -> None:
+        content = """\
+---
+created_at: 2026-02-02 22:21:29.975359+00
+title: 42
+---
+
+Body.
+"""
+        post = parse_post(content, file_path="posts/test.md")
+        assert post.title == "42"
+
     def test_title_from_frontmatter_takes_precedence_over_heading(self) -> None:
         content = """\
 ---
@@ -312,3 +338,7 @@ class TestStripLeadingHeading:
 
     def test_strips_with_leading_whitespace(self) -> None:
         assert strip_leading_heading("\n# Hello\n\nContent", "Hello") == "\nContent"
+
+    def test_no_strip_for_h2_heading(self) -> None:
+        content = "## Hello\n\nContent"
+        assert strip_leading_heading(content, "Hello") == content
