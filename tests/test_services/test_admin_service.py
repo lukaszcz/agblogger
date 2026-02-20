@@ -1,0 +1,133 @@
+"""Tests for admin service."""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+import pytest
+
+from backend.filesystem.content_manager import ContentManager
+from backend.filesystem.toml_manager import PageConfig, parse_site_config
+from backend.services.admin_service import (
+    create_page,
+    delete_page,
+    get_admin_pages,
+    get_site_settings,
+    update_page_order,
+    update_site_settings,
+)
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+
+@pytest.fixture
+def content_dir(tmp_path: Path) -> Path:
+    d = tmp_path / "content"
+    d.mkdir()
+    (d / "posts").mkdir()
+    (d / "index.toml").write_text(
+        '[site]\ntitle = "Test Blog"\ntimezone = "UTC"\n\n'
+        '[[pages]]\nid = "timeline"\ntitle = "Posts"\n\n'
+        '[[pages]]\nid = "about"\ntitle = "About"\nfile = "about.md"\n\n'
+        '[[pages]]\nid = "labels"\ntitle = "Labels"\n'
+    )
+    (d / "labels.toml").write_text("[labels]\n")
+    (d / "about.md").write_text("# About\n\nAbout page content.\n")
+    return d
+
+
+@pytest.fixture
+def cm(content_dir: Path) -> ContentManager:
+    return ContentManager(content_dir=content_dir)
+
+
+class TestGetSiteSettings:
+    def test_returns_current_settings(self, cm: ContentManager) -> None:
+        result = get_site_settings(cm)
+        assert result.title == "Test Blog"
+        assert result.timezone == "UTC"
+
+
+class TestUpdateSiteSettings:
+    def test_updates_settings(self, cm: ContentManager) -> None:
+        result = update_site_settings(
+            cm,
+            title="New Title",
+            description="desc",
+            default_author="Author",
+            timezone="US/Eastern",
+        )
+        assert result.title == "New Title"
+        assert result.description == "desc"
+
+        reloaded = parse_site_config(cm.content_dir)
+        assert reloaded.title == "New Title"
+        assert reloaded.default_author == "Author"
+
+    def test_preserves_pages(self, cm: ContentManager) -> None:
+        update_site_settings(cm, title="Changed", description="", default_author="", timezone="UTC")
+        reloaded = parse_site_config(cm.content_dir)
+        assert len(reloaded.pages) == 3
+
+
+class TestGetAdminPages:
+    def test_returns_pages_with_content(self, cm: ContentManager) -> None:
+        pages = get_admin_pages(cm)
+        assert len(pages) == 3
+        assert pages[0]["id"] == "timeline"
+        assert pages[0]["is_builtin"] is True
+        assert pages[1]["id"] == "about"
+        assert pages[1]["content"] == "# About\n\nAbout page content.\n"
+        assert pages[2]["id"] == "labels"
+        assert pages[2]["is_builtin"] is True
+
+
+class TestCreatePage:
+    def test_creates_page(self, cm: ContentManager) -> None:
+        result = create_page(cm, page_id="contact", title="Contact")
+        assert result.id == "contact"
+        assert (cm.content_dir / "contact.md").exists()
+
+        reloaded = parse_site_config(cm.content_dir)
+        assert any(p.id == "contact" for p in reloaded.pages)
+
+    def test_duplicate_id_raises(self, cm: ContentManager) -> None:
+        with pytest.raises(ValueError, match="already exists"):
+            create_page(cm, page_id="about", title="About 2")
+
+
+class TestDeletePage:
+    def test_deletes_page_and_file(self, cm: ContentManager) -> None:
+        delete_page(cm, page_id="about", delete_file=True)
+        reloaded = parse_site_config(cm.content_dir)
+        assert not any(p.id == "about" for p in reloaded.pages)
+        assert not (cm.content_dir / "about.md").exists()
+
+    def test_deletes_page_keeps_file(self, cm: ContentManager) -> None:
+        delete_page(cm, page_id="about", delete_file=False)
+        reloaded = parse_site_config(cm.content_dir)
+        assert not any(p.id == "about" for p in reloaded.pages)
+        assert (cm.content_dir / "about.md").exists()
+
+    def test_delete_builtin_raises(self, cm: ContentManager) -> None:
+        with pytest.raises(ValueError, match="Cannot delete built-in"):
+            delete_page(cm, page_id="timeline", delete_file=False)
+
+    def test_delete_nonexistent_raises(self, cm: ContentManager) -> None:
+        with pytest.raises(ValueError, match="not found"):
+            delete_page(cm, page_id="nope", delete_file=False)
+
+
+class TestUpdatePageOrder:
+    def test_reorders_pages(self, cm: ContentManager) -> None:
+        new_order = [
+            PageConfig(id="labels", title="Tags"),
+            PageConfig(id="timeline", title="Home"),
+            PageConfig(id="about", title="About", file="about.md"),
+        ]
+        update_page_order(cm, new_order)
+        reloaded = parse_site_config(cm.content_dir)
+        assert [p.id for p in reloaded.pages] == ["labels", "timeline", "about"]
+        assert reloaded.pages[0].title == "Tags"
+        assert reloaded.pages[1].title == "Home"

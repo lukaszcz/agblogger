@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
+from backend.api.admin import router as admin_router
 from backend.api.auth import router as auth_router
 from backend.api.crosspost import router as crosspost_router
 from backend.api.health import router as health_router
@@ -188,6 +189,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return await call_next(request)
 
     app.include_router(health_router)
+    app.include_router(admin_router)
     app.include_router(auth_router)
     app.include_router(posts_router)
     app.include_router(labels_router)

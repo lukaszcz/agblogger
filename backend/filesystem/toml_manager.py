@@ -119,3 +119,23 @@ def write_labels_config(content_dir: Path, labels: dict[str, LabelDef]) -> None:
 
     labels_path = content_dir / "labels.toml"
     labels_path.write_bytes(tomli_w.dumps({"labels": labels_data}).encode("utf-8"))
+
+
+def write_site_config(content_dir: Path, config: SiteConfig) -> None:
+    """Write site configuration back to index.toml."""
+    site_data: dict[str, Any] = {
+        "title": config.title,
+        "description": config.description,
+        "default_author": config.default_author,
+        "timezone": config.timezone,
+    }
+
+    pages_data: list[dict[str, Any]] = []
+    for page in config.pages:
+        entry: dict[str, Any] = {"id": page.id, "title": page.title}
+        if page.file is not None:
+            entry["file"] = page.file
+        pages_data.append(entry)
+
+    index_path = content_dir / "index.toml"
+    index_path.write_bytes(tomli_w.dumps({"site": site_data, "pages": pages_data}).encode("utf-8"))

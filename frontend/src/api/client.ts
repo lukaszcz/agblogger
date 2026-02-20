@@ -206,3 +206,22 @@ export interface PostEditResponse {
   modified_at: string
   author: string | null
 }
+
+export interface AdminSiteSettings {
+  title: string
+  description: string
+  default_author: string
+  timezone: string
+}
+
+export interface AdminPageConfig {
+  id: string
+  title: string
+  file: string | null
+  is_builtin: boolean
+  content: string | null
+}
+
+export interface AdminPagesResponse {
+  pages: AdminPageConfig[]
+}
