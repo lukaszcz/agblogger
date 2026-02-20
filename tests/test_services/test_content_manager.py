@@ -192,6 +192,18 @@ class TestContentManager:
         assert read_back is not None
         assert read_back.title == "Written"
 
+    def test_subdirectory_post_has_no_implicit_labels(self, tmp_content_dir: Path) -> None:
+        """Posts in subdirectories should only have their front matter labels."""
+        sub = tmp_content_dir / "posts" / "cooking"
+        sub.mkdir()
+        (sub / "recipe.md").write_text(
+            "---\ncreated_at: 2026-01-01\nlabels: ['#swe']\n---\n# Recipe\n\nContent.\n"
+        )
+        cm = ContentManager(content_dir=tmp_content_dir)
+        posts = cm.scan_posts()
+        assert len(posts) == 1
+        assert posts[0].labels == ["swe"]
+
     def test_delete_post(self, tmp_content_dir: Path) -> None:
         posts_dir = tmp_content_dir / "posts"
         (posts_dir / "to-delete.md").write_text("# Delete me")

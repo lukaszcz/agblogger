@@ -13,6 +13,7 @@ from backend.models.label import LabelCache, LabelParentCache, PostLabelCache
 from backend.models.post import PostCache
 from backend.pandoc.renderer import render_markdown
 from backend.services.dag import break_cycles
+from backend.services.label_service import ensure_label_cache_entry
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -116,18 +117,8 @@ async def rebuild_cache(
 
         # Add label associations
         for label_id in post_data.labels:
-            # Ensure label exists
-            existing = await session.get(LabelCache, label_id)
-            if not existing:
-                implicit_label = LabelCache(id=label_id, names="[]", is_implicit=True)
-                session.add(implicit_label)
-                await session.flush()
-
-            post_label = PostLabelCache(
-                post_id=post.id,
-                label_id=label_id,
-            )
-            session.add(post_label)
+            await ensure_label_cache_entry(session, label_id)
+            session.add(PostLabelCache(post_id=post.id, label_id=label_id))
 
         post_count += 1
 

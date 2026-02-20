@@ -19,6 +19,14 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
 
+async def ensure_label_cache_entry(session: AsyncSession, label_id: str) -> None:
+    """Ensure a label exists in cache tables, creating an implicit label if needed."""
+    existing = await session.get(LabelCache, label_id)
+    if existing is None:
+        session.add(LabelCache(id=label_id, names="[]", is_implicit=True))
+        await session.flush()
+
+
 async def get_all_labels(session: AsyncSession) -> list[LabelResponse]:
     """Get all labels with parent/child info and post counts."""
     # Get all labels

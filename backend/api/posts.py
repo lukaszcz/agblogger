@@ -23,7 +23,7 @@ from backend.filesystem.frontmatter import (
     generate_markdown_excerpt,
     serialize_post,
 )
-from backend.models.label import LabelCache, PostLabelCache
+from backend.models.label import PostLabelCache
 from backend.models.post import PostCache
 from backend.models.user import User
 from backend.pandoc.renderer import render_markdown
@@ -37,6 +37,7 @@ from backend.schemas.post import (
 )
 from backend.services.datetime_service import format_iso, now_utc
 from backend.services.git_service import GitService
+from backend.services.label_service import ensure_label_cache_entry
 from backend.services.post_service import get_post, list_posts, search_posts
 
 logger = logging.getLogger(__name__)
@@ -53,26 +54,17 @@ _FTS_INSERT_SQL = text(
 )
 
 
-async def _ensure_label_cache_entry(session: AsyncSession, label_id: str) -> None:
-    """Ensure a label exists in cache tables, creating an implicit label if needed."""
-    existing = await session.get(LabelCache, label_id)
-    if existing is None:
-        session.add(LabelCache(id=label_id, names="[]", is_implicit=True))
-        await session.flush()
-
-
 async def _replace_post_labels(
     session: AsyncSession,
     *,
     post_id: int,
     labels: list[str],
-) -> list[str]:
+) -> None:
     """Replace all cached label mappings for a post."""
     await session.execute(delete(PostLabelCache).where(PostLabelCache.post_id == post_id))
     for label_id in labels:
-        await _ensure_label_cache_entry(session, label_id)
+        await ensure_label_cache_entry(session, label_id)
         session.add(PostLabelCache(post_id=post_id, label_id=label_id))
-    return labels
 
 
 async def _upsert_post_fts(
@@ -241,11 +233,7 @@ async def create_post_endpoint(
     )
     session.add(post)
     await session.flush()
-    cached_labels = await _replace_post_labels(
-        session,
-        post_id=post.id,
-        labels=body.labels,
-    )
+    await _replace_post_labels(session, post_id=post.id, labels=body.labels)
     await _upsert_post_fts(
         session,
         post_id=post.id,
@@ -273,7 +261,7 @@ async def create_post_endpoint(
         modified_at=format_iso(post.modified_at),
         is_draft=post.is_draft,
         rendered_excerpt=post.rendered_excerpt,
-        labels=cached_labels,
+        labels=body.labels,
         rendered_html=rendered_html,
     )
 
@@ -336,11 +324,7 @@ async def update_post_endpoint(
     existing.content_hash = hash_content(serialized)
     existing.rendered_excerpt = rendered_excerpt
     existing.rendered_html = rendered_html
-    cached_labels = await _replace_post_labels(
-        session,
-        post_id=existing.id,
-        labels=body.labels,
-    )
+    await _replace_post_labels(session, post_id=existing.id, labels=body.labels)
     await _upsert_post_fts(
         session,
         post_id=existing.id,
@@ -370,7 +354,7 @@ async def update_post_endpoint(
         modified_at=format_iso(existing.modified_at),
         is_draft=existing.is_draft,
         rendered_excerpt=existing.rendered_excerpt,
-        labels=cached_labels,
+        labels=body.labels,
         rendered_html=existing.rendered_html or "",
     )
 
