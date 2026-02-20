@@ -7,9 +7,9 @@ services:
       - ./content:/data/content
       - agblogger-db:/data/db
     environment:
-      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
-      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}
+      - SECRET_KEY=${SECRET_KEY?Set SECRET_KEY}
+      - ADMIN_USERNAME=${ADMIN_USERNAME?Set ADMIN_USERNAME}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD?Set ADMIN_PASSWORD}
       - CONTENT_DIR=/data/content
       - DATABASE_URL=sqlite+aiosqlite:///data/db/agblogger.db
     restart: unless-stopped

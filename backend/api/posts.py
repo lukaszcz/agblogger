@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.deps import (
     get_content_manager,
+    get_current_user,
     get_git_service,
     get_session,
     require_auth,
@@ -193,10 +194,13 @@ async def get_post_for_edit(
 async def get_post_endpoint(
     file_path: str,
     session: Annotated[AsyncSession, Depends(get_session)],
+    user: Annotated[User | None, Depends(get_current_user)],
 ) -> PostDetail:
     """Get a single post by file path."""
     post = await get_post(session, file_path)
     if post is None:
+        raise HTTPException(status_code=404, detail="Post not found")
+    if post.is_draft and user is None:
         raise HTTPException(status_code=404, detail="Post not found")
     return post
 

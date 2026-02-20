@@ -158,19 +158,26 @@ Descendant queries use recursive CTEs in SQLite, enabling a "show me all posts i
 The `create_app()` factory:
 
 1. Creates a FastAPI app with a lifespan context manager.
-2. Adds GZip and CORS middleware.
-3. Registers API routers under `/api/`.
-4. Serves the React SPA static files from `frontend/dist/`.
+2. Configures docs/OpenAPI exposure based on environment (`DEBUG` or `EXPOSE_DOCS`).
+3. Adds middleware:
+   - `TrustedHostMiddleware` for host header allowlisting.
+   - CORS middleware for browser origin control.
+   - Cookie CSRF middleware for unsafe methods.
+   - Security headers middleware (`nosniff`, frame deny, referrer policy, CSP).
+4. Registers API routers under `/api/`.
+5. Serves the React SPA static files from `frontend/dist/`.
 
 On startup, the lifespan handler:
 
 1. Creates the async SQLAlchemy engine and session factory.
 2. Creates all database tables (including the FTS5 virtual table).
-3. Ensures the content directory exists (`ensure_content_dir()`), creating the default scaffold if needed.
-4. Initializes the `ContentManager`.
-5. Initializes the `GitService` (creates a git repo in the content directory if one doesn't exist).
-6. Creates the admin user if it doesn't exist.
-7. Rebuilds the full database cache from the filesystem.
+3. Validates production security settings (`validate_runtime_security()`), failing fast for insecure defaults.
+4. Ensures the content directory exists (`ensure_content_dir()`), creating the default scaffold if needed.
+5. Initializes the `ContentManager`.
+6. Initializes the `GitService` (creates a git repo in the content directory if one doesn't exist).
+7. Creates the admin user if it doesn't exist.
+8. Applies lightweight schema compatibility updates for `cross_posts.user_id` when needed.
+9. Rebuilds the full database cache from the filesystem.
 
 ### Layered Architecture
 
@@ -198,7 +205,7 @@ On startup, the lifespan handler:
 | `posts` | `/api/posts` | CRUD, search, listing with pagination/filtering, structured editor data |
 | `labels` | `/api/labels` | Label CRUD (create, update, delete), listing, graph data, posts by label |
 | `pages` | `/api/pages` | Site config, rendered page content |
-| `sync` | `/api/sync` | Bidirectional sync protocol |
+| `sync` | `/api/sync` | Bidirectional sync protocol (admin-only) |
 | `crosspost` | `/api/crosspost` | Social account management, cross-posting |
 | `render` | `/api/render` | Server-side Pandoc preview for the editor |
 | `admin` | `/api/admin` | Site settings, page management, password change (admin-only) |
@@ -218,12 +225,14 @@ The database serves as a **cache**, not the source of truth:
 - **`PersonalAccessToken`** — Hashed long-lived API tokens (PATs), with revocation and optional expiry.
 - **`InviteCode`** — Single-use hashed invite codes for closed registration.
 - **`SocialAccount`** — OAuth credentials per user/platform.
-- **`CrossPost`** — Cross-posting history log.
+- **`CrossPost`** — Cross-posting history log scoped to the owning user (`user_id`).
 - **`SyncManifest`** — File state at last sync: path, content hash, file size, mtime.
 
 ### Rendering Pipeline
 
 Pandoc renders markdown to HTML at publish time (during cache rebuild), not per-request. The rendered HTML is stored in `PostCache.rendered_html`. A rendered excerpt is also generated from a markdown-preserving truncation (`generate_markdown_excerpt()`) and stored in `PostCache.rendered_excerpt` — used in timeline cards and search results. KaTeX math in excerpts is processed client-side by the `useRenderedHtml` hook.
+
+Pandoc output is sanitized through an allowlist HTML sanitizer before storage and before heading-anchor injection. Unsafe tags/attributes and unsafe URL schemes (for example `javascript:`) are stripped.
 
 ```
 pandoc -f gfm+tex_math_dollars+footnotes+raw_html -t html5
@@ -240,11 +249,13 @@ Lua filter files exist in `backend/pandoc/filters/` as placeholders for future u
 
 - **Web sessions**: Login issues `access_token` and `refresh_token` as `HttpOnly` cookies, plus a readable `csrf_token` cookie.
 - **CSRF protection**: Unsafe API methods (`POST/PUT/PATCH/DELETE`) with cookie auth require `X-CSRF-Token` matching the `csrf_token` cookie.
+- **Login origin enforcement**: Login requests with `Origin`/`Referer` must match the app origin or configured CORS origins.
 - **Access tokens**: Short-lived (15 min), HS256 JWT containing `{sub: user_id, username, is_admin}`.
 - **Refresh tokens**: Long-lived (7 days), cryptographically random 48-byte strings. Only SHA-256 hashes are stored in DB. Refresh rotates tokens and revokes the old one.
 - **PATs (Personal Access Tokens)**: Long-lived random tokens (hashed in DB) for CLI/API automation via Bearer auth.
 - **Passwords**: bcrypt hashed.
 - **Logout**: `POST /api/auth/logout` revokes refresh token (if present) and clears auth cookies.
+- **Trusted proxy handling**: `X-Forwarded-For` is only trusted when the direct peer IP is in `TRUSTED_PROXY_IPS`; otherwise the socket peer IP is used for rate-limit keys.
 
 ### Registration and Abuse Controls
 
@@ -256,8 +267,8 @@ Lua filter files exist in `backend/pandoc/filters/` as placeholders for future u
 
 | Role | Access |
 |------|--------|
-| Unauthenticated | Read published posts, labels, pages, search |
-| Authenticated | Above + create/edit/delete posts, sync, cross-post |
+| Unauthenticated | Read published (non-draft) posts, labels, pages, search |
+| Authenticated | Above + create/edit/delete posts, cross-post |
 | Admin | Above + admin-only operations |
 
 Public reads require no authentication. The `get_current_user()` dependency returns `None` for unauthenticated requests.
@@ -269,6 +280,7 @@ On startup, `ensure_admin_user()` creates the admin user from `ADMIN_USERNAME` /
 ## Bidirectional Sync
 
 Hash-based, three-way sync inspired by Unison. Both client and server maintain a **sync manifest** mapping `file_path → (SHA-256 hash, mtime, size)`.
+All `/api/sync/*` endpoints require an authenticated admin user.
 
 ### Sync Protocol
 

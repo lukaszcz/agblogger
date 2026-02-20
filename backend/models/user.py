@@ -10,7 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from backend.models.base import Base
 
 if TYPE_CHECKING:
-    from backend.models.crosspost import SocialAccount
+    from backend.models.crosspost import CrossPost, SocialAccount
 
 
 class User(Base):
@@ -42,6 +42,9 @@ class User(Base):
         back_populates="used_by",
     )
     social_accounts: Mapped[list[SocialAccount]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    cross_posts: Mapped[list[CrossPost]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
 

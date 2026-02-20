@@ -49,8 +49,11 @@ def get_admin_pages(cm: ContentManager) -> list[dict[str, Any]]:
     for page in cm.site_config.pages:
         content = None
         if page.file:
-            page_path = cm.content_dir / page.file
-            if page_path.exists():
+            try:
+                page_path = cm._validate_path(page.file)
+            except ValueError:
+                page_path = None
+            if page_path is not None and page_path.exists():
                 content = page_path.read_text(encoding="utf-8")
         result.append(
             {
@@ -122,7 +125,12 @@ def update_page(
         cm.reload_config()
 
     if content is not None and page.file:
-        (cm.content_dir / page.file).write_text(content, encoding="utf-8")
+        try:
+            page_path = cm._validate_path(page.file)
+        except ValueError as exc:
+            msg = f"Page '{page_id}' has an invalid file path"
+            raise ValueError(msg) from exc
+        page_path.write_text(content, encoding="utf-8")
 
 
 def delete_page(cm: ContentManager, page_id: str, *, delete_file: bool) -> None:
@@ -138,7 +146,11 @@ def delete_page(cm: ContentManager, page_id: str, *, delete_file: bool) -> None:
         raise ValueError(msg)
 
     if delete_file and page.file:
-        file_path = cm.content_dir / page.file
+        try:
+            file_path = cm._validate_path(page.file)
+        except ValueError as exc:
+            msg = f"Page '{page_id}' has an invalid file path"
+            raise ValueError(msg) from exc
         if file_path.exists():
             file_path.unlink()
 

@@ -39,6 +39,7 @@ async def create_test_client(settings: Settings) -> AsyncGenerator[AsyncClient]:
     from backend.services.cache_service import rebuild_cache
 
     app = create_app(settings)
+    settings.validate_runtime_security()
 
     engine, session_factory = create_db_engine(settings)
     app.state.engine = engine

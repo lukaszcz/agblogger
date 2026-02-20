@@ -141,7 +141,7 @@ async def history_endpoint(
     user: Annotated[User, Depends(require_auth)],
 ) -> CrossPostHistoryResponse:
     """Get cross-posting history for a blog post."""
-    records = await get_crosspost_history(session, post_path)
+    records = await get_crosspost_history(session, post_path, user.id)
     return CrossPostHistoryResponse(
         items=[
             CrossPostResponse(

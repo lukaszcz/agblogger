@@ -14,6 +14,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from backend.api.admin import router as admin_router
 from backend.api.auth import router as auth_router
@@ -70,10 +71,25 @@ def ensure_content_dir(content_dir: Path) -> None:
     (content_dir / "labels.toml").write_text("[labels]\n")
 
 
+async def _ensure_crosspost_user_id_column(app: FastAPI) -> None:
+    """Backfill schema for cross_posts.user_id on pre-existing databases."""
+    engine = app.state.engine
+    async with engine.begin() as conn:
+        result = await conn.execute(text("PRAGMA table_info(cross_posts)"))
+        columns = {str(row[1]) for row in result}
+        if "user_id" in columns:
+            return
+        await conn.execute(text("ALTER TABLE cross_posts ADD COLUMN user_id INTEGER"))
+        logger.warning(
+            "Added missing cross_posts.user_id column. Existing history rows remain unscoped."
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """Application lifespan: startup and shutdown."""
     settings: Settings = app.state.settings
+    settings.validate_runtime_security()
     _configure_logging(settings.debug)
     logger.info("Starting AgBlogger (debug=%s)", settings.debug)
 
@@ -94,6 +110,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         ]:
             await conn.execute(text(f"DROP TABLE IF EXISTS {table}"))
         await conn.run_sync(Base.metadata.create_all)
+    await _ensure_crosspost_user_id_column(app)
 
     async with session_factory() as session:
         await session.execute(
@@ -139,11 +156,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     if settings is None:
         settings = Settings()
 
+    docs_enabled = settings.debug or settings.expose_docs
+
     app = FastAPI(
         title="AgBlogger",
         description="A markdown-first blogging platform",
         version="0.1.0",
         lifespan=lifespan,
+        docs_url="/docs" if docs_enabled else None,
+        redoc_url="/redoc" if docs_enabled else None,
+        openapi_url="/openapi.json" if docs_enabled else None,
     )
     app.state.settings = settings
     app.state.rate_limiter = InMemoryRateLimiter()
@@ -162,6 +184,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    trusted_hosts = settings.trusted_hosts or (
+        ["localhost", "127.0.0.1", "::1", "test", "testserver"] if settings.debug else []
+    )
+    if trusted_hosts:
+        app.add_middleware(TrustedHostMiddleware, allowed_hosts=trusted_hosts)
 
     @app.middleware("http")
     async def csrf_protection(
@@ -187,6 +215,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         content={"detail": "Invalid CSRF token"},
                     )
         return await call_next(request)
+
+    @app.middleware("http")
+    async def security_headers(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        response = await call_next(request)
+        if settings.security_headers_enabled:
+            response.headers.setdefault("X-Content-Type-Options", "nosniff")
+            response.headers.setdefault("X-Frame-Options", "DENY")
+            response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+            if settings.content_security_policy:
+                response.headers.setdefault(
+                    "Content-Security-Policy",
+                    settings.content_security_policy,
+                )
+        return response
 
     app.include_router(health_router)
     app.include_router(admin_router)

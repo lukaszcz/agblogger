@@ -138,6 +138,7 @@ async def crosspost(
             # No account configured for this platform
             error_msg = f"No {platform_name} account configured"
             cp = CrossPost(
+                user_id=user_id,
                 post_path=post_path,
                 platform=platform_name,
                 status="failed",
@@ -172,6 +173,7 @@ async def crosspost(
                     "Please reconnect the account."
                 )
                 cp = CrossPost(
+                    user_id=user_id,
                     post_path=post_path,
                     platform=platform_name,
                     status="failed",
@@ -202,6 +204,7 @@ async def crosspost(
 
         # Record the result
         cp = CrossPost(
+            user_id=user_id,
             post_path=post_path,
             platform=platform_name,
             platform_id=post_result.platform_id or None,
@@ -220,11 +223,12 @@ async def crosspost(
 async def get_crosspost_history(
     session: AsyncSession,
     post_path: str,
+    user_id: int,
 ) -> list[CrossPost]:
     """Get cross-posting history for a specific post."""
     stmt = (
         select(CrossPost)
-        .where(CrossPost.post_path == post_path)
+        .where(CrossPost.post_path == post_path, CrossPost.user_id == user_id)
         .order_by(CrossPost.created_at.desc())
     )
     result = await session.execute(stmt)

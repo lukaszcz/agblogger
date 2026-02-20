@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.api.deps import get_content_manager, get_git_service, get_session, require_auth
+from backend.api.deps import get_content_manager, get_git_service, get_session, require_admin
 from backend.filesystem.content_manager import ContentManager
 from backend.models.user import User
 from backend.services.git_service import GitService
@@ -123,7 +123,7 @@ async def sync_init(
     session: Annotated[AsyncSession, Depends(get_session)],
     content_manager: Annotated[ContentManager, Depends(get_content_manager)],
     git_service: Annotated[GitService, Depends(get_git_service)],
-    user: Annotated[User, Depends(require_auth)],
+    user: Annotated[User, Depends(require_admin)],
 ) -> SyncPlanResponse:
     """Exchange manifests and compute sync plan."""
     client_manifest: dict[str, FileEntry] = {}
@@ -164,7 +164,7 @@ async def sync_upload(
     file_path: str,
     session: Annotated[AsyncSession, Depends(get_session)],
     content_manager: Annotated[ContentManager, Depends(get_content_manager)],
-    user: Annotated[User, Depends(require_auth)],
+    user: Annotated[User, Depends(require_admin)],
 ) -> dict[str, str]:
     """Upload a file from client to server."""
     if file.filename is None and not file_path:
@@ -187,7 +187,7 @@ async def sync_upload(
 async def sync_download(
     file_path: str,
     content_manager: Annotated[ContentManager, Depends(get_content_manager)],
-    user: Annotated[User, Depends(require_auth)],
+    user: Annotated[User, Depends(require_admin)],
 ) -> FileResponse:
     """Download a file from server to client."""
     full_path = _resolve_safe_path(content_manager.content_dir, file_path)
@@ -203,7 +203,7 @@ async def sync_commit(
     session: Annotated[AsyncSession, Depends(get_session)],
     content_manager: Annotated[ContentManager, Depends(get_content_manager)],
     git_service: Annotated[GitService, Depends(get_git_service)],
-    user: Annotated[User, Depends(require_auth)],
+    user: Annotated[User, Depends(require_admin)],
 ) -> SyncCommitResponse:
     """Finalize sync: merge conflicts, normalize front matter, update manifest and caches."""
     async with _sync_lock:

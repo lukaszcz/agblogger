@@ -3,11 +3,172 @@
 from __future__ import annotations
 
 import asyncio
+import html
 import logging
 import re
 import subprocess
+from html.parser import HTMLParser
+from urllib.parse import urlparse as _urlparse
 
 logger = logging.getLogger(__name__)
+
+_SAFE_ID_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9:_-]*$")
+_VOID_TAGS: frozenset[str] = frozenset({"br", "hr", "img"})
+_ALLOWED_TAGS: frozenset[str] = frozenset(
+    {
+        "a",
+        "blockquote",
+        "br",
+        "code",
+        "dd",
+        "del",
+        "div",
+        "dl",
+        "dt",
+        "em",
+        "figcaption",
+        "figure",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "hr",
+        "img",
+        "kbd",
+        "li",
+        "ol",
+        "p",
+        "pre",
+        "samp",
+        "section",
+        "span",
+        "strong",
+        "sub",
+        "sup",
+        "summary",
+        "table",
+        "tbody",
+        "td",
+        "th",
+        "thead",
+        "tr",
+        "ul",
+        "var",
+    }
+)
+_GLOBAL_ALLOWED_ATTRS: frozenset[str] = frozenset({"class", "id"})
+_TAG_ALLOWED_ATTRS: dict[str, frozenset[str]] = {
+    "a": frozenset({"href", "title"}),
+    "img": frozenset({"alt", "src", "title"}),
+    "td": frozenset({"colspan", "rowspan"}),
+    "th": frozenset({"colspan", "rowspan"}),
+}
+
+
+def _is_safe_url(url_value: str, *, allow_non_http: bool) -> bool:
+    """Validate URL values for href/src attributes."""
+    value = url_value.strip()
+    if not value:
+        return False
+    if value.startswith(("#", "/", "./", "../")):
+        return True
+    if value.startswith("//"):
+        return False
+
+    parsed = _urlparse(value)
+    if not parsed.scheme:
+        return True
+
+    allowed_schemes = {"http", "https"}
+    if allow_non_http:
+        allowed_schemes.update({"mailto", "tel"})
+    return parsed.scheme.lower() in allowed_schemes
+
+
+class _HtmlSanitizer(HTMLParser):
+    """Allowlist-based HTML sanitizer for Pandoc output."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=False)
+        self._parts: list[str] = []
+        self._open_tags: list[str | None] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        tag_name = tag.lower()
+        if tag_name not in _ALLOWED_TAGS:
+            self._open_tags.append(None)
+            return
+
+        rendered_attrs = self._sanitize_attrs(tag_name, attrs)
+        attrs_text = "".join(
+            f' {name}="{html.escape(value, quote=True)}"' for name, value in rendered_attrs
+        )
+        self._parts.append(f"<{tag_name}{attrs_text}>")
+        self._open_tags.append(tag_name)
+
+    def handle_endtag(self, tag: str) -> None:
+        tag_name = tag.lower()
+        if not self._open_tags:
+            return
+        open_tag = self._open_tags.pop()
+        if open_tag == tag_name and tag_name not in _VOID_TAGS:
+            self._parts.append(f"</{tag_name}>")
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        tag_name = tag.lower()
+        if tag_name not in _ALLOWED_TAGS:
+            return
+        rendered_attrs = self._sanitize_attrs(tag_name, attrs)
+        attrs_text = "".join(
+            f' {name}="{html.escape(value, quote=True)}"' for name, value in rendered_attrs
+        )
+        self._parts.append(f"<{tag_name}{attrs_text} />")
+
+    def handle_data(self, data: str) -> None:
+        self._parts.append(html.escape(data))
+
+    def handle_entityref(self, name: str) -> None:
+        self._parts.append(f"&{name};")
+
+    def handle_charref(self, name: str) -> None:
+        self._parts.append(f"&#{name};")
+
+    def get_sanitized_html(self) -> str:
+        return "".join(self._parts)
+
+    def _sanitize_attrs(
+        self,
+        tag_name: str,
+        attrs: list[tuple[str, str | None]],
+    ) -> list[tuple[str, str]]:
+        allowed_attrs = _GLOBAL_ALLOWED_ATTRS | _TAG_ALLOWED_ATTRS.get(tag_name, frozenset())
+        sanitized: list[tuple[str, str]] = []
+
+        for raw_name, raw_value in attrs:
+            name = raw_name.lower()
+            if raw_value is None or name not in allowed_attrs:
+                continue
+
+            value = raw_value.strip()
+            if name == "href" and not _is_safe_url(value, allow_non_http=True):
+                continue
+            if name == "src" and not _is_safe_url(value, allow_non_http=False):
+                continue
+            if name == "id" and not _SAFE_ID_RE.fullmatch(value):
+                continue
+
+            sanitized.append((name, value))
+        return sanitized
+
+
+def _sanitize_html(rendered_html: str) -> str:
+    """Sanitize rendered HTML output to prevent script execution."""
+    sanitizer = _HtmlSanitizer()
+    sanitizer.feed(rendered_html)
+    sanitizer.close()
+    return sanitizer.get_sanitized_html()
 
 
 async def render_markdown(markdown: str) -> str:
@@ -40,9 +201,9 @@ def _render_markdown_sync(markdown: str) -> str:
             check=False,
         )
         if result.returncode == 0:
-            html = result.stdout
-            html = _add_heading_anchors(html)
-            return html
+            sanitized_html = _sanitize_html(result.stdout)
+            sanitized_html = _add_heading_anchors(sanitized_html)
+            return sanitized_html
         logger.error("Pandoc failed (rc=%d): %s", result.returncode, result.stderr)
         raise RuntimeError(
             f"Pandoc rendering failed with return code {result.returncode}: {result.stderr[:200]}"

@@ -165,7 +165,11 @@ class ContentManager:
         """Read a top-level page by its ID."""
         for page_cfg in self.site_config.pages:
             if page_cfg.id == page_id and page_cfg.file:
-                page_path = self.content_dir / page_cfg.file
+                try:
+                    page_path = self._validate_path(page_cfg.file)
+                except ValueError:
+                    logger.warning("Rejected unsafe page file path for page %s", page_id)
+                    return None
                 if page_path.exists():
                     return page_path.read_text(encoding="utf-8")
         return None

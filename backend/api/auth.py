@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import secrets
 from typing import Annotated
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
@@ -92,12 +93,39 @@ def _clear_auth_cookies(response: Response) -> None:
 
 
 def _get_client_ip(request: Request) -> str:
+    settings: Settings = request.app.state.settings
+    client_host = request.client.host if request.client and request.client.host else "unknown"
     forwarded_for = request.headers.get("X-Forwarded-For")
-    if forwarded_for:
+    if forwarded_for and client_host in settings.trusted_proxy_ips:
         return forwarded_for.split(",", maxsplit=1)[0].strip()
-    if request.client and request.client.host:
-        return request.client.host
+    if client_host:
+        return client_host
     return "unknown"
+
+
+def _origin_from_referer(referer: str) -> str | None:
+    parsed = urlparse(referer)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return None
+    return f"{parsed.scheme}://{parsed.netloc}"
+
+
+def _enforce_login_origin(request: Request, settings: Settings) -> None:
+    """Reject cross-origin login attempts from untrusted browser origins."""
+    origin = request.headers.get("Origin")
+    if origin is None:
+        referer = request.headers.get("Referer")
+        if referer:
+            origin = _origin_from_referer(referer)
+    if origin is None:
+        return
+    request_origin = str(request.base_url).rstrip("/")
+    allowed_origins = {request_origin, *settings.cors_origins}
+    if origin not in allowed_origins:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Untrusted request origin",
+        )
 
 
 def _check_rate_limit(
@@ -138,6 +166,9 @@ async def login(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> TokenResponse:
     """Login with username and password."""
+    if settings.auth_enforce_login_origin:
+        _enforce_login_origin(request, settings)
+
     limiter: InMemoryRateLimiter = request.app.state.rate_limiter
     client_key = f"login:{_get_client_ip(request)}:{body.username.lower()}"
     _check_rate_limit(
