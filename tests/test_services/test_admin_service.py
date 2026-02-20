@@ -96,6 +96,22 @@ class TestCreatePage:
         with pytest.raises(ValueError, match="already exists"):
             create_page(cm, page_id="about", title="About 2")
 
+    def test_reserved_builtin_id_raises(self, tmp_path: Path) -> None:
+        content_dir = tmp_path / "content"
+        content_dir.mkdir()
+        (content_dir / "posts").mkdir()
+        (content_dir / "index.toml").write_text(
+            '[site]\ntitle = "Test Blog"\ntimezone = "UTC"\n\n'
+            '[[pages]]\nid = "timeline"\ntitle = "Posts"\n'
+        )
+        (content_dir / "labels.toml").write_text("[labels]\n")
+        cm = ContentManager(content_dir=content_dir)
+
+        with pytest.raises(ValueError, match="reserved"):
+            create_page(cm, page_id="labels", title="Labels")
+
+        assert not (content_dir / "labels.md").exists()
+
 
 class TestDeletePage:
     def test_deletes_page_and_file(self, cm: ContentManager) -> None:

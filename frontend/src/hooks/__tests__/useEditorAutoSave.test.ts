@@ -1,4 +1,4 @@
-import { renderHook, act } from '@testing-library/react'
+import { renderHook, act, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { ReactNode } from 'react'
 import { createElement } from 'react'
@@ -205,6 +205,42 @@ describe('useEditorAutoSave', () => {
 
       expect(result.current.draftAvailable).toBe(false)
       expect(localStorage.getItem('test-key')).toBeNull()
+    })
+
+    it('reloads draft metadata when key changes', async () => {
+      const oldDraft: DraftData = {
+        ...baseState,
+        body: '# Old Draft',
+        savedAt: '2026-02-20T10:00:00.000Z',
+      }
+      const newDraft: DraftData = {
+        ...baseState,
+        body: '# New Draft',
+        savedAt: '2026-02-20T11:00:00.000Z',
+      }
+      localStorage.setItem('draft-1', JSON.stringify(oldDraft))
+      localStorage.setItem('draft-2', JSON.stringify(newDraft))
+
+      const onRestore = vi.fn()
+      const { result, rerender } = renderHook(
+        ({ key }) => useEditorAutoSave({ key, currentState: baseState, onRestore }),
+        { wrapper: createWrapper(), initialProps: { key: 'draft-1' } },
+      )
+
+      expect(result.current.draftAvailable).toBe(true)
+      expect(result.current.draftSavedAt).toBe('2026-02-20T10:00:00.000Z')
+
+      rerender({ key: 'draft-2' })
+
+      await waitFor(() => {
+        expect(result.current.draftAvailable).toBe(true)
+        expect(result.current.draftSavedAt).toBe('2026-02-20T11:00:00.000Z')
+      })
+
+      act(() => {
+        result.current.restoreDraft()
+      })
+      expect(onRestore).toHaveBeenCalledWith(newDraft)
     })
   })
 

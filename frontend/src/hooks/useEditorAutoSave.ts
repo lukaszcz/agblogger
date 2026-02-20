@@ -80,12 +80,14 @@ export function useEditorAutoSave({
   }, [enabled])
 
   // Draft recovery: read from localStorage synchronously on init
-  const [initialDraft] = useState(() => readDraft(key))
-  const draftDataRef = useRef<DraftData | null>(initialDraft)
-  const [draftAvailable, setDraftAvailable] = useState(initialDraft !== null)
-  const [draftSavedAt, setDraftSavedAt] = useState<string | null>(
-    initialDraft?.savedAt ?? null,
-  )
+  const storedDraft = useMemo(() => readDraft(key), [key])
+  const [draftOverride, setDraftOverride] = useState<{
+    key: string
+    draft: DraftData | null
+  } | null>(null)
+  const draftData = draftOverride?.key === key ? draftOverride.draft : storedDraft
+  const draftAvailable = draftData !== null
+  const draftSavedAt = draftData?.savedAt ?? null
 
   const isDirty = useMemo(
     () => enabled && !statesEqual(currentState, savedState),
@@ -133,27 +135,22 @@ export function useEditorAutoSave({
   }, [blocker])
 
   const restoreDraft = useCallback(() => {
-    if (draftDataRef.current) {
-      onRestoreRef.current(draftDataRef.current)
-      setSavedState(draftDataRef.current)
+    if (draftData) {
+      onRestoreRef.current(draftData)
+      setSavedState(draftData)
     }
-    setDraftAvailable(false)
-    setDraftSavedAt(null)
-  }, [])
+    setDraftOverride({ key, draft: null })
+  }, [draftData, key])
 
   const discardDraft = useCallback(() => {
     localStorage.removeItem(key)
-    draftDataRef.current = null
-    setDraftAvailable(false)
-    setDraftSavedAt(null)
+    setDraftOverride({ key, draft: null })
   }, [key])
 
   const markSaved = useCallback(() => {
     localStorage.removeItem(key)
     setSavedState(currentStateRef.current)
-    draftDataRef.current = null
-    setDraftAvailable(false)
-    setDraftSavedAt(null)
+    setDraftOverride({ key, draft: null })
   }, [key])
 
   return {

@@ -1,4 +1,4 @@
-import { renderHook, act } from '@testing-library/react'
+import { renderHook, act, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { useActiveHeading } from '@/hooks/useActiveHeading'
 
@@ -80,5 +80,22 @@ describe('useActiveHeading', () => {
     const { unmount } = renderHook(() => useActiveHeading(ref))
     unmount()
     expect(mockDisconnect).toHaveBeenCalled()
+  })
+
+  it('re-observes headings when container content changes', async () => {
+    const container = makeContainer({ tag: 'h2', id: 'first', text: 'First' })
+    const ref = { current: container }
+    renderHook(() => useActiveHeading(ref))
+
+    observedElements = []
+    container.replaceChildren()
+    const replacement = document.createElement('h2')
+    replacement.id = 'second'
+    replacement.textContent = 'Second'
+    container.appendChild(replacement)
+
+    await waitFor(() => {
+      expect(observedElements.map((el) => (el as HTMLElement).id)).toContain('second')
+    })
   })
 })

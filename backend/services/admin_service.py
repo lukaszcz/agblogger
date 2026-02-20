@@ -67,6 +67,10 @@ def get_admin_pages(cm: ContentManager) -> list[dict[str, Any]]:
 def create_page(cm: ContentManager, *, page_id: str, title: str) -> PageConfig:
     """Create a new page entry and .md file."""
     cfg = cm.site_config
+    if page_id in BUILTIN_PAGE_IDS:
+        msg = f"Page id '{page_id}' is reserved"
+        raise ValueError(msg)
+
     if any(p.id == page_id for p in cfg.pages):
         msg = f"Page '{page_id}' already exists"
         raise ValueError(msg)
