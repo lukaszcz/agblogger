@@ -127,7 +127,7 @@ describe('EditorPage', () => {
     await waitFor(() => {
       const textareas = document.querySelectorAll('textarea')
       expect(textareas.length).toBeGreaterThan(0)
-      expect(textareas[0]!.value).toBe('')
+      expect(textareas[0]).toHaveValue('')
     })
   })
 
@@ -213,8 +213,7 @@ describe('EditorPage', () => {
     expect(bodyTextarea).toBeTruthy()
 
     // Title should be restored
-    const titleInput = screen.getByLabelText('Title') as HTMLInputElement
-    expect(titleInput.value).toBe('Restored Title')
+    expect(screen.getByLabelText('Title')).toHaveValue('Restored Title')
   })
 
   it('dismisses banner and clears draft when Discard is clicked', async () => {
@@ -256,8 +255,7 @@ describe('EditorPage', () => {
     mockFetchPostForEdit.mockResolvedValue(editResponse)
     renderEditor('/editor/posts/existing.md')
     await waitFor(() => {
-      const titleInput = screen.getByLabelText('Title') as HTMLInputElement
-      expect(titleInput.value).toBe('Existing Post')
+      expect(screen.getByLabelText('Title')).toHaveValue('Existing Post')
     })
   })
 
@@ -272,9 +270,8 @@ describe('EditorPage', () => {
     await user.type(screen.getByLabelText('Title'), 'My First Post')
 
     await waitFor(() => {
-      const filepathInput = screen.getByLabelText('File path') as HTMLInputElement
       const today = new Date().toISOString().slice(0, 10)
-      expect(filepathInput.value).toBe(`posts/${today}-my-first-post.md`)
+      expect(screen.getByLabelText('File path')).toHaveValue(`posts/${today}-my-first-post.md`)
     })
   })
 
@@ -287,14 +284,13 @@ describe('EditorPage', () => {
     })
 
     // Manually edit the file path
-    const filepathInput = screen.getByLabelText('File path') as HTMLInputElement
-    await user.clear(filepathInput)
-    await user.type(filepathInput, 'posts/custom-path.md')
+    await user.clear(screen.getByLabelText('File path'))
+    await user.type(screen.getByLabelText('File path'), 'posts/custom-path.md')
 
     // Now type a title - path should not change
     await user.type(screen.getByLabelText('Title'), 'Some Title')
 
-    expect(filepathInput.value).toBe('posts/custom-path.md')
+    expect(screen.getByLabelText('File path')).toHaveValue('posts/custom-path.md')
   })
 
   it('enables save button when title is provided', async () => {
