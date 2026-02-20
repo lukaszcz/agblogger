@@ -6,7 +6,7 @@ import math
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import func, select, text
+from sqlalchemy import func, or_, select, text
 
 from backend.models.label import PostLabelCache
 from backend.models.post import PostCache
@@ -40,14 +40,23 @@ async def list_posts(
     author: str | None = None,
     from_date: str | None = None,
     to_date: str | None = None,
-    include_drafts: bool = False,
+    draft_author: str | None = None,
     sort: str = "created_at",
     order: str = "desc",
 ) -> PostListResponse:
     """List posts with pagination and filtering."""
     stmt = select(PostCache)
 
-    if not include_drafts:
+    if draft_author:
+        # Show published posts + drafts authored by the given user
+        stmt = stmt.where(
+            or_(
+                PostCache.is_draft.is_(False),
+                PostCache.author == draft_author,
+            )
+        )
+    else:
+        # No authenticated author — hide all drafts
         stmt = stmt.where(PostCache.is_draft.is_(False))
 
     if author:

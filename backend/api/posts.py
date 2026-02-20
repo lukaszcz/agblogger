@@ -113,6 +113,7 @@ async def _delete_post_fts(
 @router.get("", response_model=PostListResponse)
 async def list_posts_endpoint(
     session: Annotated[AsyncSession, Depends(get_session)],
+    user: Annotated[User | None, Depends(get_current_user)],
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     label: str | None = None,
@@ -126,6 +127,7 @@ async def list_posts_endpoint(
 ) -> PostListResponse:
     """List posts with pagination and filtering."""
     label_list = labels.split(",") if labels else None
+    draft_author = (user.display_name or user.username) if user else None
     return await list_posts(
         session,
         page=page,
@@ -136,6 +138,7 @@ async def list_posts_endpoint(
         author=author,
         from_date=from_date,
         to_date=to_date,
+        draft_author=draft_author,
         sort=sort,
         order=order,
     )
@@ -161,6 +164,10 @@ async def get_post_for_edit(
     post_data = content_manager.read_post(file_path)
     if post_data is None:
         raise HTTPException(status_code=404, detail="Post not found")
+    if post_data.is_draft:
+        user_author = user.display_name or user.username
+        if post_data.author != user_author:
+            raise HTTPException(status_code=404, detail="Post not found")
     return PostEditResponse(
         file_path=file_path,
         title=post_data.title,
@@ -183,8 +190,12 @@ async def get_post_endpoint(
     post = await get_post(session, file_path)
     if post is None:
         raise HTTPException(status_code=404, detail="Post not found")
-    if post.is_draft and user is None:
-        raise HTTPException(status_code=404, detail="Post not found")
+    if post.is_draft:
+        if user is None:
+            raise HTTPException(status_code=404, detail="Post not found")
+        user_author = user.display_name or user.username
+        if post.author != user_author:
+            raise HTTPException(status_code=404, detail="Post not found")
     return post
 
 
