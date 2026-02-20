@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Calendar, User, PenLine, Trash2 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
@@ -7,6 +7,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { HTTPError } from '@/api/client'
 import LabelChip from '@/components/labels/LabelChip'
 import { useRenderedHtml } from '@/hooks/useKatex'
+import TableOfContents from '@/components/posts/TableOfContents'
 import type { PostDetail } from '@/api/client'
 
 export default function PostPage() {
@@ -19,6 +20,7 @@ export default function PostPage() {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const user = useAuthStore((s) => s.user)
+  const contentRef = useRef<HTMLDivElement>(null)
   const renderedHtml = useRenderedHtml(post?.rendered_html)
 
   async function handleDelete() {
@@ -92,13 +94,16 @@ export default function PostPage() {
 
   return (
     <article className="animate-fade-in">
-      <Link
-        to="/"
-        className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-ink transition-colors mb-8"
-      >
-        <ArrowLeft size={14} />
-        Back to posts
-      </Link>
+      <div className="flex items-center justify-between mb-8">
+        <Link
+          to="/"
+          className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-ink transition-colors"
+        >
+          <ArrowLeft size={14} />
+          Back to posts
+        </Link>
+        <TableOfContents contentRef={contentRef} />
+      </div>
 
       <header className="mb-10">
         <h1 className="font-display text-4xl md:text-5xl text-ink leading-tight tracking-tight">
@@ -157,6 +162,7 @@ export default function PostPage() {
       )}
 
       <div
+        ref={contentRef}
         className="prose max-w-none"
         dangerouslySetInnerHTML={{
           __html: renderedHtml.replace(/<h1[^>]*>[\s\S]*?<\/h1>\s*/i, ''),

@@ -1,3 +1,5 @@
+import type React from 'react'
+
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
@@ -38,6 +40,12 @@ vi.mock('@/hooks/useKatex', () => ({
 
 vi.mock('@/components/labels/LabelChip', () => ({
   default: ({ labelId }: { labelId: string }) => <span data-testid="label">{labelId}</span>,
+}))
+
+vi.mock('@/components/posts/TableOfContents', () => ({
+  default: ({ contentRef }: { contentRef: React.RefObject<HTMLElement | null> }) => (
+    <div data-testid="toc" data-has-ref={!!contentRef.current} />
+  ),
 }))
 
 import PostPage from '../PostPage'
@@ -89,6 +97,16 @@ describe('PostPage', () => {
     navigatedTo = null
     mockFetchPost.mockReset()
     mockDeletePost.mockReset()
+  })
+
+  it('renders table of contents component', async () => {
+    mockFetchPost.mockResolvedValue(postDetail)
+    renderPostPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Hello World')).toBeInTheDocument()
+    })
+    expect(screen.getByTestId('toc')).toBeInTheDocument()
   })
 
   it('renders post content', async () => {
