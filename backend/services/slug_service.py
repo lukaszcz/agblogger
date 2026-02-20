@@ -39,11 +39,11 @@ def generate_post_slug(title: str) -> str:
     # Truncate to MAX_SLUG_LENGTH without cutting mid-word
     if len(text) > MAX_SLUG_LENGTH:
         truncated = text[:MAX_SLUG_LENGTH]
-        # Try to find the last hyphen to avoid cutting mid-word
+        # Try to break at a word boundary, but only if the break point
+        # is in the latter half — otherwise just hard-truncate
         last_hyphen = truncated.rfind("-")
-        if last_hyphen > 0:
+        if last_hyphen > MAX_SLUG_LENGTH // 2:
             truncated = truncated[:last_hyphen]
-        # Strip any trailing hyphens
         text = truncated.rstrip("-")
 
     return text
