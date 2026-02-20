@@ -20,7 +20,7 @@ export default function SearchPage() {
   function handleSearchSubmit(e: React.FormEvent) {
     e.preventDefault()
     const trimmed = inputValue.trim()
-    if (trimmed) {
+    if (trimmed.length > 0) {
       setSearchParams({ q: trimmed })
     }
   }
@@ -69,7 +69,7 @@ export default function SearchPage() {
             Search
           </button>
         </form>
-        {query && results.length > 0 && !loading && (
+        {query.length > 0 && results.length > 0 && !loading && (
           <p className="mt-3 text-sm text-muted">
             {results.length} result{results.length !== 1 ? 's' : ''} for{' '}
             <span className="italic text-accent">&ldquo;{query}&rdquo;</span>
@@ -81,7 +81,7 @@ export default function SearchPage() {
         <div className="flex items-center justify-center py-16">
           <div className="w-6 h-6 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
         </div>
-      ) : error ? (
+      ) : error !== null ? (
         <p className="text-red-600 text-center py-16">{error}</p>
       ) : results.length === 0 ? (
         <p className="text-muted text-center py-16">

@@ -17,7 +17,7 @@ export default function LabelPostsPage() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!labelId) return
+    if (labelId === undefined) return
     void (async () => {
       setLoading(true)
       setError(null)
@@ -47,7 +47,7 @@ export default function LabelPostsPage() {
     )
   }
 
-  if (error) {
+  if (error !== null) {
     return (
       <div className="text-center py-24">
         <p className="text-red-600">{error}</p>
@@ -83,7 +83,7 @@ export default function LabelPostsPage() {
         )}
       </div>
 
-      {label?.names && label.names.length > 0 && (
+      {label !== null && label.names.length > 0 && (
         <p className="text-muted mb-8">{label.names.join(', ')}</p>
       )}
 

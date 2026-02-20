@@ -7,6 +7,10 @@ from typing import Literal
 from pydantic import BaseModel, EmailStr, Field
 
 
+def _default_token_type() -> Literal["bearer"]:
+    return "bearer"
+
+
 class LoginRequest(BaseModel):
     """Login request."""
 
@@ -29,7 +33,7 @@ class TokenResponse(BaseModel):
 
     access_token: str
     refresh_token: str
-    token_type: Literal["bearer"] = "bearer"
+    token_type: Literal["bearer"] = Field(default_factory=_default_token_type)
 
 
 class RefreshRequest(BaseModel):

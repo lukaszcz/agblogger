@@ -25,7 +25,7 @@ export default function LoginPage() {
       <h1 className="font-display text-3xl text-center mb-8">Sign in</h1>
 
       <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
-        {error && (
+        {error !== null && (
           <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
             {error}
           </div>

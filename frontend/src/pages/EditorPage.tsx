@@ -25,7 +25,7 @@ function slugify(text: string): string {
 export default function EditorPage() {
   const { '*': filePath } = useParams()
   const navigate = useNavigate()
-  const isNew = !filePath || filePath === 'new'
+  const isNew = filePath === undefined || filePath === 'new'
   const user = useAuthStore((s) => s.user)
   const isInitialized = useAuthStore((s) => s.isInitialized)
 
@@ -56,7 +56,7 @@ export default function EditorPage() {
     setBody(draft.body)
     setLabels(draft.labels)
     setIsDraft(draft.isDraft)
-    if (draft.newPath) setNewPath(draft.newPath)
+    if (draft.newPath !== undefined) setNewPath(draft.newPath)
   }, [])
 
   const { isDirty, draftAvailable, draftSavedAt, restoreDraft, discardDraft, markSaved } =
@@ -87,7 +87,7 @@ export default function EditorPage() {
           setCreatedAt(data.created_at)
           setModifiedAt(data.modified_at)
         })
-        .catch((err) => {
+        .catch((err: unknown) => {
           if (err instanceof HTTPError && err.response.status === 404) {
             setError('Post not found')
           } else {
@@ -100,22 +100,22 @@ export default function EditorPage() {
 
   useEffect(() => {
     if (isNew) {
-      setAuthor(user?.display_name || user?.username || null)
+      setAuthor(user?.display_name ?? user?.username ?? null)
     }
   }, [isNew, user?.display_name, user?.username])
 
   useEffect(() => {
-    if (isNew && !pathManuallyEdited.current && title) {
+    if (isNew && !pathManuallyEdited.current && title.length > 0) {
       const date = new Date().toISOString().slice(0, 10)
       const slug = slugify(title)
-      if (slug) {
+      if (slug.length > 0) {
         setNewPath(`posts/${date}-${slug}.md`)
       }
     }
   }, [isNew, title])
 
   useEffect(() => {
-    if (!body) return
+    if (body.length === 0) return
     const requestId = ++previewRequestRef.current
     const timer = setTimeout(async () => {
       try {
@@ -161,10 +161,10 @@ export default function EditorPage() {
           try {
             const text = await err.response.text()
             const parsed: unknown = JSON.parse(text)
-            const detail =
-              parsed && typeof parsed === 'object' && 'detail' in parsed
-                ? (parsed as { detail: unknown }).detail
-                : undefined
+            let detail: unknown
+            if (typeof parsed === 'object' && parsed !== null && 'detail' in parsed) {
+              detail = (parsed as { detail: unknown }).detail
+            }
             if (Array.isArray(detail)) {
               setError(
                 detail
@@ -175,7 +175,7 @@ export default function EditorPage() {
                   .join(', '),
               )
             } else if (typeof detail === 'string') {
-              setError(detail || 'Validation error. Check your input.')
+              setError(detail.length > 0 ? detail : 'Validation error. Check your input.')
             } else {
               setError('Validation error. Check your input.')
             }
@@ -214,7 +214,7 @@ export default function EditorPage() {
     )
   }
 
-  if (!isNew && error) {
+  if (!isNew && error !== null) {
     return (
       <div className="animate-fade-in text-center py-24">
         <p className="font-display text-3xl text-muted italic">
@@ -256,13 +256,13 @@ export default function EditorPage() {
         </button>
       </div>
 
-      {error && (
+      {error !== null && (
         <div className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
           {error}
         </div>
       )}
 
-      {draftAvailable && draftSavedAt && (
+      {draftAvailable && draftSavedAt !== null && (
         <div className="mb-4 flex items-center justify-between text-sm bg-sky-50 border border-sky-200 rounded-lg px-4 py-3">
           <span className="text-sky-800">
             You have unsaved changes from{' '}
@@ -345,17 +345,17 @@ export default function EditorPage() {
               <span className="text-sm text-ink">Draft</span>
             </label>
 
-            {author && (
+            {author !== null && (
               <span className="text-sm text-muted">
                 Author: <span className="text-ink">{author}</span>
               </span>
             )}
           </div>
 
-          {!isNew && (createdAt || modifiedAt) && (
+          {!isNew && (createdAt !== null || modifiedAt !== null) && (
             <div className="flex items-center gap-4 text-xs text-muted">
-              {createdAt && <span>Created {formatDate(createdAt)}</span>}
-              {modifiedAt && <span>Modified {formatDate(modifiedAt)}</span>}
+              {createdAt !== null && <span>Created {formatDate(createdAt)}</span>}
+              {modifiedAt !== null && <span>Modified {formatDate(modifiedAt)}</span>}
             </div>
           )}
         </div>
@@ -376,7 +376,7 @@ export default function EditorPage() {
         </div>
 
         <div className="p-6 bg-paper border border-border rounded-lg overflow-y-auto">
-          {preview ? (
+          {preview !== null ? (
             <div
               className="prose max-w-none"
               dangerouslySetInnerHTML={{ __html: renderedPreview }}

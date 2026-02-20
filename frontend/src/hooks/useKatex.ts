@@ -14,7 +14,7 @@ const MATH_SPAN_RE =
  */
 export function useRenderedHtml(html: string | null | undefined): string {
   return useMemo(() => {
-    if (!html) return ''
+    if (html == null) return ''
     return html.replace(MATH_SPAN_RE, (_match, mode: string, tex: string) => {
       const displayMode = mode === 'display'
       const rendered = katex.renderToString(tex.trim(), {

@@ -12,7 +12,7 @@ export default function PageViewPage() {
   const renderedHtml = useRenderedHtml(page?.rendered_html)
 
   useEffect(() => {
-    if (!pageId) return
+    if (pageId === undefined) return
     void (async () => {
       setLoading(true)
       setError(null)
@@ -35,7 +35,7 @@ export default function PageViewPage() {
     )
   }
 
-  if (error || !page) {
+  if (error !== null || page === null) {
     return (
       <div className="text-center py-24">
         <p className="text-red-600">{error ?? 'Page not found'}</p>

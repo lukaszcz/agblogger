@@ -7,7 +7,7 @@ check: check-backend check-frontend
 # Backend: mypy, ruff check, ruff format --check, pytest
 check-backend:
     @echo "── Backend: type checking ──"
-    uv run mypy backend/ cli/
+    uv run mypy backend/ cli/ tests/
     @echo "\n── Backend: linting ──"
     uv run ruff check backend/ cli/ tests/
     @echo "\n── Backend: format check ──"

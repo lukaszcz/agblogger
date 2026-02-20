@@ -135,7 +135,7 @@ export default function AdminPage() {
 
   // === Load data ===
   useEffect(() => {
-    if (!isInitialized || !user?.is_admin) return
+    if (!isInitialized || user?.is_admin !== true) return
     setLoading(true)
     setLoadError(null)
     void Promise.all([fetchAdminSiteSettings(), fetchAdminPages()])
@@ -143,7 +143,7 @@ export default function AdminPage() {
         setSiteSettings(settings)
         setPages(pagesResp.pages)
       })
-      .catch((err) => {
+      .catch((err: unknown) => {
         if (err instanceof HTTPError && err.response.status === 401) {
           setLoadError('Session expired. Please log in again.')
         } else {
@@ -188,9 +188,11 @@ export default function AdminPage() {
   function handleMoveUp(index: number) {
     if (index <= 0) return
     const newPages = [...pages]
-    const temp = newPages[index - 1]
-    newPages[index - 1] = newPages[index]
-    newPages[index] = temp
+    const prevPage = newPages[index - 1]
+    const currentPage = newPages[index]
+    if (!prevPage || !currentPage) return
+    newPages[index - 1] = currentPage
+    newPages[index] = prevPage
     setPages(newPages)
     setOrderDirty(true)
     setPagesSuccess(null)
@@ -199,9 +201,11 @@ export default function AdminPage() {
   function handleMoveDown(index: number) {
     if (index >= pages.length - 1) return
     const newPages = [...pages]
-    const temp = newPages[index + 1]
-    newPages[index + 1] = newPages[index]
-    newPages[index] = temp
+    const nextPage = newPages[index + 1]
+    const currentPage = newPages[index]
+    if (!nextPage || !currentPage) return
+    newPages[index + 1] = currentPage
+    newPages[index] = nextPage
     setPages(newPages)
     setOrderDirty(true)
     setPagesSuccess(null)
@@ -282,7 +286,7 @@ export default function AdminPage() {
   }
 
   async function handleSavePage() {
-    if (!expandedPageId) return
+    if (expandedPageId === null) return
     const page = pages.find((p) => p.id === expandedPageId)
     if (!page) return
     if (!editTitle.trim()) {
@@ -334,7 +338,7 @@ export default function AdminPage() {
   }
 
   async function handleDeletePage() {
-    if (!deleteConfirmId) return
+    if (deleteConfirmId === null) return
     setDeletingPage(true)
     setPageEditError(null)
     setPageEditSuccess(null)
@@ -366,7 +370,11 @@ export default function AdminPage() {
   async function handleChangePassword() {
     setPasswordError(null)
     setPasswordSuccess(null)
-    if (!currentPassword || !newPassword || !confirmPassword) {
+    if (
+      currentPassword.length === 0 ||
+      newPassword.length === 0 ||
+      confirmPassword.length === 0
+    ) {
       setPasswordError('All fields are required.')
       return
     }
@@ -395,11 +403,14 @@ export default function AdminPage() {
           try {
             const text = await err.response.text()
             const parsed: unknown = JSON.parse(text)
-            const detail =
-              parsed && typeof parsed === 'object' && 'detail' in parsed
-                ? (parsed as { detail: string }).detail
-                : 'Invalid request.'
-            setPasswordError(String(detail))
+            let detail = 'Invalid request.'
+            if (typeof parsed === 'object' && parsed !== null && 'detail' in parsed) {
+              const rawDetail = (parsed as { detail: unknown }).detail
+              if (typeof rawDetail === 'string') {
+                detail = rawDetail
+              }
+            }
+            setPasswordError(detail)
           } catch {
             setPasswordError('Invalid request.')
           }
@@ -433,7 +444,7 @@ export default function AdminPage() {
     )
   }
 
-  if (loadError) {
+  if (loadError !== null) {
     return (
       <div className="text-center py-24">
         <p className="text-red-600">{loadError}</p>
@@ -466,12 +477,12 @@ export default function AdminPage() {
           <h2 className="text-sm font-medium text-ink">Site Settings</h2>
         </div>
 
-        {siteError && (
+        {siteError !== null && (
           <div className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
             {siteError}
           </div>
         )}
-        {siteSuccess && (
+        {siteSuccess !== null && (
           <div className="mb-4 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-4 py-3">
             {siteSuccess}
           </div>
@@ -586,12 +597,12 @@ export default function AdminPage() {
           <h2 className="text-sm font-medium text-ink">Pages</h2>
         </div>
 
-        {pagesError && (
+        {pagesError !== null && (
           <div className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
             {pagesError}
           </div>
         )}
-        {pagesSuccess && (
+        {pagesSuccess !== null && (
           <div className="mb-4 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-4 py-3">
             {pagesSuccess}
           </div>
@@ -646,12 +657,12 @@ export default function AdminPage() {
               {/* Expanded edit section */}
               {expandedPageId === page.id && (
                 <div className="border-t border-border px-4 py-4 space-y-4">
-                  {pageEditError && (
+                  {pageEditError !== null && (
                     <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
                       {pageEditError}
                     </div>
                   )}
-                  {pageEditSuccess && (
+                  {pageEditSuccess !== null && (
                     <div className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-4 py-3">
                       {pageEditSuccess}
                     </div>
@@ -681,7 +692,7 @@ export default function AdminPage() {
                   </div>
 
                   {/* Content editor for non-builtin pages with files */}
-                  {!BUILTIN_PAGE_IDS.has(page.id) && page.file && (
+                  {!BUILTIN_PAGE_IDS.has(page.id) && page.file !== null && (
                     <div>
                       <label className="block text-xs font-medium text-muted mb-1">Content</label>
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -837,7 +848,7 @@ export default function AdminPage() {
             <div className="flex items-center gap-3">
               <button
                 onClick={() => void handleAddPage()}
-                disabled={busy || !newPageId.trim() || !newPageTitle.trim()}
+                disabled={busy || newPageId.trim().length === 0 || newPageTitle.trim().length === 0}
                 className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-accent text-white rounded-lg
                          hover:bg-accent-light disabled:opacity-50 transition-colors"
               >
@@ -868,12 +879,12 @@ export default function AdminPage() {
           <h2 className="text-sm font-medium text-ink">Change Password</h2>
         </div>
 
-        {passwordError && (
+        {passwordError !== null && (
           <div className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
             {passwordError}
           </div>
         )}
-        {passwordSuccess && (
+        {passwordSuccess !== null && (
           <div className="mb-4 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-4 py-3">
             {passwordSuccess}
           </div>

@@ -96,19 +96,13 @@ select = [
     "TC",  # flake8-type-checking
     "RUF", # ruff-specific rules
 ]
-ignore = [
-    "S101",  # allow assert in tests
-    "S104",  # allow binding to 0.0.0.0
-    "S105",  # allow hardcoded passwords in config/tests
-    "S106",  # allow hardcoded passwords in function args
-]
-
 [tool.ruff.lint.per-file-ignores]
 "cli/**" = ["T201"]                # CLI tools need print statements
 "backend/api/**" = ["TC", "B008"]  # FastAPI needs runtime type imports and Depends() defaults
 "backend/models/**" = ["RUF012", "TC003"]  # SQLAlchemy needs runtime types for Mapped[]
 "backend/pandoc/**" = ["S607"]     # pandoc is invoked by name
 "backend/services/git_service.py" = ["S603", "S607"]  # git CLI invoked via subprocess
+"tests/**" = ["S101", "S105", "S106"]  # test code intentionally uses asserts and fixed credentials
 
 [tool.ruff.lint.isort]
 known-first-party = ["backend", "cli"]
@@ -116,9 +110,23 @@ known-first-party = ["backend", "cli"]
 [tool.mypy]
 python_version = "3.14"
 strict = true
+disallow_any_unimported = true
+disallow_any_decorated = true
+warn_unreachable = true
+extra_checks = true
+enable_error_code = ["possibly-undefined", "truthy-bool", "redundant-expr"]
 warn_return_any = true
 warn_unused_configs = true
 plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+check_untyped_defs = false
+disallow_any_unimported = false
+warn_return_any = false
+disable_error_code = ["method-assign", "no-any-return", "union-attr"]
 
 [[tool.mypy.overrides]]
 module = [

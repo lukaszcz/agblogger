@@ -45,7 +45,7 @@ export default function PostCard({ post, index = 0 }: PostCardProps) {
                 {dateStr}
               </span>
 
-              {post.author && (
+              {post.author !== null && (
                 <>
                   <span className="text-border-dark">·</span>
                   <span className="text-xs text-muted">{post.author}</span>
