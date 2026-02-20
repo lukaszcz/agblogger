@@ -15,7 +15,7 @@ import frontmatter as fm
 from merge3 import Merge3
 from sqlalchemy import delete, select
 
-from backend.filesystem.frontmatter import RECOGNIZED_FIELDS
+from backend.filesystem.frontmatter import RECOGNIZED_FIELDS, extract_title, strip_leading_heading
 from backend.models.sync import SyncManifest
 from backend.services.datetime_service import format_datetime, format_iso, now_utc, parse_datetime
 
@@ -351,6 +351,15 @@ def normalize_post_frontmatter(
                 post["modified_at"] = post["created_at"]
             if "author" not in post.metadata and default_author:
                 post["author"] = default_author
+
+        # Backfill title from first heading if not present
+        if "title" not in post.metadata or not post.get("title"):
+            title = extract_title(post.content, file_path)
+            post["title"] = title
+            # Strip the heading from the body since title is now in front matter
+            new_content = strip_leading_heading(post.content, title)
+            if new_content != post.content:
+                post.content = new_content
 
         # Rewrite file on disk
         try:

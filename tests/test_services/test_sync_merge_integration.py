@@ -71,7 +71,8 @@ class TestThreeWayMerge:
         resp = await merge_client.put(
             "/api/posts/posts/shared.md",
             json={
-                "body": "# Shared Post\n\nParagraph one (server edit).\n\nParagraph two.\n",
+                "title": "Shared Post",
+                "body": "\nParagraph one (server edit).\n\nParagraph two.\n",
                 "labels": [],
                 "is_draft": False,
             },
@@ -133,7 +134,8 @@ class TestThreeWayMerge:
         resp = await merge_client.put(
             "/api/posts/posts/shared.md",
             json={
-                "body": "# Shared Post\n\nServer version of paragraph one.\n\nParagraph two.\n",
+                "title": "Shared Post",
+                "body": "\nServer version of paragraph one.\n\nParagraph two.\n",
                 "labels": [],
                 "is_draft": False,
             },
@@ -321,7 +323,8 @@ class TestThreeWayMerge:
         resp = await merge_client.put(
             "/api/posts/posts/shared.md",
             json={
-                "body": "# Shared Post\n\nParagraph one (server).\n\nParagraph two.\n",
+                "title": "Shared Post",
+                "body": "\nParagraph one (server).\n\nParagraph two.\n",
                 "labels": [],
                 "is_draft": False,
             },
