@@ -62,6 +62,9 @@ export function useEditorAutoSave({
   // Use state (not ref) so changes trigger isDirty recalculation
   const [savedState, setSavedState] = useState<DraftData>(currentState)
 
+  // Ref to skip the navigation blocker after a successful save
+  const navigationAllowedRef = useRef(false)
+
   const onRestoreRef = useRef(onRestore)
   useEffect(() => {
     onRestoreRef.current = onRestore
@@ -128,6 +131,11 @@ export function useEditorAutoSave({
 
   useEffect(() => {
     if (blocker.state === 'blocked') {
+      if (navigationAllowedRef.current) {
+        navigationAllowedRef.current = false
+        blocker.proceed()
+        return
+      }
       const leave = window.confirm('You have unsaved changes. Are you sure you want to leave?')
       if (leave) {
         blocker.proceed()
@@ -154,6 +162,7 @@ export function useEditorAutoSave({
     localStorage.removeItem(key)
     setSavedState(currentStateRef.current)
     setDraftOverride({ key, draft: null })
+    navigationAllowedRef.current = true
   }, [key])
 
   return {
