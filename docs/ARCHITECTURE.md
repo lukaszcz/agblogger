@@ -97,9 +97,11 @@ content/
 ├── labels.toml             Label DAG definitions
 ├── about.md                Top-level page
 ├── posts/
-│   ├── 2026-02-02-hello-world.md
-│   └── cooking/
-│       └── best-pasta.md
+│   ├── 2026-02-02-hello-world.md        Flat post (legacy)
+│   └── 2026-02-20-my-post/              Post-per-directory (new posts)
+│       ├── index.md                     Post content
+│       ├── photo.png                    Co-located asset
+│       └── diagram.svg                  Co-located asset
 └── assets/                 Shared assets
 ```
 
@@ -120,6 +122,8 @@ Content here...
 - **Title** is stored as a `title` field in YAML front matter. For backward compatibility, if `title` is absent, it is extracted from the first `# Heading` in the body, falling back to filename derivation. During sync, missing titles are backfilled from the first heading (or filename), and any matching leading heading is stripped from the body.
 - **Labels** are referenced as `#label-id` strings.
 - **Timestamps** use strict ISO output format; lax input is accepted via pendulum.
+- **Post-per-directory**: New posts created via the web UI are stored as `posts/<date>-<slug>/index.md` with co-located assets. The slug is generated from the title via NFKD unicode normalization → ASCII → lowercase → hyphenated (max 80 chars). Existing flat posts (`posts/hello.md`) continue to work.
+- **Directory rename on title change**: When a post's title changes, the directory is renamed to match the new slug. A symlink is created at the old path pointing to the new directory, preserving old URLs.
 - **Directories** under `posts/` are for disk organization only — they have no effect on labels or metadata.
 
 ### Label DAG
@@ -209,6 +213,7 @@ On startup, the lifespan handler:
 | `crosspost` | `/api/crosspost` | Social account management, cross-posting |
 | `render` | `/api/render` | Server-side Pandoc preview for the editor |
 | `admin` | `/api/admin` | Site settings, page management, password change (admin-only) |
+| `content` | `/api/content` | Public file serving for post assets and shared assets |
 | `health` | `/api/health` | Health check with DB verification |
 
 ### Database Models
@@ -241,6 +246,8 @@ pandoc -f gfm+tex_math_dollars+footnotes+raw_html -t html5
 
 Features: GitHub Flavored Markdown (tables, task lists, strikethrough), KaTeX math, syntax highlighting (140+ languages), and heading anchor injection.
 
+After rendering and sanitization, `rewrite_relative_urls()` rewrites relative `src` and `href` attributes in the HTML to absolute `/api/content/...` paths based on the post's file path. This allows co-located assets (e.g., `photo.png` next to `index.md`) to be referenced with simple relative paths in markdown and served correctly via the content API.
+
 Lua filter files exist in `backend/pandoc/filters/` as placeholders for future use (callouts, tabsets, video embeds, local link rewriting) but are not currently wired into the rendering pipeline.
 
 ## Authentication and Authorization
@@ -272,6 +279,8 @@ Lua filter files exist in `backend/pandoc/filters/` as placeholders for future u
 | Admin | Above + admin-only operations |
 
 Public reads require no authentication. The `get_current_user()` dependency returns `None` for unauthenticated requests.
+
+**Draft visibility**: Draft posts and their co-located assets are visible only to their author. The post listing endpoint filters drafts by matching the authenticated user's display name (or username) against the post's author field. Direct access to draft post pages, edit endpoints, and content files under draft post directories all enforce the same author-only restriction.
 
 ### Admin Bootstrap
 
@@ -508,15 +517,15 @@ The `Caddyfile` configures automatic Let's Encrypt TLS, reverse proxy to the bac
 ### Creating a Post (Editor)
 
 ```
-Frontend sends structured data: { file_path, title, body, labels, is_draft }
+Frontend sends structured data: { title, body, labels, is_draft }
     → POST /api/posts
-        → Backend uses title from request body
+        → Backend generates directory path: posts/<date>-<slug>/index.md
         → Backend sets author from authenticated user
         → Backend sets created_at and modified_at to now
         → Constructs PostData from structured fields
         → serialize_post() assembles YAML front matter + body
-        → write to content/ directory
-        → render HTML via Pandoc, store in PostCache
+        → write to content/ directory (creates directory)
+        → render HTML via Pandoc, rewrite relative URLs, store in PostCache
 ```
 
 ### Updating a Post (Editor)
@@ -530,7 +539,9 @@ Frontend sends structured data: { title, body, labels, is_draft }
         → Constructs PostData from structured fields
         → serialize_post() assembles YAML front matter + body
         → write to content/ directory
-        → render HTML via Pandoc, update PostCache
+        → If title slug changed: rename directory, create symlink at old path
+        → render HTML via Pandoc, rewrite relative URLs, update PostCache
+        → Returns new file_path (may differ from request path after rename)
 ```
 
 ### Publishing a Post (Filesystem)
@@ -563,6 +574,41 @@ GET /api/posts/{path}
     → PostService.get_post()
         → query PostCache (pre-rendered HTML)
         → return cached metadata + HTML
+```
+
+### Uploading Assets (Editor)
+
+```
+Frontend sends multipart file upload
+    → POST /api/posts/{path}/assets
+        → Verify post exists in DB cache
+        → Write files to post's directory (10 MB limit per file)
+        → Git commit
+        → Return list of uploaded filenames
+        → Frontend inserts markdown at cursor: ![name](name) for images, [name](name) for others
+```
+
+### Serving Content Files
+
+```
+GET /api/content/{file_path}
+    → Validate path (no traversal, allowed prefixes: posts/, assets/)
+    → Verify resolved path stays within content directory
+    → For files under draft post directories: require author authentication
+    → Return FileResponse with guessed content type
+```
+
+### Deleting a Post
+
+```
+DELETE /api/posts/{path}?delete_assets=true|false
+    → If delete_assets=true and post is index.md:
+        → Remove symlinks pointing to directory
+        → Remove entire directory (post + all assets)
+    → If delete_assets=false (default):
+        → Remove only the .md file
+    → Clean up DB cache, FTS index, label associations
+    → Git commit
 ```
 
 ### Searching
