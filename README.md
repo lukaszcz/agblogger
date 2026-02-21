@@ -45,6 +45,8 @@ just start
 
 # Or with custom ports (useful when running multiple worktrees)
 just start backend_port=9000 frontend_port=9173
+# If requested/default ports are busy, just start automatically picks free ports
+# and prints the actual backend/frontend ports it chose.
 
 # Stop the dev server
 just stop

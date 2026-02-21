@@ -163,19 +163,63 @@ pidfile := localdir / "dev.pid"
 # Start backend and frontend in the background (override ports: just start backend_port=9000 frontend_port=9173)
 start:
     #!/usr/bin/env bash
+    set -euo pipefail
+    is_port_in_use() {
+        lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1
+    }
+
+    validate_port() {
+        local port="$1"
+        if ! [[ "$port" =~ ^[0-9]+$ ]] || [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then
+            echo "Invalid TCP port: $port (must be 1-65535)" >&2
+            exit 1
+        fi
+    }
+
+    find_free_port() {
+        local candidate="$1"
+        local blocked="${2:-}"
+        while [ "$candidate" -le 65535 ]; do
+            if [ -n "$blocked" ] && [ "$candidate" = "$blocked" ]; then
+                candidate=$((candidate + 1))
+                continue
+            fi
+            if ! is_port_in_use "$candidate"; then
+                echo "$candidate"
+                return 0
+            fi
+            candidate=$((candidate + 1))
+        done
+        echo "no free TCP port found in range" >&2
+        exit 1
+    }
+
+    requested_backend_port="{{ backend_port }}"
+    requested_frontend_port="{{ frontend_port }}"
+    validate_port "$requested_backend_port"
+    validate_port "$requested_frontend_port"
+    selected_backend_port="$(find_free_port "$requested_backend_port")"
+    selected_frontend_port="$(find_free_port "$requested_frontend_port" "$selected_backend_port")"
+
     mkdir -p "{{ localdir }}"
     if [ -f "{{ pidfile }}" ] && kill -0 "$(cat "{{ pidfile }}")" 2>/dev/null; then
         echo "Dev server is already running (PID $(cat "{{ pidfile }}"))"
         exit 1
     fi
+    if [ "$selected_backend_port" != "$requested_backend_port" ]; then
+        echo "Backend port :$requested_backend_port unavailable, using :$selected_backend_port"
+    fi
+    if [ "$selected_frontend_port" != "$requested_frontend_port" ]; then
+        echo "Frontend port :$requested_frontend_port unavailable, using :$selected_frontend_port"
+    fi
     (
         trap 'kill 0' EXIT
-        uv run uvicorn backend.main:app --reload --host 0.0.0.0 --port {{ backend_port }} &
-        cd frontend && npm run dev -- --port {{ frontend_port }} &
+        uv run uvicorn backend.main:app --reload --host 0.0.0.0 --port "$selected_backend_port" &
+        cd frontend && AGBLOGGER_BACKEND_PORT="$selected_backend_port" npm run dev -- --port "$selected_frontend_port" &
         wait
     ) &
     echo "$!" > "{{ pidfile }}"
-    echo "Dev server started (PID $!) — backend :{{ backend_port }}, frontend :{{ frontend_port }}"
+    echo "Dev server started (PID $!) — backend :$selected_backend_port, frontend :$selected_frontend_port"
 
 # Stop the running dev server
 stop:
