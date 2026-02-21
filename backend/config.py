@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     auth_rate_limit_window_seconds: int = Field(default=300, ge=1)
     auth_enforce_login_origin: bool = True
 
+    # Bluesky OAuth
+    bluesky_client_url: str = ""
+
     # Admin bootstrap
     admin_username: str = "admin"
     admin_password: str = INSECURE_BOOTSTRAP_SENTINEL
