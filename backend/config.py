@@ -55,6 +55,14 @@ class Settings(BaseSettings):
     # Bluesky OAuth
     bluesky_client_url: str = ""
 
+    # X (Twitter) OAuth
+    x_client_id: str = ""
+    x_client_secret: str = ""
+
+    # Facebook OAuth
+    facebook_app_id: str = ""
+    facebook_app_secret: str = ""
+
     # Admin bootstrap
     admin_username: str = "admin"
     admin_password: str = INSECURE_BOOTSTRAP_SENTINEL

@@ -5,14 +5,24 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from backend.crosspost.bluesky import BlueskyCrossPoster
+from backend.crosspost.facebook import FacebookCrossPoster
 from backend.crosspost.mastodon import MastodonCrossPoster
+from backend.crosspost.x import XCrossPoster
 
 if TYPE_CHECKING:
     from backend.crosspost.base import CrossPoster
 
-PLATFORMS: dict[str, type[BlueskyCrossPoster] | type[MastodonCrossPoster]] = {
+PLATFORMS: dict[
+    str,
+    type[BlueskyCrossPoster]
+    | type[FacebookCrossPoster]
+    | type[MastodonCrossPoster]
+    | type[XCrossPoster],
+] = {
     "bluesky": BlueskyCrossPoster,
     "mastodon": MastodonCrossPoster,
+    "x": XCrossPoster,
+    "facebook": FacebookCrossPoster,
 }
 
 

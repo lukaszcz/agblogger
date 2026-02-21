@@ -6,6 +6,7 @@ import PlatformIcon from '@/components/crosspost/PlatformIcon'
 
 const CHAR_LIMITS: Record<string, number> = {
   bluesky: 300,
+  x: 280,
   mastodon: 500,
 }
 

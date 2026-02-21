@@ -11,6 +11,12 @@ from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption,
 from backend.crosspost.atproto_oauth import generate_es256_keypair
 from backend.crosspost.base import CrossPostContent
 from backend.crosspost.bluesky import BlueskyCrossPoster, _build_post_text, _find_facets
+from backend.crosspost.facebook import (
+    FacebookCrossPoster,
+    FacebookOAuthTokenError,
+    _build_facebook_text,
+    exchange_facebook_oauth_token,
+)
 from backend.crosspost.mastodon import (
     MastodonCrossPoster,
     MastodonOAuthTokenError,
@@ -18,6 +24,13 @@ from backend.crosspost.mastodon import (
     exchange_mastodon_oauth_token,
 )
 from backend.crosspost.registry import list_platforms
+from backend.crosspost.x import (
+    X_CHAR_LIMIT,
+    XCrossPoster,
+    XOAuthTokenError,
+    _build_tweet_text,
+    exchange_x_oauth_token,
+)
 
 
 async def _always_safe(_url: str) -> bool:
@@ -111,7 +124,9 @@ class TestRegistry:
         platforms = list_platforms()
         assert "bluesky" in platforms
         assert "mastodon" in platforms
-        assert len(platforms) >= 2
+        assert "x" in platforms
+        assert "facebook" in platforms
+        assert len(platforms) >= 4
 
 
 class TestMastodonUrlValidation:
@@ -320,3 +335,1085 @@ class TestBlueskyCrossPosterOAuth:
         assert result.success
         assert captured_headers.get("Authorization", "").startswith("DPoP ")
         assert "DPoP" in captured_headers
+
+
+class TestXFormatting:
+    def test_build_tweet_text_short(self) -> None:
+        content = CrossPostContent(
+            title="Test Post",
+            excerpt="Short excerpt.",
+            url="https://blog.example.com/posts/test",
+            labels=["swe", "ai"],
+        )
+        text = _build_tweet_text(content)
+        assert "Short excerpt." in text
+        assert "#swe" in text
+        assert "#ai" in text
+        assert "https://blog.example.com/posts/test" in text
+        assert len(text) <= X_CHAR_LIMIT
+
+    def test_build_tweet_text_long_truncation(self) -> None:
+        content = CrossPostContent(
+            title="Test Post",
+            excerpt="A" * 500,
+            url="https://blog.example.com/posts/test",
+            labels=["swe"],
+        )
+        text = _build_tweet_text(content)
+        assert len(text) <= X_CHAR_LIMIT
+        assert "..." in text
+
+    def test_build_tweet_text_uses_custom_text(self) -> None:
+        content = CrossPostContent(
+            title="Test",
+            excerpt="Excerpt.",
+            url="https://example.com/posts/test",
+            custom_text="My custom tweet!",
+        )
+        text = _build_tweet_text(content)
+        assert text == "My custom tweet!"
+
+    def test_build_tweet_text_rejects_custom_text_over_limit(self) -> None:
+        content = CrossPostContent(
+            title="Test",
+            excerpt="Excerpt.",
+            url="https://example.com/posts/test",
+            custom_text="A" * 281,
+        )
+        with pytest.raises(ValueError, match="280"):
+            _build_tweet_text(content)
+
+    def test_build_tweet_text_accepts_custom_text_at_limit(self) -> None:
+        content = CrossPostContent(
+            title="Test",
+            excerpt="Excerpt.",
+            url="https://example.com/posts/test",
+            custom_text="A" * 280,
+        )
+        text = _build_tweet_text(content)
+        assert text == "A" * 280
+
+
+class TestXCrossPoster:
+    async def test_authenticate_with_valid_credentials(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        class DummyResponse:
+            status_code = 200
+            text = ""
+
+            @staticmethod
+            def json() -> dict[str, object]:
+                return {"data": {"id": "123", "username": "testuser"}}
+
+        class DummyAsyncClient:
+            async def __aenter__(self) -> DummyAsyncClient:
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb) -> bool:
+                return False
+
+            async def get(self, url: str, **kwargs) -> DummyResponse:
+                return DummyResponse()
+
+        monkeypatch.setattr("backend.crosspost.x.httpx.AsyncClient", DummyAsyncClient)
+
+        poster = XCrossPoster()
+        result = await poster.authenticate(
+            {
+                "access_token": "test_token",
+                "refresh_token": "test_rt",
+                "username": "testuser",
+            }
+        )
+        assert result is True
+
+    async def test_authenticate_rejects_missing_token(self) -> None:
+        poster = XCrossPoster()
+        result = await poster.authenticate({"refresh_token": "rt"})
+        assert result is False
+
+    async def test_post_creates_tweet(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        captured: dict[str, object] = {}
+
+        class DummyResponse:
+            status_code = 201
+            text = ""
+
+            @staticmethod
+            def json() -> dict[str, object]:
+                return {"data": {"id": "1234567890", "text": "Hello"}}
+
+        class DummyVerifyResponse:
+            status_code = 200
+            text = ""
+
+            @staticmethod
+            def json() -> dict[str, object]:
+                return {"data": {"id": "123", "username": "testuser"}}
+
+        class DummyAsyncClient:
+            async def __aenter__(self) -> DummyAsyncClient:
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb) -> bool:
+                return False
+
+            async def get(self, url: str, **kwargs) -> DummyVerifyResponse:
+                return DummyVerifyResponse()
+
+            async def post(self, url: str, **kwargs) -> DummyResponse:
+                captured["url"] = url
+                captured["json"] = kwargs.get("json")
+                return DummyResponse()
+
+        monkeypatch.setattr("backend.crosspost.x.httpx.AsyncClient", DummyAsyncClient)
+
+        poster = XCrossPoster()
+        await poster.authenticate(
+            {
+                "access_token": "test_token",
+                "refresh_token": "test_rt",
+                "username": "testuser",
+            }
+        )
+        content = CrossPostContent(
+            title="Test",
+            excerpt="Hello world",
+            url="https://blog.example.com/post",
+            labels=["swe"],
+        )
+        result = await poster.post(content)
+        assert result.success
+        assert result.platform_id == "1234567890"
+        assert captured["url"] == "https://api.x.com/2/tweets"
+
+    async def test_post_refreshes_on_401(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        call_count = 0
+
+        class DummyRefreshResponse:
+            status_code = 200
+            text = ""
+
+            @staticmethod
+            def json() -> dict[str, str]:
+                return {"access_token": "new_at", "refresh_token": "new_rt"}
+
+        class DummyTweetResponse:
+            status_code = 201
+            text = ""
+
+            @staticmethod
+            def json() -> dict[str, object]:
+                return {"data": {"id": "999", "text": "Hello"}}
+
+        class Dummy401Response:
+            status_code = 401
+            text = "Unauthorized"
+
+            @staticmethod
+            def json() -> dict[str, str]:
+                return {"detail": "Unauthorized"}
+
+        class DummyVerifyResponse:
+            status_code = 200
+            text = ""
+
+            @staticmethod
+            def json() -> dict[str, object]:
+                return {"data": {"id": "123", "username": "testuser"}}
+
+        class DummyAsyncClient:
+            async def __aenter__(self) -> DummyAsyncClient:
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb) -> bool:
+                return False
+
+            async def get(self, url: str, **kwargs) -> DummyVerifyResponse:
+                return DummyVerifyResponse()
+
+            async def post(self, url: str, **kwargs) -> object:
+                nonlocal call_count
+                call_count += 1
+                if url == "https://api.x.com/2/oauth2/token":
+                    return DummyRefreshResponse()
+                if call_count == 1:
+                    return Dummy401Response()
+                return DummyTweetResponse()
+
+        monkeypatch.setattr("backend.crosspost.x.httpx.AsyncClient", DummyAsyncClient)
+
+        poster = XCrossPoster()
+        await poster.authenticate(
+            {
+                "access_token": "old_at",
+                "refresh_token": "old_rt",
+                "username": "testuser",
+                "client_id": "test_client_id",
+            }
+        )
+        content = CrossPostContent(
+            title="Test",
+            excerpt="Hello",
+            url="https://example.com/post",
+            labels=[],
+        )
+        result = await poster.post(content)
+        assert result.success
+        updated = poster.get_updated_credentials()
+        assert updated is not None
+        assert updated["access_token"] == "new_at"
+
+
+class TestXOAuthTokenExchange:
+    """Tests for exchange_x_oauth_token function (Issue #3, #10)."""
+
+    async def test_raises_on_token_exchange_failure_with_body(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Issue #10: Error message should include response body details."""
+
+        class DummyResponse:
+            status_code = 400
+            text = '{"detail": "Invalid PKCE verifier"}'
+
+            @staticmethod
+            def json() -> dict[str, str]:
+                return {"detail": "Invalid PKCE verifier"}
+
+        class DummyAsyncClient:
+            async def __aenter__(self) -> DummyAsyncClient:
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb) -> bool:
+                return False
+
+            async def post(self, url: str, **kwargs) -> DummyResponse:
+                return DummyResponse()
+
+        monkeypatch.setattr("backend.crosspost.x.httpx.AsyncClient", DummyAsyncClient)
+
+        with pytest.raises(XOAuthTokenError, match="Invalid PKCE verifier"):
+            await exchange_x_oauth_token(
+                code="test-code",
+                client_id="cid",
+                client_secret="csec",
+                redirect_uri="https://example.com/cb",
+                pkce_verifier="verifier",
+            )
+
+    async def test_raises_on_missing_username(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Issue #3: Should raise error when username is missing, not fall back to 'unknown'."""
+        call_count = 0
+
+        class DummyTokenResponse:
+            status_code = 200
+            text = ""
+
+            @staticmethod
+            def json() -> dict[str, str]:
+                return {"access_token": "at", "refresh_token": "rt"}
+
+        class DummyUserResponse:
+            status_code = 200
+            text = ""
+
+            @staticmethod
+            def json() -> dict[str, object]:
+                return {"data": {"id": "123"}}  # No username field
+
+        class DummyAsyncClient:
+            async def __aenter__(self) -> DummyAsyncClient:
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb) -> bool:
+                return False
+
+            async def post(self, url: str, **kwargs) -> DummyTokenResponse:
+                return DummyTokenResponse()
+
+            async def get(self, url: str, **kwargs) -> DummyUserResponse:
+                nonlocal call_count
+                call_count += 1
+                return DummyUserResponse()
+
+        monkeypatch.setattr("backend.crosspost.x.httpx.AsyncClient", DummyAsyncClient)
+
+        with pytest.raises(XOAuthTokenError, match="username"):
+            await exchange_x_oauth_token(
+                code="test-code",
+                client_id="cid",
+                client_secret="csec",
+                redirect_uri="https://example.com/cb",
+                pkce_verifier="verifier",
+            )
+
+    async def test_happy_path_returns_credentials(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Happy path: returns credentials with username."""
+
+        class DummyTokenResponse:
+            status_code = 200
+            text = ""
+
+            @staticmethod
+            def json() -> dict[str, str]:
+                return {"access_token": "at_123", "refresh_token": "rt_456"}
+
+        class DummyUserResponse:
+            status_code = 200
+            text = ""
+
+            @staticmethod
+            def json() -> dict[str, object]:
+                return {"data": {"id": "123", "username": "testuser"}}
+
+        class DummyAsyncClient:
+            async def __aenter__(self) -> DummyAsyncClient:
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb) -> bool:
+                return False
+
+            async def post(self, url: str, **kwargs) -> DummyTokenResponse:
+                return DummyTokenResponse()
+
+            async def get(self, url: str, **kwargs) -> DummyUserResponse:
+                return DummyUserResponse()
+
+        monkeypatch.setattr("backend.crosspost.x.httpx.AsyncClient", DummyAsyncClient)
+
+        result = await exchange_x_oauth_token(
+            code="test-code",
+            client_id="cid",
+            client_secret="csec",
+            redirect_uri="https://example.com/cb",
+            pkce_verifier="verifier",
+        )
+        assert result["access_token"] == "at_123"
+        assert result["refresh_token"] == "rt_456"
+        assert result["username"] == "testuser"
+
+    async def test_raises_on_user_fetch_failure_with_body(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Issue #10: User fetch error should include response body details."""
+
+        class DummyTokenResponse:
+            status_code = 200
+            text = ""
+
+            @staticmethod
+            def json() -> dict[str, str]:
+                return {"access_token": "at", "refresh_token": "rt"}
+
+        class DummyUserResponse:
+            status_code = 403
+            text = '{"detail": "Forbidden"}'
+
+        class DummyAsyncClient:
+            async def __aenter__(self) -> DummyAsyncClient:
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb) -> bool:
+                return False
+
+            async def post(self, url: str, **kwargs) -> DummyTokenResponse:
+                return DummyTokenResponse()
+
+            async def get(self, url: str, **kwargs) -> DummyUserResponse:
+                return DummyUserResponse()
+
+        monkeypatch.setattr("backend.crosspost.x.httpx.AsyncClient", DummyAsyncClient)
+
+        with pytest.raises(XOAuthTokenError, match="Forbidden"):
+            await exchange_x_oauth_token(
+                code="test-code",
+                client_id="cid",
+                client_secret="csec",
+                redirect_uri="https://example.com/cb",
+                pkce_verifier="verifier",
+            )
+
+
+class TestXTokenRefresh:
+    """Tests for XCrossPoster._try_refresh_token (Issues #5, #12)."""
+
+    async def test_refresh_uses_basic_auth(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Issue #5: Token refresh should use HTTP Basic Auth, matching initial exchange."""
+        captured_kwargs: dict[str, object] = {}
+
+        class DummyVerifyResponse:
+            status_code = 200
+            text = ""
+
+            @staticmethod
+            def json() -> dict[str, object]:
+                return {"data": {"id": "123", "username": "testuser"}}
+
+        class DummyRefreshResponse:
+            status_code = 200
+            text = ""
+
+            @staticmethod
+            def json() -> dict[str, str]:
+                return {"access_token": "new_at", "refresh_token": "new_rt"}
+
+        class Dummy401Response:
+            status_code = 401
+            text = "Unauthorized"
+
+            @staticmethod
+            def json() -> dict[str, str]:
+                return {"detail": "Unauthorized"}
+
+        class DummyTweetResponse:
+            status_code = 201
+            text = ""
+
+            @staticmethod
+            def json() -> dict[str, object]:
+                return {"data": {"id": "999", "text": "Hello"}}
+
+        call_count = 0
+
+        class DummyAsyncClient:
+            async def __aenter__(self) -> DummyAsyncClient:
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb) -> bool:
+                return False
+
+            async def get(self, url: str, **kwargs) -> DummyVerifyResponse:
+                return DummyVerifyResponse()
+
+            async def post(self, url: str, **kwargs) -> object:
+                nonlocal call_count
+                call_count += 1
+                if url == "https://api.x.com/2/oauth2/token":
+                    captured_kwargs.update(kwargs)
+                    return DummyRefreshResponse()
+                if call_count == 1:
+                    return Dummy401Response()
+                return DummyTweetResponse()
+
+        monkeypatch.setattr("backend.crosspost.x.httpx.AsyncClient", DummyAsyncClient)
+
+        poster = XCrossPoster()
+        await poster.authenticate(
+            {
+                "access_token": "old_at",
+                "refresh_token": "old_rt",
+                "username": "testuser",
+                "client_id": "test_cid",
+                "client_secret": "test_csec",
+            }
+        )
+        content = CrossPostContent(
+            title="Test",
+            excerpt="Hello",
+            url="https://example.com/post",
+            labels=[],
+        )
+        await poster.post(content)
+
+        # Verify Basic Auth was used
+        auth = captured_kwargs.get("auth")
+        assert auth is not None, "Token refresh should use HTTP Basic Auth"
+        assert auth == ("test_cid", "test_csec")
+
+    async def test_refresh_handles_missing_access_token_gracefully(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Issue #12: Missing access_token in refresh response should not raise KeyError."""
+
+        class DummyVerifyResponse:
+            status_code = 200
+            text = ""
+
+            @staticmethod
+            def json() -> dict[str, object]:
+                return {"data": {"id": "123", "username": "testuser"}}
+
+        class DummyRefreshResponse:
+            status_code = 200
+            text = ""
+
+            @staticmethod
+            def json() -> dict[str, str]:
+                return {"token_type": "bearer"}  # Missing access_token
+
+        class Dummy401Response:
+            status_code = 401
+            text = "Unauthorized"
+
+            @staticmethod
+            def json() -> dict[str, str]:
+                return {"detail": "Unauthorized"}
+
+        call_count = 0
+
+        class DummyAsyncClient:
+            async def __aenter__(self) -> DummyAsyncClient:
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb) -> bool:
+                return False
+
+            async def get(self, url: str, **kwargs) -> DummyVerifyResponse:
+                return DummyVerifyResponse()
+
+            async def post(self, url: str, **kwargs) -> object:
+                nonlocal call_count
+                call_count += 1
+                if url == "https://api.x.com/2/oauth2/token":
+                    return DummyRefreshResponse()
+                if call_count == 1:
+                    return Dummy401Response()
+                return Dummy401Response()  # Still fails after refresh
+
+        monkeypatch.setattr("backend.crosspost.x.httpx.AsyncClient", DummyAsyncClient)
+
+        poster = XCrossPoster()
+        await poster.authenticate(
+            {
+                "access_token": "old_at",
+                "refresh_token": "old_rt",
+                "username": "testuser",
+                "client_id": "test_cid",
+                "client_secret": "test_csec",
+            }
+        )
+        content = CrossPostContent(
+            title="Test",
+            excerpt="Hello",
+            url="https://example.com/post",
+            labels=[],
+        )
+        # Should not raise KeyError - should return failure result
+        result = await poster.post(content)
+        assert result.success is False
+
+
+class TestXValidateCredentials:
+    """Tests for XCrossPoster.validate_credentials (Issue #9)."""
+
+    async def test_logs_warning_on_network_error(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Issue #9: Network errors should be logged, not silently swallowed."""
+
+        class DummyAsyncClient:
+            async def __aenter__(self) -> DummyAsyncClient:
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb) -> bool:
+                return False
+
+            async def get(self, url: str, **kwargs) -> None:
+                raise httpx.ConnectTimeout("Connection timed out")
+
+        monkeypatch.setattr("backend.crosspost.x.httpx.AsyncClient", DummyAsyncClient)
+
+        poster = XCrossPoster()
+        poster._access_token = "test_token"
+
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="backend.crosspost.x"):
+            result = await poster.validate_credentials()
+
+        assert result is False
+        assert any("ConnectTimeout" in msg for msg in caplog.messages)
+
+
+class TestXTruncationEdgeCases:
+    """Tests for CR-1: Tweet text truncation edge cases."""
+
+    def test_very_long_url_and_hashtags_produces_empty_excerpt(self) -> None:
+        """When URL + hashtags fill the limit, excerpt should be empty, not awkward."""
+        long_url = "https://blog.example.com/posts/" + "a" * 200
+        content = CrossPostContent(
+            title="Test",
+            excerpt="Hello world this is a test",
+            url=long_url,
+            labels=["swe", "ai", "ml", "data", "tech"],
+        )
+        text = _build_tweet_text(content)
+        assert len(text) <= X_CHAR_LIMIT
+        # Should not contain single-character excerpt fragments
+        lines = text.split("\n\n", 1)
+        # First part is the excerpt - it should be empty or reasonable, not single chars
+        if lines[0]:
+            assert len(lines[0]) >= 3 or lines[0] == ""
+
+
+class TestFacebookFormatting:
+    def test_build_facebook_text_includes_parts(self) -> None:
+        content = CrossPostContent(
+            title="Test Post",
+            excerpt="Short excerpt.",
+            url="https://blog.example.com/posts/test",
+            labels=["swe", "ai"],
+        )
+        text = _build_facebook_text(content)
+        assert "Short excerpt." in text
+        assert "#swe" in text
+        assert "#ai" in text
+
+    def test_build_facebook_text_uses_custom_text(self) -> None:
+        content = CrossPostContent(
+            title="Test",
+            excerpt="Excerpt.",
+            url="https://example.com/posts/test",
+            custom_text="My custom Facebook post!",
+        )
+        text = _build_facebook_text(content)
+        assert text == "My custom Facebook post!"
+
+
+class TestFacebookCrossPoster:
+    async def test_authenticate_with_valid_credentials(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        class DummyResponse:
+            status_code = 200
+            text = ""
+
+            @staticmethod
+            def json() -> dict[str, str]:
+                return {"id": "12345", "name": "My Page"}
+
+        class DummyAsyncClient:
+            async def __aenter__(self) -> DummyAsyncClient:
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb) -> bool:
+                return False
+
+            async def get(self, url: str, **kwargs) -> DummyResponse:
+                return DummyResponse()
+
+        monkeypatch.setattr("backend.crosspost.facebook.httpx.AsyncClient", DummyAsyncClient)
+
+        poster = FacebookCrossPoster()
+        result = await poster.authenticate(
+            {
+                "page_access_token": "test_token",
+                "page_id": "12345",
+                "page_name": "My Page",
+            }
+        )
+        assert result is True
+
+    async def test_authenticate_rejects_missing_token(self) -> None:
+        poster = FacebookCrossPoster()
+        result = await poster.authenticate({"page_id": "12345"})
+        assert result is False
+
+    async def test_authenticate_rejects_missing_page_id(self) -> None:
+        poster = FacebookCrossPoster()
+        result = await poster.authenticate({"page_access_token": "test"})
+        assert result is False
+
+    async def test_post_to_page(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        captured: dict[str, object] = {}
+
+        class DummyGetResponse:
+            status_code = 200
+            text = ""
+
+            @staticmethod
+            def json() -> dict[str, str]:
+                return {"id": "12345", "name": "My Page"}
+
+        class DummyPostResponse:
+            status_code = 200
+            text = ""
+
+            @staticmethod
+            def json() -> dict[str, str]:
+                return {"id": "12345_67890"}
+
+        class DummyAsyncClient:
+            async def __aenter__(self) -> DummyAsyncClient:
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb) -> bool:
+                return False
+
+            async def get(self, url: str, **kwargs) -> DummyGetResponse:
+                return DummyGetResponse()
+
+            async def post(self, url: str, **kwargs) -> DummyPostResponse:
+                captured["url"] = url
+                captured["json"] = kwargs.get("json")
+                captured["headers"] = kwargs.get("headers")
+                return DummyPostResponse()
+
+        monkeypatch.setattr("backend.crosspost.facebook.httpx.AsyncClient", DummyAsyncClient)
+
+        poster = FacebookCrossPoster()
+        await poster.authenticate(
+            {
+                "page_access_token": "test_token",
+                "page_id": "12345",
+                "page_name": "My Page",
+            }
+        )
+        content = CrossPostContent(
+            title="Test",
+            excerpt="Hello world",
+            url="https://blog.example.com/post",
+            labels=["swe"],
+        )
+        result = await poster.post(content)
+        assert result.success
+        assert result.platform_id == "12345_67890"
+        assert "12345" in str(captured["url"])
+        # Issue #4: Verify access token is NOT in the JSON body
+        json_body = captured["json"]
+        assert isinstance(json_body, dict)
+        assert json_body["link"] == "https://blog.example.com/post"
+        assert "access_token" not in json_body
+
+    async def test_post_uses_authorization_header(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Issue #4: Access token should be in Authorization header, not request body."""
+        captured_headers: dict[str, str] = {}
+
+        class DummyGetResponse:
+            status_code = 200
+            text = ""
+
+            @staticmethod
+            def json() -> dict[str, str]:
+                return {"id": "12345", "name": "My Page"}
+
+        class DummyPostResponse:
+            status_code = 200
+            text = ""
+
+            @staticmethod
+            def json() -> dict[str, str]:
+                return {"id": "12345_67890"}
+
+        class DummyAsyncClient:
+            async def __aenter__(self) -> DummyAsyncClient:
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb) -> bool:
+                return False
+
+            async def get(self, url: str, **kwargs) -> DummyGetResponse:
+                return DummyGetResponse()
+
+            async def post(self, url: str, **kwargs) -> DummyPostResponse:
+                headers = kwargs.get("headers", {})
+                assert isinstance(headers, dict)
+                captured_headers.update(headers)
+                return DummyPostResponse()
+
+        monkeypatch.setattr("backend.crosspost.facebook.httpx.AsyncClient", DummyAsyncClient)
+
+        poster = FacebookCrossPoster()
+        await poster.authenticate(
+            {
+                "page_access_token": "secret_token",
+                "page_id": "12345",
+                "page_name": "My Page",
+            }
+        )
+        content = CrossPostContent(
+            title="Test",
+            excerpt="Hello world",
+            url="https://blog.example.com/post",
+            labels=["swe"],
+        )
+        await poster.post(content)
+        assert captured_headers.get("Authorization") == "Bearer secret_token"
+
+    async def test_authenticate_validates_token_via_api(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Issue #7: authenticate() should validate the token against the API."""
+        requested_urls: list[str] = []
+
+        class DummyResponse:
+            status_code = 200
+            text = ""
+
+            @staticmethod
+            def json() -> dict[str, str]:
+                return {"id": "12345", "name": "My Page"}
+
+        class DummyAsyncClient:
+            async def __aenter__(self) -> DummyAsyncClient:
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb) -> bool:
+                return False
+
+            async def get(self, url: str, **kwargs) -> DummyResponse:
+                requested_urls.append(url)
+                return DummyResponse()
+
+        monkeypatch.setattr("backend.crosspost.facebook.httpx.AsyncClient", DummyAsyncClient)
+
+        poster = FacebookCrossPoster()
+        result = await poster.authenticate(
+            {
+                "page_access_token": "test_token",
+                "page_id": "12345",
+                "page_name": "My Page",
+            }
+        )
+        assert result is True
+        # Should have made an API call to verify the token
+        assert len(requested_urls) == 1
+        assert "12345" in requested_urls[0]
+
+    async def test_authenticate_returns_false_on_invalid_token(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Issue #7: authenticate() should return False if API rejects the token."""
+
+        class DummyResponse:
+            status_code = 401
+            text = "Invalid token"
+
+        class DummyAsyncClient:
+            async def __aenter__(self) -> DummyAsyncClient:
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb) -> bool:
+                return False
+
+            async def get(self, url: str, **kwargs) -> DummyResponse:
+                return DummyResponse()
+
+        monkeypatch.setattr("backend.crosspost.facebook.httpx.AsyncClient", DummyAsyncClient)
+
+        poster = FacebookCrossPoster()
+        result = await poster.authenticate(
+            {
+                "page_access_token": "bad_token",
+                "page_id": "12345",
+                "page_name": "My Page",
+            }
+        )
+        assert result is False
+
+
+class TestFacebookOAuthTokenExchange:
+    """Tests for exchange_facebook_oauth_token (Issues #8, #10)."""
+
+    async def test_raises_on_token_exchange_failure_with_body(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Issue #10: Error should include response body details."""
+
+        class DummyResponse:
+            status_code = 400
+            text = '{"error": "invalid_grant"}'
+
+            @staticmethod
+            def json() -> dict[str, str]:
+                return {"error": "invalid_grant"}
+
+        class DummyAsyncClient:
+            async def __aenter__(self) -> DummyAsyncClient:
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb) -> bool:
+                return False
+
+            async def get(self, url: str, **kwargs) -> DummyResponse:
+                return DummyResponse()
+
+        monkeypatch.setattr("backend.crosspost.facebook.httpx.AsyncClient", DummyAsyncClient)
+
+        with pytest.raises(FacebookOAuthTokenError, match="invalid_grant"):
+            await exchange_facebook_oauth_token(
+                code="test-code",
+                app_id="app_123",
+                app_secret="secret",
+                redirect_uri="https://example.com/cb",
+            )
+
+    async def test_raises_on_long_lived_token_missing_access_token(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Issue #8: Should warn/raise when long-lived token response lacks access_token."""
+        call_count = 0
+
+        class DummyShortTokenResp:
+            status_code = 200
+            text = ""
+
+            @staticmethod
+            def json() -> dict[str, str]:
+                return {"access_token": "short_token"}
+
+        class DummyLongLivedResp:
+            status_code = 200
+            text = ""
+
+            @staticmethod
+            def json() -> dict[str, str]:
+                return {"token_type": "bearer"}  # Missing access_token
+
+        class DummyPagesResp:
+            status_code = 200
+            text = ""
+
+            @staticmethod
+            def json() -> dict[str, list[dict[str, str]]]:
+                return {"data": [{"id": "pg1", "name": "Page", "access_token": "pat"}]}
+
+        class DummyAsyncClient:
+            async def __aenter__(self) -> DummyAsyncClient:
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb) -> bool:
+                return False
+
+            async def get(self, url: str, **kwargs) -> object:
+                nonlocal call_count
+                call_count += 1
+                if call_count == 1:
+                    return DummyShortTokenResp()
+                if call_count == 2:
+                    return DummyLongLivedResp()
+                return DummyPagesResp()
+
+        monkeypatch.setattr("backend.crosspost.facebook.httpx.AsyncClient", DummyAsyncClient)
+
+        with pytest.raises(FacebookOAuthTokenError, match="access_token"):
+            await exchange_facebook_oauth_token(
+                code="test-code",
+                app_id="app_123",
+                app_secret="secret",
+                redirect_uri="https://example.com/cb",
+            )
+
+    async def test_happy_path_returns_pages(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Happy path: returns user token and pages."""
+        call_count = 0
+
+        class DummyShortTokenResp:
+            status_code = 200
+            text = ""
+
+            @staticmethod
+            def json() -> dict[str, str]:
+                return {"access_token": "short_token"}
+
+        class DummyLongLivedResp:
+            status_code = 200
+            text = ""
+
+            @staticmethod
+            def json() -> dict[str, str]:
+                return {"access_token": "long_lived_token"}
+
+        class DummyPagesResp:
+            status_code = 200
+            text = ""
+
+            @staticmethod
+            def json() -> dict[str, list[dict[str, str]]]:
+                return {"data": [{"id": "pg1", "name": "My Page", "access_token": "pat1"}]}
+
+        class DummyAsyncClient:
+            async def __aenter__(self) -> DummyAsyncClient:
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb) -> bool:
+                return False
+
+            async def get(self, url: str, **kwargs) -> object:
+                nonlocal call_count
+                call_count += 1
+                if call_count == 1:
+                    return DummyShortTokenResp()
+                if call_count == 2:
+                    return DummyLongLivedResp()
+                return DummyPagesResp()
+
+        monkeypatch.setattr("backend.crosspost.facebook.httpx.AsyncClient", DummyAsyncClient)
+
+        result = await exchange_facebook_oauth_token(
+            code="test-code",
+            app_id="app_123",
+            app_secret="secret",
+            redirect_uri="https://example.com/cb",
+        )
+        assert result["user_access_token"] == "long_lived_token"
+        pages = result["pages"]
+        assert isinstance(pages, list)
+        assert len(pages) == 1
+
+
+class TestFacebookValidateCredentials:
+    """Tests for FacebookCrossPoster.validate_credentials (Issue #9)."""
+
+    async def test_logs_warning_on_network_error(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Issue #9: Network errors should be logged, not silently swallowed."""
+
+        class DummyAsyncClient:
+            async def __aenter__(self) -> DummyAsyncClient:
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb) -> bool:
+                return False
+
+            async def get(self, url: str, **kwargs) -> None:
+                raise httpx.ConnectTimeout("Connection timed out")
+
+        monkeypatch.setattr("backend.crosspost.facebook.httpx.AsyncClient", DummyAsyncClient)
+
+        poster = FacebookCrossPoster()
+        poster._page_access_token = "test_token"
+
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="backend.crosspost.facebook"):
+            result = await poster.validate_credentials()
+
+        assert result is False
+        assert any("ConnectTimeout" in msg for msg in caplog.messages)
+
+    async def test_uses_authorization_header(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Issue #4: validate_credentials should use Authorization header."""
+        captured_kwargs: dict[str, object] = {}
+
+        class DummyResponse:
+            status_code = 200
+
+        class DummyAsyncClient:
+            async def __aenter__(self) -> DummyAsyncClient:
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb) -> bool:
+                return False
+
+            async def get(self, url: str, **kwargs) -> DummyResponse:
+                captured_kwargs.update(kwargs)
+                return DummyResponse()
+
+        monkeypatch.setattr("backend.crosspost.facebook.httpx.AsyncClient", DummyAsyncClient)
+
+        poster = FacebookCrossPoster()
+        poster._page_access_token = "secret_token"
+        poster._page_id = "12345"
+        await poster.validate_credentials()
+
+        headers = captured_kwargs.get("headers", {})
+        assert isinstance(headers, dict)
+        assert headers.get("Authorization") == "Bearer secret_token"
+        # Should NOT pass token as query param
+        params = captured_kwargs.get("params", {})
+        assert isinstance(params, dict)
+        assert "access_token" not in params

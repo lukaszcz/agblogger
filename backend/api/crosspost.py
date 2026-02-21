@@ -24,10 +24,15 @@ from backend.schemas.crosspost import (
     CrossPostHistoryResponse,
     CrossPostRequest,
     CrossPostResponse,
+    FacebookAuthorizeResponse,
+    FacebookPagesResponse,
+    FacebookSelectPageRequest,
+    FacebookSelectPageResponse,
     MastodonAuthorizeRequest,
     MastodonAuthorizeResponse,
     SocialAccountCreate,
     SocialAccountResponse,
+    XAuthorizeResponse,
 )
 from backend.services.crosspost_service import (
     DuplicateAccountError,
@@ -532,3 +537,443 @@ async def mastodon_callback(
 
     base_url = settings.bluesky_client_url.rstrip("/")
     return RedirectResponse(url=f"{base_url}/admin", status_code=303)
+
+
+@router.post("/x/authorize", response_model=XAuthorizeResponse)
+async def x_authorize(
+    settings: Annotated[Settings, Depends(get_settings)],
+    user: Annotated[User, Depends(require_auth)],
+    request: Request,
+) -> XAuthorizeResponse:
+    """Start X (Twitter) OAuth 2.0 flow with PKCE."""
+    if not settings.x_client_id or not settings.x_client_secret:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="X OAuth not configured: X_CLIENT_ID and X_CLIENT_SECRET not set",
+        )
+    if not settings.bluesky_client_url:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="OAuth not configured: BLUESKY_CLIENT_URL not set",
+        )
+
+    import base64
+    import hashlib
+    import secrets
+    from urllib.parse import urlencode
+
+    base_url = settings.bluesky_client_url.rstrip("/")
+    redirect_uri = f"{base_url}/api/crosspost/x/callback"
+
+    # PKCE
+    unreserved = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
+    code_verifier = "".join(secrets.choice(unreserved) for _ in range(64))
+    code_challenge_bytes = hashlib.sha256(code_verifier.encode("ascii")).digest()
+    code_challenge = base64.urlsafe_b64encode(code_challenge_bytes).rstrip(b"=").decode("ascii")
+
+    oauth_state = secrets.token_hex(32)
+
+    state_store = request.app.state.x_oauth_state
+    state_store.set(
+        oauth_state,
+        {
+            "pkce_verifier": code_verifier,
+            "user_id": user.id,
+            "redirect_uri": redirect_uri,
+            "client_id": settings.x_client_id,
+            "client_secret": settings.x_client_secret,
+        },
+    )
+
+    auth_params = urlencode(
+        {
+            "response_type": "code",
+            "client_id": settings.x_client_id,
+            "redirect_uri": redirect_uri,
+            "scope": "tweet.read tweet.write users.read offline.access",
+            "state": oauth_state,
+            "code_challenge": code_challenge,
+            "code_challenge_method": "S256",
+        }
+    )
+    authorization_url = f"https://x.com/i/oauth2/authorize?{auth_params}"
+    return XAuthorizeResponse(authorization_url=authorization_url)
+
+
+@router.get("/x/callback")
+async def x_callback(
+    request: Request,
+    state: Annotated[str, Query()],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    code: Annotated[str | None, Query()] = None,
+    error: Annotated[str | None, Query()] = None,
+) -> RedirectResponse:
+    """Handle X OAuth callback: exchange code for tokens, store account."""
+    import logging
+    from urllib.parse import urlencode
+
+    _logger = logging.getLogger(__name__)
+    base_url = (settings.bluesky_client_url or "").rstrip("/")
+
+    if error is not None:
+        _logger.warning("X OAuth error: %s", error)
+        error_params = urlencode({"oauth_error": error})
+        return RedirectResponse(url=f"{base_url}/admin?{error_params}", status_code=303)
+
+    if code is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Missing authorization code",
+        )
+
+    state_store = request.app.state.x_oauth_state
+    pending = state_store.pop(state)
+    if pending is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired OAuth state",
+        )
+
+    import httpx
+
+    from backend.crosspost.x import XOAuthTokenError, exchange_x_oauth_token
+
+    try:
+        token_result = await exchange_x_oauth_token(
+            code=code,
+            client_id=pending["client_id"],
+            client_secret=pending["client_secret"],
+            redirect_uri=pending["redirect_uri"],
+            pkce_verifier=pending["pkce_verifier"],
+        )
+    except XOAuthTokenError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"X OAuth HTTP error: {exc}",
+        ) from exc
+
+    access_token = token_result["access_token"]
+    refresh_token = token_result["refresh_token"]
+    username = token_result["username"]
+
+    credentials = {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "username": username,
+        "client_id": pending["client_id"],
+        "client_secret": pending["client_secret"],
+    }
+    account_name = f"@{username}"
+    account_data = SocialAccountCreate(
+        platform="x",
+        account_name=account_name,
+        credentials=credentials,
+    )
+    try:
+        await create_social_account(session, pending["user_id"], account_data, settings.secret_key)
+    except DuplicateAccountError:
+        existing = await get_social_accounts(session, pending["user_id"])
+        replaced = False
+        for acct in existing:
+            if acct.platform == "x" and acct.account_name == account_name:
+                await delete_social_account(session, acct.id, pending["user_id"])
+                replaced = True
+                break
+        if not replaced:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="X account already exists",
+            ) from None
+        await create_social_account(session, pending["user_id"], account_data, settings.secret_key)
+
+    return RedirectResponse(url=f"{base_url}/admin", status_code=303)
+
+
+@router.post("/facebook/authorize", response_model=FacebookAuthorizeResponse)
+async def facebook_authorize(
+    settings: Annotated[Settings, Depends(get_settings)],
+    user: Annotated[User, Depends(require_auth)],
+    request: Request,
+) -> FacebookAuthorizeResponse:
+    """Start Facebook OAuth flow."""
+    if not settings.facebook_app_id or not settings.facebook_app_secret:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "Facebook OAuth not configured: FACEBOOK_APP_ID and FACEBOOK_APP_SECRET not set"
+            ),
+        )
+    if not settings.bluesky_client_url:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="OAuth not configured: BLUESKY_CLIENT_URL not set",
+        )
+
+    import secrets
+    from urllib.parse import urlencode
+
+    base_url = settings.bluesky_client_url.rstrip("/")
+    redirect_uri = f"{base_url}/api/crosspost/facebook/callback"
+    oauth_state = secrets.token_hex(32)
+
+    state_store = request.app.state.facebook_oauth_state
+    state_store.set(
+        oauth_state,
+        {
+            "user_id": user.id,
+            "redirect_uri": redirect_uri,
+            "app_id": settings.facebook_app_id,
+            "app_secret": settings.facebook_app_secret,
+        },
+    )
+
+    auth_params = urlencode(
+        {
+            "client_id": settings.facebook_app_id,
+            "redirect_uri": redirect_uri,
+            "state": oauth_state,
+            "scope": ("pages_manage_posts,pages_read_engagement,pages_show_list"),
+            "response_type": "code",
+        }
+    )
+    authorization_url = f"https://www.facebook.com/v22.0/dialog/oauth?{auth_params}"
+    return FacebookAuthorizeResponse(authorization_url=authorization_url)
+
+
+@router.get("/facebook/callback")
+async def facebook_callback(
+    request: Request,
+    state: Annotated[str, Query()],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    code: Annotated[str | None, Query()] = None,
+    error: Annotated[str | None, Query()] = None,
+) -> RedirectResponse:
+    """Handle Facebook OAuth callback.
+
+    Exchanges authorization code for tokens, fetches managed pages.
+    Auto-selects if there is only one page; otherwise stores pages
+    for selection via the select-page endpoint.
+    """
+    import logging
+    from urllib.parse import urlencode as _urlencode
+
+    _logger = logging.getLogger(__name__)
+    base_url = (settings.bluesky_client_url or "").rstrip("/")
+
+    if error is not None:
+        _logger.warning("Facebook OAuth error: %s", error)
+        error_params = _urlencode({"oauth_error": error})
+        return RedirectResponse(url=f"{base_url}/admin?{error_params}", status_code=303)
+
+    if code is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Missing authorization code",
+        )
+
+    state_store = request.app.state.facebook_oauth_state
+    pending = state_store.pop(state)
+    if pending is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired OAuth state",
+        )
+
+    import secrets
+
+    import httpx as httpx_client
+
+    from backend.crosspost.facebook import (
+        FacebookOAuthTokenError,
+        exchange_facebook_oauth_token,
+    )
+
+    try:
+        result = await exchange_facebook_oauth_token(
+            code=code,
+            app_id=pending["app_id"],
+            app_secret=pending["app_secret"],
+            redirect_uri=pending["redirect_uri"],
+        )
+    except FacebookOAuthTokenError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        ) from exc
+    except httpx_client.HTTPError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Facebook OAuth HTTP error: {exc}",
+        ) from exc
+
+    raw_pages = result["pages"]
+    if not isinstance(raw_pages, list):
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Unexpected pages format from Facebook API",
+        )
+    pages: list[dict[str, str]] = raw_pages
+
+    # Validate page dict structure (Issue #13)
+    for pg in pages:
+        if "access_token" not in pg or "id" not in pg:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Facebook Page data missing required fields (access_token, id)",
+            )
+
+    if len(pages) == 1:
+        page = pages[0]
+        credentials = {
+            "page_access_token": page["access_token"],
+            "page_id": page["id"],
+            "page_name": page.get("name", ""),
+        }
+        account_name = page.get("name", f"Page {page['id']}")
+        account_data = SocialAccountCreate(
+            platform="facebook",
+            account_name=account_name,
+            credentials=credentials,
+        )
+        try:
+            await create_social_account(
+                session,
+                pending["user_id"],
+                account_data,
+                settings.secret_key,
+            )
+        except DuplicateAccountError:
+            existing = await get_social_accounts(session, pending["user_id"])
+            replaced = False
+            for acct in existing:
+                if acct.platform == "facebook" and acct.account_name == account_name:
+                    await delete_social_account(session, acct.id, pending["user_id"])
+                    replaced = True
+                    break
+            if not replaced:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Facebook account already exists",
+                ) from None
+            await create_social_account(
+                session,
+                pending["user_id"],
+                account_data,
+                settings.secret_key,
+            )
+        return RedirectResponse(url=f"{base_url}/admin", status_code=303)
+
+    # Multiple pages: store in temp state for page selection
+    page_selection_state = secrets.token_hex(32)
+    state_store.set(
+        page_selection_state,
+        {
+            "user_id": pending["user_id"],
+            "pages": pages,
+        },
+    )
+
+    page_params = _urlencode({"fb_pages": page_selection_state})
+    return RedirectResponse(url=f"{base_url}/admin?{page_params}", status_code=303)
+
+
+@router.post(
+    "/facebook/select-page",
+    response_model=FacebookSelectPageResponse,
+)
+async def facebook_select_page(
+    body: FacebookSelectPageRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    user: Annotated[User, Depends(require_auth)],
+    request: Request,
+) -> FacebookSelectPageResponse:
+    """Finalize Facebook account by selecting a Page."""
+    state_store = request.app.state.facebook_oauth_state
+    pending = state_store.pop(body.state)
+    if pending is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired page selection state",
+        )
+    if pending["user_id"] != user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User mismatch",
+        )
+
+    pages: list[dict[str, str]] = pending["pages"]
+    page = next((p for p in pages if p["id"] == body.page_id), None)
+    if page is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Page not found in OAuth results",
+        )
+
+    credentials = {
+        "page_access_token": page["access_token"],
+        "page_id": page["id"],
+        "page_name": page.get("name", ""),
+    }
+    account_name = page.get("name", f"Page {page['id']}")
+    account_data = SocialAccountCreate(
+        platform="facebook",
+        account_name=account_name,
+        credentials=credentials,
+    )
+    try:
+        await create_social_account(session, user.id, account_data, settings.secret_key)
+    except DuplicateAccountError:
+        existing = await get_social_accounts(session, user.id)
+        replaced = False
+        for acct in existing:
+            if acct.platform == "facebook" and acct.account_name == account_name:
+                await delete_social_account(session, acct.id, user.id)
+                replaced = True
+                break
+        if not replaced:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Facebook account already exists",
+            ) from None
+        await create_social_account(session, user.id, account_data, settings.secret_key)
+    return FacebookSelectPageResponse(account_name=account_name)
+
+
+@router.get("/facebook/pages", response_model=FacebookPagesResponse)
+async def facebook_pages(
+    state: Annotated[str, Query()],
+    user: Annotated[User, Depends(require_auth)],
+    request: Request,
+) -> FacebookPagesResponse:
+    """Retrieve available Facebook Pages for selection.
+
+    Uses the state token from the callback redirect to look up
+    stored page data without consuming it.
+    """
+    from backend.schemas.crosspost import FacebookPageInfo
+
+    state_store = request.app.state.facebook_oauth_state
+    pending = state_store.get(state)
+    if pending is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired page selection state",
+        )
+    if pending["user_id"] != user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User mismatch",
+        )
+
+    pages: list[dict[str, str]] = pending["pages"]
+    return FacebookPagesResponse(
+        pages=[FacebookPageInfo(id=p["id"], name=p.get("name", "")) for p in pages]
+    )
