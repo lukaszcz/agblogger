@@ -201,6 +201,15 @@ async def crosspost(
         try:
             poster = await get_poster(platform_name, credentials)
             post_result = await poster.post(content)
+
+            # Persist refreshed credentials if tokens were updated during posting
+            if hasattr(poster, "get_updated_credentials"):
+                updated_creds = poster.get_updated_credentials()
+                if updated_creds is not None:
+                    account.credentials = encrypt_value(
+                        json.dumps(updated_creds), secret_key
+                    )
+                    account.updated_at = now
         except Exception as exc:
             logger.exception("Cross-post to %s failed", platform_name)
             post_result = CrossPostResult(
