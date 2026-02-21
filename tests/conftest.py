@@ -75,6 +75,7 @@ async def create_test_client(settings: Settings) -> AsyncGenerator[AsyncClient]:
     app.state.atproto_oauth_key = atproto_key
     app.state.atproto_oauth_jwk = atproto_jwk
     app.state.bluesky_oauth_state = OAuthStateStore(ttl_seconds=600)
+    app.state.mastodon_oauth_state = OAuthStateStore(ttl_seconds=600)
 
     async with session_factory() as session:
         await ensure_admin_user(session, settings)
