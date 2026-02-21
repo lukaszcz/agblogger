@@ -55,7 +55,8 @@ async def exchange_facebook_oauth_token(
             timeout=15.0,
         )
         if token_resp.status_code != 200:
-            msg = f"Token exchange failed: {token_resp.status_code}"
+            body = token_resp.text[:200]
+            msg = f"Token exchange failed: {token_resp.status_code} - {body}"
             raise FacebookOAuthTokenError(msg)
         token_data = token_resp.json()
         short_token = token_data.get("access_token")
@@ -75,10 +76,14 @@ async def exchange_facebook_oauth_token(
             timeout=15.0,
         )
         if ll_resp.status_code != 200:
-            msg = f"Long-lived token exchange failed: {ll_resp.status_code}"
+            body = ll_resp.text[:200]
+            msg = f"Long-lived token exchange failed: {ll_resp.status_code} - {body}"
             raise FacebookOAuthTokenError(msg)
         ll_data = ll_resp.json()
-        long_lived_token = ll_data.get("access_token", short_token)
+        long_lived_token = ll_data.get("access_token")
+        if not long_lived_token:
+            msg = "Long-lived token response missing access_token"
+            raise FacebookOAuthTokenError(msg)
 
         # Fetch managed pages
         pages_resp = await http_client.get(
@@ -87,7 +92,8 @@ async def exchange_facebook_oauth_token(
             timeout=15.0,
         )
         if pages_resp.status_code != 200:
-            msg = f"Failed to fetch pages: {pages_resp.status_code}"
+            body = pages_resp.text[:200]
+            msg = f"Failed to fetch pages: {pages_resp.status_code} - {body}"
             raise FacebookOAuthTokenError(msg)
         pages_data = pages_resp.json()
         pages = pages_data.get("data", [])
@@ -115,11 +121,27 @@ class FacebookCrossPoster:
         """Authenticate with Facebook Page credentials.
 
         Expected keys: page_access_token, page_id, page_name.
+        Validates the token by calling the Graph API.
         """
         page_access_token = credentials.get("page_access_token", "")
         page_id = credentials.get("page_id", "")
         if not page_access_token or not page_id:
             return False
+
+        async with httpx.AsyncClient() as client:
+            try:
+                resp = await client.get(
+                    f"{FACEBOOK_GRAPH_API}/{page_id}",
+                    headers={"Authorization": f"Bearer {page_access_token}"},
+                    params={"fields": "id,name"},
+                    timeout=10.0,
+                )
+                if resp.status_code != 200:
+                    logger.warning("Facebook auth failed: %s %s", resp.status_code, resp.text)
+                    return False
+            except httpx.HTTPError as exc:
+                logger.warning("Facebook auth failed: %s: %s", type(exc).__name__, exc)
+                return False
 
         self._page_access_token = page_access_token
         self._page_id = page_id
@@ -140,8 +162,8 @@ class FacebookCrossPoster:
                     json={
                         "message": message,
                         "link": content.url,
-                        "access_token": self._page_access_token,
                     },
+                    headers={"Authorization": f"Bearer {self._page_access_token}"},
                     timeout=15.0,
                 )
                 if resp.status_code != 200:
@@ -172,9 +194,12 @@ class FacebookCrossPoster:
             try:
                 resp = await client.get(
                     f"{FACEBOOK_GRAPH_API}/me",
-                    params={"access_token": self._page_access_token},
+                    headers={"Authorization": f"Bearer {self._page_access_token}"},
                     timeout=10.0,
                 )
                 return resp.status_code == 200
-            except httpx.HTTPError:
+            except httpx.HTTPError as exc:
+                logger.warning(
+                    "Facebook account validation failed: %s: %s", type(exc).__name__, exc
+                )
                 return False

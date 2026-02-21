@@ -32,9 +32,9 @@ class TestOAuthStateStore:
         assert store.pop("state-abc") is None
 
     def test_cleanup_removes_expired(self) -> None:
-        store = OAuthStateStore(ttl_seconds=0)
+        store = OAuthStateStore(ttl_seconds=60)
         store.set("old", {"key": "value"})
-        store._entries["old"] = (store._entries["old"][0], time.time() - 1)
+        store._entries["old"] = (store._entries["old"][0], time.time() - 120)
         store.set("new", {"key": "value2"})
         store.cleanup()
         assert "old" not in store._entries

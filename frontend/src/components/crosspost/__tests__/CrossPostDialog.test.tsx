@@ -25,6 +25,20 @@ const mastodonAccount: SocialAccount = {
   created_at: '2026-01-16T10:00:00Z',
 }
 
+const xAccount: SocialAccount = {
+  id: 3,
+  platform: 'x',
+  account_name: '@alice_x',
+  created_at: '2026-01-17T10:00:00Z',
+}
+
+const facebookAccount: SocialAccount = {
+  id: 4,
+  platform: 'facebook',
+  account_name: 'My Page',
+  created_at: '2026-01-18T10:00:00Z',
+}
+
 const defaultProps = {
   open: true,
   onClose: vi.fn(),
@@ -286,5 +300,51 @@ describe('CrossPostDialog', () => {
     await waitFor(() => {
       expect(screen.getByText('Cross-Post Results')).toBeInTheDocument()
     })
+  })
+
+  it('shows X character counter with 280 limit', () => {
+    renderDialog({ accounts: [xAccount] })
+    expect(screen.getByText(/\/280/)).toBeInTheDocument()
+  })
+
+  it('disables post when X text exceeds 280 characters', async () => {
+    const user = userEvent.setup()
+    renderDialog({ accounts: [xAccount] })
+
+    const textarea = screen.getByLabelText('Cross-post text')
+    await user.clear(textarea)
+    const longText = 'a'.repeat(281)
+    await user.type(textarea, longText)
+
+    const postButton = screen.getByRole('button', { name: 'Post' })
+    expect(postButton).toBeDisabled()
+
+    const counter = screen.getByText(`${longText.length}/280`)
+    expect(counter.closest('div')).toHaveClass('text-red-600')
+  })
+
+  it('does not show character counter for Facebook (no limit)', () => {
+    renderDialog({ accounts: [facebookAccount] })
+    // Facebook has no character limit, so no /300 or /280 or /500 counter
+    expect(screen.queryByText(/\/300/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/\/280/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/\/500/)).not.toBeInTheDocument()
+  })
+
+  it('renders all four platform checkboxes when all accounts provided', () => {
+    renderDialog({ accounts: [blueskyAccount, mastodonAccount, xAccount, facebookAccount] })
+    const checkboxes = screen.getAllByRole('checkbox')
+    expect(checkboxes).toHaveLength(4)
+    expect(screen.getByText('alice.bsky.social')).toBeInTheDocument()
+    expect(screen.getByText('@alice@mastodon.social')).toBeInTheDocument()
+    expect(screen.getByText('@alice_x')).toBeInTheDocument()
+    expect(screen.getByText('My Page')).toBeInTheDocument()
+  })
+
+  it('shows character counters for platforms with limits only', () => {
+    renderDialog({ accounts: [blueskyAccount, xAccount, facebookAccount] })
+    // Bluesky (300) and X (280) should show counters
+    expect(screen.getByText(/\/300/)).toBeInTheDocument()
+    expect(screen.getByText(/\/280/)).toBeInTheDocument()
   })
 })

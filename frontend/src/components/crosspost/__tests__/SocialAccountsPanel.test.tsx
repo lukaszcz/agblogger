@@ -8,12 +8,20 @@ const mockFetchSocialAccounts = vi.fn()
 const mockDeleteSocialAccount = vi.fn()
 const mockAuthorizeBluesky = vi.fn()
 const mockAuthorizeMastodon = vi.fn()
+const mockAuthorizeX = vi.fn()
+const mockAuthorizeFacebook = vi.fn()
+const mockSelectFacebookPage = vi.fn()
+const mockFetchFacebookPages = vi.fn()
 
 vi.mock('@/api/crosspost', () => ({
   fetchSocialAccounts: (...args: unknown[]) => mockFetchSocialAccounts(...args) as unknown,
   deleteSocialAccount: (...args: unknown[]) => mockDeleteSocialAccount(...args) as unknown,
   authorizeBluesky: (...args: unknown[]) => mockAuthorizeBluesky(...args) as unknown,
   authorizeMastodon: (...args: unknown[]) => mockAuthorizeMastodon(...args) as unknown,
+  authorizeX: (...args: unknown[]) => mockAuthorizeX(...args) as unknown,
+  authorizeFacebook: (...args: unknown[]) => mockAuthorizeFacebook(...args) as unknown,
+  selectFacebookPage: (...args: unknown[]) => mockSelectFacebookPage(...args) as unknown,
+  fetchFacebookPages: (...args: unknown[]) => mockFetchFacebookPages(...args) as unknown,
 }))
 
 function renderPanel(props: { busy?: boolean; onBusyChange?: (busy: boolean) => void } = {}) {
@@ -52,6 +60,8 @@ describe('SocialAccountsPanel', () => {
       expect(screen.getByText('Connect Bluesky')).toBeInTheDocument()
     })
     expect(screen.getByText('Connect Mastodon')).toBeInTheDocument()
+    expect(screen.getByText('Connect X')).toBeInTheDocument()
+    expect(screen.getByText('Connect Facebook')).toBeInTheDocument()
   })
 
   it('shows connected accounts with account name and disconnect button', async () => {
@@ -110,6 +120,8 @@ describe('SocialAccountsPanel', () => {
     expect(screen.getByLabelText('Disconnect alice.bsky.social')).toBeDisabled()
     expect(screen.getByText('Connect Bluesky')).toBeDisabled()
     expect(screen.getByText('Connect Mastodon')).toBeDisabled()
+    expect(screen.getByText('Connect X')).toBeDisabled()
+    expect(screen.getByText('Connect Facebook')).toBeDisabled()
   })
 
   it('shows inline disconnect confirmation when trash icon is clicked', async () => {
@@ -193,5 +205,65 @@ describe('SocialAccountsPanel', () => {
     expect(onBusyChange2).not.toHaveBeenCalled()
     // And onBusyChange1 should not have received extra calls beyond initial
     expect(onBusyChange1.mock.calls.length).toBe(initialCalls)
+  })
+
+  it('shows redirect message when Connect X is clicked', async () => {
+    mockFetchSocialAccounts.mockResolvedValue([])
+    const user = userEvent.setup()
+    renderPanel()
+    await waitFor(() => {
+      expect(screen.getByText('Connect X')).toBeInTheDocument()
+    })
+    await user.click(screen.getByText('Connect X'))
+    expect(
+      screen.getByText('You will be redirected to X to authorize AgBlogger.'),
+    ).toBeInTheDocument()
+  })
+
+  it('shows redirect message when Connect Facebook is clicked', async () => {
+    mockFetchSocialAccounts.mockResolvedValue([])
+    const user = userEvent.setup()
+    renderPanel()
+    await waitFor(() => {
+      expect(screen.getByText('Connect Facebook')).toBeInTheDocument()
+    })
+    await user.click(screen.getByText('Connect Facebook'))
+    expect(
+      screen.getByText(
+        'You will be redirected to Facebook to authorize AgBlogger and select a Page.',
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('shows X-connected account with account name', async () => {
+    mockFetchSocialAccounts.mockResolvedValue([
+      {
+        id: 3,
+        platform: 'x',
+        account_name: '@alice_x',
+        created_at: '2026-01-17T10:00:00Z',
+      },
+    ])
+    renderPanel()
+    await waitFor(() => {
+      expect(screen.getByText('@alice_x')).toBeInTheDocument()
+    })
+    expect(screen.getByLabelText('Disconnect @alice_x')).toBeInTheDocument()
+  })
+
+  it('shows Facebook-connected account with account name', async () => {
+    mockFetchSocialAccounts.mockResolvedValue([
+      {
+        id: 4,
+        platform: 'facebook',
+        account_name: 'My Page',
+        created_at: '2026-01-18T10:00:00Z',
+      },
+    ])
+    renderPanel()
+    await waitFor(() => {
+      expect(screen.getByText('My Page')).toBeInTheDocument()
+    })
+    expect(screen.getByLabelText('Disconnect My Page')).toBeInTheDocument()
   })
 })

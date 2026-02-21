@@ -37,9 +37,10 @@ def _build_tweet_text(content: CrossPostContent) -> str:
 
     excerpt = content.excerpt
     if available <= 3:
-        excerpt = excerpt[: max(available, 0)]
+        excerpt = ""
     elif len(excerpt) > available:
-        excerpt = excerpt[: available - 3].rsplit(" ", maxsplit=1)[0] + "..."
+        truncated = excerpt[: available - 3].rsplit(" ", maxsplit=1)[0]
+        excerpt = (truncated + "...") if truncated else ""
 
     return excerpt + suffix
 
@@ -74,7 +75,8 @@ async def exchange_x_oauth_token(
             timeout=15.0,
         )
         if token_resp.status_code != 200:
-            msg = f"Token exchange failed: {token_resp.status_code}"
+            body = token_resp.text[:200]
+            msg = f"Token exchange failed: {token_resp.status_code} - {body}"
             raise XOAuthTokenError(msg)
         token_data = token_resp.json()
         access_token = token_data.get("access_token")
@@ -89,10 +91,15 @@ async def exchange_x_oauth_token(
             timeout=15.0,
         )
         if user_resp.status_code != 200:
-            msg = f"User fetch failed: {user_resp.status_code}"
+            body = user_resp.text[:200]
+            msg = f"User fetch failed: {user_resp.status_code} - {body}"
             raise XOAuthTokenError(msg)
         user_data = user_resp.json()
-        username = user_data.get("data", {}).get("username", "unknown")
+        data_obj = user_data.get("data")
+        if not isinstance(data_obj, dict) or "username" not in data_obj:
+            msg = "User profile response missing username"
+            raise XOAuthTokenError(msg)
+        username: str = data_obj["username"]
 
     return {
         "access_token": access_token,
@@ -157,18 +164,21 @@ class XCrossPoster:
                     "refresh_token": self._refresh_token,
                     "client_id": self._client_id,
                 }
-                if self._client_secret:
-                    data["client_secret"] = self._client_secret
                 resp = await client.post(
                     "https://api.x.com/2/oauth2/token",
                     data=data,
+                    auth=(self._client_id, self._client_secret),
                     timeout=15.0,
                 )
                 if resp.status_code != 200:
                     logger.warning("X refresh request failed with status %s", resp.status_code)
                     return False
                 token_data = resp.json()
-                self._access_token = token_data["access_token"]
+                new_access_token = token_data.get("access_token")
+                if not new_access_token:
+                    logger.warning("X refresh response missing expected field")
+                    return False
+                self._access_token = new_access_token
                 self._refresh_token = token_data.get("refresh_token", self._refresh_token)
                 self._updated_credentials = {
                     "access_token": self._access_token or "",
@@ -179,9 +189,6 @@ class XCrossPoster:
                 }
                 return True
             except httpx.HTTPError:
-                logger.exception("X token refresh error")
-                return False
-            except KeyError:
                 logger.exception("X token refresh error")
                 return False
 
@@ -244,7 +251,8 @@ class XCrossPoster:
                     timeout=10.0,
                 )
                 return resp.status_code == 200
-            except httpx.HTTPError:
+            except httpx.HTTPError as exc:
+                logger.warning("X account validation failed: %s: %s", type(exc).__name__, exc)
                 return False
 
     def get_updated_credentials(self) -> dict[str, str] | None:

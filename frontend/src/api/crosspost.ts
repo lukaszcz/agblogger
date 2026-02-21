@@ -60,7 +60,13 @@ export async function authorizeFacebook(): Promise<{ authorization_url: string }
 export interface FacebookPage {
   id: string
   name: string
-  access_token: string
+}
+
+export async function fetchFacebookPages(state: string): Promise<FacebookPage[]> {
+  const resp = await api
+    .get('crosspost/facebook/pages', { searchParams: { state } })
+    .json<{ pages: FacebookPage[] }>()
+  return resp.pages
 }
 
 export async function selectFacebookPage(

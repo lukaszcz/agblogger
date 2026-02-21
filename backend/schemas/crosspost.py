@@ -101,3 +101,16 @@ class FacebookSelectPageResponse(BaseModel):
     """Response after selecting a Facebook Page."""
 
     account_name: str
+
+
+class FacebookPageInfo(BaseModel):
+    """A Facebook Page available for selection."""
+
+    id: str
+    name: str
+
+
+class FacebookPagesResponse(BaseModel):
+    """Response with available Facebook Pages."""
+
+    pages: list[FacebookPageInfo]

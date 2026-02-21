@@ -159,6 +159,28 @@ class TestXCallback:
             assert resp.status_code == 400
             assert resp.json()["detail"] == "Invalid or expired OAuth state"
 
+    async def test_x_callback_handles_oauth_error_from_provider(
+        self, test_settings: Settings
+    ) -> None:
+        """Issue #2: When user denies access, X redirects with error param instead of code."""
+        test_settings.bluesky_client_url = "https://myblog.example.com"
+        test_settings.x_client_id = "test_client_id"
+        test_settings.x_client_secret = "test_client_secret"
+        async with create_test_client(test_settings) as client:
+            resp = await client.get(
+                "/api/crosspost/x/callback",
+                params={
+                    "error": "access_denied",
+                    "state": "some-state",
+                },
+                follow_redirects=False,
+            )
+            # Should redirect to admin with error, not 422 validation error
+            assert resp.status_code == 303
+            location = resp.headers.get("location", "")
+            assert "/admin" in location
+            assert "oauth_error" in location
+
 
 class TestFacebookAuthorize:
     async def test_facebook_authorize_requires_auth(self, test_settings: Settings) -> None:
@@ -246,6 +268,62 @@ class TestFacebookCallback:
             )
             assert resp.status_code == 400
             assert resp.json()["detail"] == "Invalid or expired OAuth state"
+
+    async def test_facebook_callback_handles_oauth_error_from_provider(
+        self, test_settings: Settings
+    ) -> None:
+        """Issue #2: When user denies access, Facebook redirects with error param."""
+        test_settings.bluesky_client_url = "https://myblog.example.com"
+        test_settings.facebook_app_id = "test_app_id"
+        test_settings.facebook_app_secret = "test_app_secret"
+        async with create_test_client(test_settings) as client:
+            resp = await client.get(
+                "/api/crosspost/facebook/callback",
+                params={
+                    "error": "access_denied",
+                    "error_reason": "user_denied",
+                    "state": "some-state",
+                },
+                follow_redirects=False,
+            )
+            # Should redirect to admin with error, not 422
+            assert resp.status_code == 303
+            location = resp.headers.get("location", "")
+            assert "/admin" in location
+            assert "oauth_error" in location
+
+
+class TestFacebookPages:
+    async def test_facebook_pages_requires_auth(self, test_settings: Settings) -> None:
+        """Issue #1: Facebook pages endpoint should require auth."""
+        test_settings.bluesky_client_url = "https://myblog.example.com"
+        test_settings.facebook_app_id = "test_app_id"
+        test_settings.facebook_app_secret = "test_app_secret"
+        async with create_test_client(test_settings) as client:
+            resp = await client.get(
+                "/api/crosspost/facebook/pages",
+                params={"state": "some-state"},
+            )
+            assert resp.status_code == 401
+
+    async def test_facebook_pages_rejects_invalid_state(self, test_settings: Settings) -> None:
+        """Issue #1: Invalid state token should return 400."""
+        test_settings.bluesky_client_url = "https://myblog.example.com"
+        test_settings.facebook_app_id = "test_app_id"
+        test_settings.facebook_app_secret = "test_app_secret"
+        test_settings.admin_password = "admin"
+        async with create_test_client(test_settings) as client:
+            login_resp = await client.post(
+                "/api/auth/login",
+                json={"username": "admin", "password": "admin"},
+            )
+            token = login_resp.json()["access_token"]
+            resp = await client.get(
+                "/api/crosspost/facebook/pages",
+                params={"state": "invalid-state"},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert resp.status_code == 400
 
 
 class TestFacebookSelectPage:

@@ -8,11 +8,25 @@ import {
   authorizeMastodon,
   authorizeX,
   authorizeFacebook,
+  fetchFacebookPages,
   selectFacebookPage,
 } from '@/api/crosspost'
 import type { SocialAccount, FacebookPage } from '@/api/crosspost'
 import { HTTPError } from '@/api/client'
 import PlatformIcon from '@/components/crosspost/PlatformIcon'
+
+async function extractErrorDetail(err: unknown, fallback: string): Promise<string> {
+  if (err instanceof HTTPError) {
+    if (err.response.status === 401) return 'Session expired. Please log in again.'
+    try {
+      const body: { detail?: string } = await err.response.json()
+      if (body.detail !== undefined && body.detail !== '') return body.detail
+    } catch {
+      // Response body not JSON - use fallback
+    }
+  }
+  return fallback
+}
 
 interface SocialAccountsPanelProps {
   busy: boolean
@@ -71,6 +85,16 @@ export default function SocialAccountsPanel({ busy, onBusyChange }: SocialAccoun
       const url = new URL(window.location.href)
       url.searchParams.delete('fb_pages')
       window.history.replaceState({}, '', url.toString())
+
+      void (async () => {
+        try {
+          const pages = await fetchFacebookPages(fbPagesState)
+          setFacebookPages(pages)
+        } catch {
+          setError('Failed to load Facebook Pages. Please try again.')
+          setFacebookPageState(null)
+        }
+      })()
     }
   }, [])
 
@@ -101,11 +125,9 @@ export default function SocialAccountsPanel({ busy, onBusyChange }: SocialAccoun
       const { authorization_url } = await authorizeBluesky(trimmed)
       window.location.href = authorization_url
     } catch (err) {
-      if (err instanceof HTTPError && err.response.status === 401) {
-        setError('Session expired. Please log in again.')
-      } else {
-        setError('Failed to start Bluesky authorization. Please try again.')
-      }
+      setError(
+        await extractErrorDetail(err, 'Failed to start Bluesky authorization. Please try again.'),
+      )
       setSubmitting(false)
     }
   }
@@ -120,11 +142,9 @@ export default function SocialAccountsPanel({ busy, onBusyChange }: SocialAccoun
       const { authorization_url } = await authorizeMastodon(trimmed)
       window.location.href = authorization_url
     } catch (err) {
-      if (err instanceof HTTPError && err.response.status === 401) {
-        setError('Session expired. Please log in again.')
-      } else {
-        setError('Failed to start Mastodon authorization. Please try again.')
-      }
+      setError(
+        await extractErrorDetail(err, 'Failed to start Mastodon authorization. Please try again.'),
+      )
       setSubmitting(false)
     }
   }
@@ -137,11 +157,7 @@ export default function SocialAccountsPanel({ busy, onBusyChange }: SocialAccoun
       const { authorization_url } = await authorizeX()
       window.location.href = authorization_url
     } catch (err) {
-      if (err instanceof HTTPError && err.response.status === 401) {
-        setError('Session expired. Please log in again.')
-      } else {
-        setError('Failed to start X authorization. Please try again.')
-      }
+      setError(await extractErrorDetail(err, 'Failed to start X authorization. Please try again.'))
       setSubmitting(false)
     }
   }
@@ -154,11 +170,12 @@ export default function SocialAccountsPanel({ busy, onBusyChange }: SocialAccoun
       const { authorization_url } = await authorizeFacebook()
       window.location.href = authorization_url
     } catch (err) {
-      if (err instanceof HTTPError && err.response.status === 401) {
-        setError('Session expired. Please log in again.')
-      } else {
-        setError('Failed to start Facebook authorization. Please try again.')
-      }
+      setError(
+        await extractErrorDetail(
+          err,
+          'Failed to start Facebook authorization. Please try again.',
+        ),
+      )
       setSubmitting(false)
     }
   }
@@ -174,11 +191,9 @@ export default function SocialAccountsPanel({ busy, onBusyChange }: SocialAccoun
       setSuccess(`Connected Facebook Page: ${result.account_name}`)
       await loadAccounts()
     } catch (err) {
-      if (err instanceof HTTPError && err.response.status === 401) {
-        setError('Session expired. Please log in again.')
-      } else {
-        setError('Failed to connect Facebook Page. Please try again.')
-      }
+      setError(
+        await extractErrorDetail(err, 'Failed to connect Facebook Page. Please try again.'),
+      )
     } finally {
       setSelectingPage(false)
     }
