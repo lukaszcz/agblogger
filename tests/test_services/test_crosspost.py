@@ -113,7 +113,9 @@ class TestRegistry:
         platforms = list_platforms()
         assert "bluesky" in platforms
         assert "mastodon" in platforms
-        assert len(platforms) >= 2
+        assert "x" in platforms
+        assert "facebook" in platforms
+        assert len(platforms) >= 4
 
 
 class TestMastodonUrlValidation:
