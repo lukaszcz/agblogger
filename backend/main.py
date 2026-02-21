@@ -142,6 +142,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     app.state.atproto_oauth_key = atproto_key
     app.state.atproto_oauth_jwk = atproto_jwk
     app.state.bluesky_oauth_state = OAuthStateStore(ttl_seconds=600)
+    app.state.mastodon_oauth_state = OAuthStateStore(ttl_seconds=600)
 
     from backend.services.auth_service import ensure_admin_user
 

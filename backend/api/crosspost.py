@@ -24,6 +24,8 @@ from backend.schemas.crosspost import (
     CrossPostHistoryResponse,
     CrossPostRequest,
     CrossPostResponse,
+    MastodonAuthorizeRequest,
+    MastodonAuthorizeResponse,
     SocialAccountCreate,
     SocialAccountResponse,
 )
@@ -118,6 +120,7 @@ async def crosspost_endpoint(
             user,
             site_url,
             secret_key=settings.secret_key,
+            custom_text=body.custom_text,
         )
     except ValueError as exc:
         if str(exc).startswith("Post not found"):
@@ -350,4 +353,182 @@ async def bluesky_callback(
                 detail="Bluesky account already exists",
             ) from None
         await create_social_account(session, pending["user_id"], account_data, settings.secret_key)
+    return RedirectResponse(url=f"{base_url}/admin", status_code=303)
+
+
+@router.post("/mastodon/authorize", response_model=MastodonAuthorizeResponse)
+async def mastodon_authorize(
+    body: MastodonAuthorizeRequest,
+    settings: Annotated[Settings, Depends(get_settings)],
+    user: Annotated[User, Depends(require_auth)],
+    request: Request,
+) -> MastodonAuthorizeResponse:
+    """Start Mastodon OAuth flow: register app dynamically, return auth URL."""
+    if not settings.bluesky_client_url:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="OAuth not configured: BLUESKY_CLIENT_URL not set",
+        )
+    from backend.crosspost.mastodon import _normalize_instance_url
+
+    instance_url = _normalize_instance_url(body.instance_url)
+    if instance_url is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid instance URL",
+        )
+
+    import hashlib
+    import secrets
+
+    base_url = settings.bluesky_client_url.rstrip("/")
+    redirect_uri = f"{base_url}/api/crosspost/mastodon/callback"
+
+    # PKCE: generate code_verifier and code_challenge (S256)
+    unreserved = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
+    code_verifier = "".join(secrets.choice(unreserved) for _ in range(64))
+    code_challenge_bytes = hashlib.sha256(code_verifier.encode("ascii")).digest()
+    import base64
+
+    code_challenge = base64.urlsafe_b64encode(code_challenge_bytes).rstrip(b"=").decode("ascii")
+
+    # Random state parameter
+    oauth_state = secrets.token_hex(32)
+
+    # Dynamically register the app with the Mastodon instance
+    import httpx
+
+    try:
+        async with httpx.AsyncClient() as http_client:
+            reg_resp = await http_client.post(
+                f"{instance_url}/api/v1/apps",
+                data={
+                    "client_name": "AgBlogger",
+                    "redirect_uris": redirect_uri,
+                    "scopes": "read:accounts write:statuses",
+                    "website": base_url,
+                },
+                timeout=15.0,
+            )
+            if reg_resp.status_code != 200:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=f"App registration failed: {reg_resp.status_code}",
+                )
+            reg_data = reg_resp.json()
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Could not connect to Mastodon instance: {exc}",
+        ) from exc
+
+    client_id = reg_data["client_id"]
+    client_secret = reg_data["client_secret"]
+
+    # Store pending state
+    state_store = request.app.state.mastodon_oauth_state
+    state_store.set(
+        oauth_state,
+        {
+            "instance_url": instance_url,
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "pkce_verifier": code_verifier,
+            "user_id": user.id,
+            "redirect_uri": redirect_uri,
+        },
+    )
+
+    # Build authorization URL
+    from urllib.parse import urlencode
+
+    auth_params = urlencode(
+        {
+            "client_id": client_id,
+            "redirect_uri": redirect_uri,
+            "response_type": "code",
+            "scope": "read:accounts write:statuses",
+            "state": oauth_state,
+            "code_challenge": code_challenge,
+            "code_challenge_method": "S256",
+        }
+    )
+    authorization_url = f"{instance_url}/oauth/authorize?{auth_params}"
+
+    return MastodonAuthorizeResponse(authorization_url=authorization_url)
+
+
+@router.get("/mastodon/callback")
+async def mastodon_callback(
+    request: Request,
+    code: Annotated[str, Query()],
+    state: Annotated[str, Query()],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> RedirectResponse:
+    """Handle Mastodon OAuth callback: exchange code for token, store account."""
+    state_store = request.app.state.mastodon_oauth_state
+    pending = state_store.pop(state)
+    if pending is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired OAuth state",
+        )
+
+    redirect_uri: str = pending["redirect_uri"]
+
+    # Exchange code for token and verify credentials via mastodon module
+    # (moved to module function for SSRF-safe URL validation)
+    import httpx
+
+    from backend.crosspost.mastodon import MastodonOAuthTokenError, exchange_mastodon_oauth_token
+
+    try:
+        token_result = await exchange_mastodon_oauth_token(
+            instance_url=pending["instance_url"],
+            code=code,
+            client_id=pending["client_id"],
+            client_secret=pending["client_secret"],
+            redirect_uri=redirect_uri,
+            pkce_verifier=pending["pkce_verifier"],
+        )
+    except MastodonOAuthTokenError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Mastodon OAuth HTTP error: {exc}",
+        ) from exc
+
+    account_name = f"@{token_result['acct']}@{token_result['hostname']}"
+    credentials = {
+        "access_token": token_result["access_token"],
+        "instance_url": token_result["instance_url"],
+    }
+    account_data = SocialAccountCreate(
+        platform="mastodon",
+        account_name=account_name,
+        credentials=credentials,
+    )
+    try:
+        await create_social_account(session, pending["user_id"], account_data, settings.secret_key)
+    except DuplicateAccountError:
+        existing = await get_social_accounts(session, pending["user_id"])
+        replaced = False
+        for acct_record in existing:
+            if acct_record.platform == "mastodon" and acct_record.account_name == account_name:
+                await delete_social_account(session, acct_record.id, pending["user_id"])
+                replaced = True
+                break
+        if not replaced:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Mastodon account already exists",
+            ) from None
+        await create_social_account(session, pending["user_id"], account_data, settings.secret_key)
+
+    base_url = settings.bluesky_client_url.rstrip("/")
     return RedirectResponse(url=f"{base_url}/admin", status_code=303)

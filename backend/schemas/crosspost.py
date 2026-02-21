@@ -29,6 +29,9 @@ class CrossPostRequest(BaseModel):
 
     post_path: str = Field(min_length=1, description="Relative file path of the post to cross-post")
     platforms: list[str] = Field(min_length=1, description="List of platform names to post to")
+    custom_text: str | None = Field(
+        default=None, description="Optional custom text to post instead of auto-generated content"
+    )
 
 
 class CrossPostResponse(BaseModel):
@@ -57,5 +60,19 @@ class BlueskyAuthorizeRequest(BaseModel):
 
 class BlueskyAuthorizeResponse(BaseModel):
     """Response with authorization URL for Bluesky OAuth."""
+
+    authorization_url: str
+
+
+class MastodonAuthorizeRequest(BaseModel):
+    """Request to start Mastodon OAuth flow."""
+
+    instance_url: str = Field(
+        min_length=1, description="Mastodon instance URL, e.g. 'https://mastodon.social'"
+    )
+
+
+class MastodonAuthorizeResponse(BaseModel):
+    """Response with authorization URL for Mastodon OAuth."""
 
     authorization_url: str

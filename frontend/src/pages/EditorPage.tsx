@@ -4,12 +4,16 @@ import { Save, ArrowLeft, Upload } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 
 import { fetchPostForEdit, createPost, updatePost, uploadAssets } from '@/api/posts'
+import { fetchSocialAccounts } from '@/api/crosspost'
+import type { SocialAccount } from '@/api/crosspost'
 import { HTTPError } from '@/api/client'
 import api from '@/api/client'
 import { useEditorAutoSave } from '@/hooks/useEditorAutoSave'
 import type { DraftData } from '@/hooks/useEditorAutoSave'
 import { useRenderedHtml } from '@/hooks/useKatex'
 import { useAuthStore } from '@/stores/authStore'
+import CrossPostDialog from '@/components/crosspost/CrossPostDialog'
+import PlatformIcon from '@/components/crosspost/PlatformIcon'
 import LabelInput from '@/components/editor/LabelInput'
 import MarkdownToolbar from '@/components/editor/MarkdownToolbar'
 
@@ -36,6 +40,10 @@ export default function EditorPage() {
   const previewRequestRef = useRef(0)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [accounts, setAccounts] = useState<SocialAccount[]>([])
+  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([])
+  const [showCrossPostDialog, setShowCrossPostDialog] = useState(false)
+  const [savedFilePath, setSavedFilePath] = useState<string | null>(null)
 
   const autoSaveKey = isNew ? 'agblogger:draft:new' : `agblogger:draft:${filePath}`
   const currentState = useMemo<DraftData>(
@@ -95,6 +103,14 @@ export default function EditorPage() {
   }, [isNew, user?.display_name, user?.username])
 
   useEffect(() => {
+    if (user) {
+      fetchSocialAccounts()
+        .then(setAccounts)
+        .catch(() => {})
+    }
+  }, [user])
+
+  useEffect(() => {
     if (body.length === 0) return
     const requestId = ++previewRequestRef.current
     const timer = setTimeout(async () => {
@@ -123,7 +139,12 @@ export default function EditorPage() {
         result = await updatePost(filePath, { title, body, labels, is_draft: isDraft })
       }
       markSaved()
-      void navigate(`/post/${result.file_path}`)
+      if (selectedPlatforms.length > 0) {
+        setSavedFilePath(result.file_path)
+        setShowCrossPostDialog(true)
+      } else {
+        void navigate(`/post/${result.file_path}`)
+      }
     } catch (err) {
       if (err instanceof HTTPError) {
         const status = err.response.status
@@ -216,6 +237,13 @@ export default function EditorPage() {
 
   function handleDragOver(e: React.DragEvent<HTMLTextAreaElement>) {
     e.preventDefault()
+  }
+
+  function handleCrossPostClose() {
+    setShowCrossPostDialog(false)
+    if (savedFilePath !== null) {
+      void navigate(`/post/${savedFilePath}`)
+    }
   }
 
   function formatDate(iso: string): string {
@@ -361,6 +389,31 @@ export default function EditorPage() {
             </div>
           )}
         </div>
+
+        {accounts.length > 0 && (
+          <div className="flex items-center gap-4 flex-wrap">
+            <span className="text-xs font-medium text-muted">Share after saving:</span>
+            {accounts.map((acct) => (
+              <label key={acct.id} className="flex items-center gap-1.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={selectedPlatforms.includes(acct.platform)}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setSelectedPlatforms((prev) => [...prev, acct.platform])
+                    } else {
+                      setSelectedPlatforms((prev) => prev.filter((p) => p !== acct.platform))
+                    }
+                  }}
+                  disabled={saving}
+                  className="rounded border-border text-accent focus:ring-accent/20"
+                />
+                <PlatformIcon platform={acct.platform} size={14} />
+                <span className="text-sm text-ink">{acct.account_name}</span>
+              </label>
+            ))}
+          </div>
+        )}
       </div>
 
       <input
@@ -429,6 +482,19 @@ export default function EditorPage() {
           )}
         </div>
       </div>
+
+      {showCrossPostDialog && savedFilePath !== null && (
+        <CrossPostDialog
+          open={showCrossPostDialog}
+          onClose={handleCrossPostClose}
+          accounts={accounts}
+          postPath={savedFilePath}
+          postTitle={title}
+          postExcerpt=""
+          postLabels={labels}
+          initialPlatforms={selectedPlatforms}
+        />
+      )}
     </div>
   )
 }
