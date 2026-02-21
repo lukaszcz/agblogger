@@ -1,5 +1,14 @@
 const MASTODON_INSTANCE_KEY = 'agblogger:mastodon-instance'
 
+export const SHARE_PLATFORMS = [
+  { id: 'bluesky', label: 'Share on Bluesky' },
+  { id: 'mastodon', label: 'Share on Mastodon' },
+  { id: 'x', label: 'Share on X' },
+  { id: 'facebook', label: 'Share on Facebook' },
+  { id: 'linkedin', label: 'Share on LinkedIn' },
+  { id: 'reddit', label: 'Share on Reddit' },
+] as const
+
 export function getShareText(title: string, author: string | null, url: string): string {
   if (author !== null) {
     return `\u201c${title}\u201d by ${author} ${url}`
@@ -7,6 +16,11 @@ export function getShareText(title: string, author: string | null, url: string):
   return `\u201c${title}\u201d ${url}`
 }
 
+/**
+ * Build a platform-specific share URL. Returns '' when the platform
+ * is unknown or when Mastodon is requested without an instance.
+ * Callers should check for '' before opening the URL.
+ */
 export function getShareUrl(
   platform: string,
   text: string,
@@ -31,6 +45,7 @@ export function getShareUrl(
     case 'email':
       return `mailto:?subject=${encodeURIComponent(title)}&body=${encodeURIComponent(text)}`
     default:
+      console.warn(`getShareUrl: unknown platform "${platform}"`)
       return ''
   }
 }
@@ -53,9 +68,36 @@ export async function copyToClipboard(text: string): Promise<boolean> {
 }
 
 export function getMastodonInstance(): string | null {
-  return localStorage.getItem(MASTODON_INSTANCE_KEY)
+  try {
+    return localStorage.getItem(MASTODON_INSTANCE_KEY)
+  } catch {
+    return null
+  }
 }
 
 export function setMastodonInstance(instance: string): void {
-  localStorage.setItem(MASTODON_INSTANCE_KEY, instance)
+  try {
+    localStorage.setItem(MASTODON_INSTANCE_KEY, instance)
+  } catch {
+    // Storage unavailable — instance will not persist but share still works
+  }
+}
+
+/**
+ * Validate that a string looks like a hostname (e.g. mastodon.social).
+ * Strips protocol prefixes before checking. Rejects values containing
+ * path separators, query strings, fragments, or other URL-unsafe characters.
+ */
+export function isValidHostname(value: string): boolean {
+  let hostname = value.replace(/^https?:\/\//, '')
+  hostname = hostname.trim()
+  if (hostname === '') return false
+  return /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)+$/.test(hostname)
+}
+
+/**
+ * Strip protocol prefixes (https://, http://) from a hostname string.
+ */
+export function stripProtocol(value: string): string {
+  return value.replace(/^https?:\/\//, '').trim()
 }

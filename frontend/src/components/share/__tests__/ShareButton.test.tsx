@@ -1,26 +1,11 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 import ShareButton from '../ShareButton'
+import * as shareUtils from '../shareUtils'
 
-// Mock localStorage since jsdom doesn't always provide full implementation
-const storage = new Map<string, string>()
-const mockLocalStorage = {
-  getItem: (key: string) => storage.get(key) ?? null,
-  setItem: (key: string, value: string) => storage.set(key, value),
-  removeItem: (key: string) => storage.delete(key),
-  clear: () => storage.clear(),
-  get length() {
-    return storage.size
-  },
-  key: (index: number) => [...storage.keys()][index] ?? null,
-}
-
-Object.defineProperty(window, 'localStorage', {
-  value: mockLocalStorage,
-  writable: true,
-})
+import { storage } from './testUtils'
 
 describe('ShareButton', () => {
   const defaultProps = {
@@ -70,6 +55,38 @@ describe('ShareButton', () => {
   it('does not open dropdown when native share is available', async () => {
     Object.defineProperty(navigator, 'share', {
       value: vi.fn().mockResolvedValue(undefined),
+      writable: true,
+      configurable: true,
+    })
+    const user = userEvent.setup()
+    render(<ShareButton {...defaultProps} />)
+
+    await user.click(screen.getByLabelText('Share this post'))
+
+    expect(screen.queryByLabelText('Share on Bluesky')).not.toBeInTheDocument()
+  })
+
+  // Issue #7: native share non-AbortError should fall back to dropdown
+  it('falls back to dropdown when native share fails with non-AbortError', async () => {
+    Object.defineProperty(navigator, 'share', {
+      value: vi.fn().mockRejectedValue(new TypeError('Invalid share data')),
+      writable: true,
+      configurable: true,
+    })
+    const user = userEvent.setup()
+    render(<ShareButton {...defaultProps} />)
+
+    await user.click(screen.getByLabelText('Share this post'))
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Share on Bluesky')).toBeInTheDocument()
+    })
+  })
+
+  it('does not open dropdown when native share is cancelled by user', async () => {
+    const abortError = new DOMException('Share cancelled', 'AbortError')
+    Object.defineProperty(navigator, 'share', {
+      value: vi.fn().mockRejectedValue(abortError),
       writable: true,
       configurable: true,
     })
@@ -211,5 +228,69 @@ describe('ShareButton', () => {
 
     await user.click(screen.getByLabelText('Share this post'))
     expect(screen.queryByLabelText('Share on Bluesky')).not.toBeInTheDocument()
+  })
+
+  // Issue #13: email share from dropdown
+  it('opens email share link from dropdown', async () => {
+    Object.defineProperty(navigator, 'share', {
+      value: undefined,
+      writable: true,
+      configurable: true,
+    })
+    const windowOpen = vi.spyOn(window, 'open').mockReturnValue(null)
+    const user = userEvent.setup()
+    render(<ShareButton {...defaultProps} />)
+
+    await user.click(screen.getByLabelText('Share this post'))
+    await user.click(screen.getByLabelText('Share via email'))
+
+    expect(windowOpen).toHaveBeenCalledWith(
+      expect.stringContaining('mailto:?subject='),
+      '_self',
+    )
+    expect(screen.queryByLabelText('Share on Bluesky')).not.toBeInTheDocument()
+    windowOpen.mockRestore()
+  })
+
+  // Issue #13: copy link from dropdown shows feedback
+  it('copies link and shows copied feedback in dropdown', async () => {
+    Object.defineProperty(navigator, 'share', {
+      value: undefined,
+      writable: true,
+      configurable: true,
+    })
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+      writable: true,
+      configurable: true,
+    })
+    const user = userEvent.setup()
+    render(<ShareButton {...defaultProps} />)
+
+    await user.click(screen.getByLabelText('Share this post'))
+    await user.click(screen.getByLabelText('Copy link'))
+
+    await waitFor(() => {
+      expect(screen.getByText('Copied!')).toBeInTheDocument()
+    })
+  })
+
+  // Issue #3: copy failure should show feedback
+  it('shows failure feedback when copy fails in dropdown', async () => {
+    Object.defineProperty(navigator, 'share', {
+      value: undefined,
+      writable: true,
+      configurable: true,
+    })
+    vi.spyOn(shareUtils, 'copyToClipboard').mockResolvedValue(false)
+    const user = userEvent.setup()
+    render(<ShareButton {...defaultProps} />)
+
+    await user.click(screen.getByLabelText('Share this post'))
+    await user.click(screen.getByLabelText('Copy link'))
+
+    await waitFor(() => {
+      expect(screen.getByText('Copy failed')).toBeInTheDocument()
+    })
   })
 })

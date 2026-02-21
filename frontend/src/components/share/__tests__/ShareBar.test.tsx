@@ -3,24 +3,9 @@ import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 import ShareBar from '../ShareBar'
+import * as shareUtils from '../shareUtils'
 
-// Mock localStorage since jsdom doesn't always provide full implementation
-const storage = new Map<string, string>()
-const mockLocalStorage = {
-  getItem: (key: string) => storage.get(key) ?? null,
-  setItem: (key: string, value: string) => storage.set(key, value),
-  removeItem: (key: string) => storage.delete(key),
-  clear: () => storage.clear(),
-  get length() {
-    return storage.size
-  },
-  key: (index: number) => [...storage.keys()][index] ?? null,
-}
-
-Object.defineProperty(window, 'localStorage', {
-  value: mockLocalStorage,
-  writable: true,
-})
+import { storage } from './testUtils'
 
 describe('ShareBar', () => {
   const defaultProps = {
@@ -110,6 +95,19 @@ describe('ShareBar', () => {
     })
   })
 
+  // Issue #3: copy failure should show feedback
+  it('shows failure feedback when copy fails', async () => {
+    vi.spyOn(shareUtils, 'copyToClipboard').mockResolvedValue(false)
+    const user = userEvent.setup()
+    render(<ShareBar {...defaultProps} />)
+
+    await user.click(screen.getByLabelText('Copy link'))
+
+    await waitFor(() => {
+      expect(screen.getByText('Copy failed')).toBeInTheDocument()
+    })
+  })
+
   it('shows native share button when navigator.share is available', () => {
     Object.defineProperty(navigator, 'share', {
       value: vi.fn(),
@@ -128,5 +126,20 @@ describe('ShareBar', () => {
     })
     render(<ShareBar {...defaultProps} />)
     expect(screen.queryByLabelText('Share via device')).not.toBeInTheDocument()
+  })
+
+  // Issue #13: email share button
+  it('opens email share link with mailto', async () => {
+    const windowOpen = vi.spyOn(window, 'open').mockReturnValue(null)
+    const user = userEvent.setup()
+    render(<ShareBar {...defaultProps} />)
+
+    await user.click(screen.getByLabelText('Share via email'))
+
+    expect(windowOpen).toHaveBeenCalledWith(
+      expect.stringContaining('mailto:?subject='),
+      '_self',
+    )
+    windowOpen.mockRestore()
   })
 })

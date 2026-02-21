@@ -7,25 +7,11 @@ import {
   copyToClipboard,
   getMastodonInstance,
   setMastodonInstance,
+  isValidHostname,
+  SHARE_PLATFORMS,
 } from '../shareUtils'
 
-// Mock localStorage since jsdom doesn't always provide full implementation
-const storage = new Map<string, string>()
-const mockLocalStorage = {
-  getItem: (key: string) => storage.get(key) ?? null,
-  setItem: (key: string, value: string) => storage.set(key, value),
-  removeItem: (key: string) => storage.delete(key),
-  clear: () => storage.clear(),
-  get length() {
-    return storage.size
-  },
-  key: (index: number) => [...storage.keys()][index] ?? null,
-}
-
-Object.defineProperty(window, 'localStorage', {
-  value: mockLocalStorage,
-  writable: true,
-})
+import { throwingLocalStorage } from './testUtils'
 
 describe('getShareText', () => {
   it('formats text with title, author, and URL', () => {
@@ -98,6 +84,15 @@ describe('getShareUrl', () => {
   it('returns empty string for mastodon without instance', () => {
     const result = getShareUrl('mastodon', text, url, title)
     expect(result).toBe('')
+  })
+
+  // Issue #8: unknown platform should warn and return empty string
+  it('returns empty string for unknown platform', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const result = getShareUrl('tiktok', text, url, title)
+    expect(result).toBe('')
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('tiktok'))
+    warnSpy.mockRestore()
   })
 })
 
@@ -182,5 +177,94 @@ describe('mastodon instance localStorage', () => {
   it('saves and retrieves instance', () => {
     setMastodonInstance('mastodon.social')
     expect(getMastodonInstance()).toBe('mastodon.social')
+  })
+
+  // Issue #4: localStorage access should be protected
+  it('returns null when localStorage throws SecurityError', () => {
+    const original = window.localStorage
+    Object.defineProperty(window, 'localStorage', {
+      value: throwingLocalStorage,
+      writable: true,
+    })
+    expect(getMastodonInstance()).toBeNull()
+    Object.defineProperty(window, 'localStorage', {
+      value: original,
+      writable: true,
+    })
+  })
+
+  it('does not throw when setMastodonInstance encounters SecurityError', () => {
+    const original = window.localStorage
+    Object.defineProperty(window, 'localStorage', {
+      value: throwingLocalStorage,
+      writable: true,
+    })
+    expect(() => setMastodonInstance('test.social')).not.toThrow()
+    Object.defineProperty(window, 'localStorage', {
+      value: original,
+      writable: true,
+    })
+  })
+})
+
+// Issue #1: hostname validation
+describe('isValidHostname', () => {
+  it('accepts valid hostnames', () => {
+    expect(isValidHostname('mastodon.social')).toBe(true)
+    expect(isValidHostname('hachyderm.io')).toBe(true)
+    expect(isValidHostname('masto.host')).toBe(true)
+    expect(isValidHostname('social.example.co.uk')).toBe(true)
+  })
+
+  it('rejects hostnames with path separators', () => {
+    expect(isValidHostname('evil.com/phishing')).toBe(false)
+  })
+
+  it('rejects hostnames with query strings', () => {
+    expect(isValidHostname('evil.com?x=1')).toBe(false)
+  })
+
+  it('rejects hostnames with hash fragments', () => {
+    expect(isValidHostname('evil.com#fragment')).toBe(false)
+  })
+
+  it('rejects hostnames with @ signs', () => {
+    expect(isValidHostname('user@evil.com')).toBe(false)
+  })
+
+  it('rejects hostnames with spaces', () => {
+    expect(isValidHostname('mastodon social')).toBe(false)
+  })
+
+  it('rejects empty strings', () => {
+    expect(isValidHostname('')).toBe(false)
+  })
+
+  it('rejects single-label hostnames (no dot)', () => {
+    expect(isValidHostname('localhost')).toBe(false)
+  })
+
+  it('strips protocol prefixes before validating', () => {
+    expect(isValidHostname('https://mastodon.social')).toBe(true)
+    expect(isValidHostname('http://mastodon.social')).toBe(true)
+  })
+})
+
+// Issue #2: shared SHARE_PLATFORMS constant
+describe('SHARE_PLATFORMS', () => {
+  it('contains all expected platforms', () => {
+    const ids = SHARE_PLATFORMS.map((p) => p.id)
+    expect(ids).toContain('bluesky')
+    expect(ids).toContain('mastodon')
+    expect(ids).toContain('x')
+    expect(ids).toContain('facebook')
+    expect(ids).toContain('linkedin')
+    expect(ids).toContain('reddit')
+  })
+
+  it('has labels for all platforms', () => {
+    for (const platform of SHARE_PLATFORMS) {
+      expect(platform.label).toBeTruthy()
+    }
   })
 })

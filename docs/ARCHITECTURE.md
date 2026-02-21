@@ -476,11 +476,11 @@ frontend/src/components/share/
 
 **Placement on PostPage**: `ShareButton` appears inline in the post header metadata row (date, author, labels). `ShareBar` appears as a horizontal icon row below the post content, above the admin-only cross-post section.
 
-**Share mechanism**: On browsers that support the Web Share API (`navigator.share`), `ShareButton` invokes the native OS share sheet directly. On browsers without Web Share API support, it opens a dropdown popover listing platform buttons. `ShareBar` always shows individual platform buttons and additionally shows the native share button when the API is available.
+**Share mechanism**: On browsers that support the Web Share API (`navigator.share`), `ShareButton` invokes the native OS share sheet directly — clicking the button invokes the OS share sheet without showing platform options. On browsers without Web Share API support, it opens a dropdown popover listing platform buttons. `ShareBar` always shows individual platform buttons and additionally shows the native share button alongside them when the API is available.
 
-**Supported platforms**: Bluesky, Mastodon, X, Facebook, LinkedIn, Reddit, Email, and Copy Link. Each platform button opens a pre-filled compose URL in a new tab (e.g., `https://bsky.app/intent/compose?text=...`).
+**Supported platforms**: Bluesky, Mastodon, X, Facebook, LinkedIn, Reddit, Email, and Copy Link. Platform buttons open a pre-filled compose URL in a new tab (e.g., `https://bsky.app/intent/compose?text=...`). Email uses a `mailto:` link in the current window. Copy Link writes the post URL to the clipboard.
 
-**Share text format**: `"\u201c{title}\u201d by {author} {url}"` (curly quotes around title, author when available, post URL).
+**Share text format**: When an author is present: `"\u201c{title}\u201d by {author} {url}"`. When the author is null: `"\u201c{title}\u201d {url}"`. Both formats use curly (typographic) quotes around the title.
 
 **Mastodon instance handling**: Mastodon requires a per-instance share URL (`https://{instance}/share?text=...`). When a user clicks the Mastodon share button for the first time, `MastodonSharePrompt` asks for their instance URL (e.g., `mastodon.social`). The instance is saved to `localStorage` (key: `agblogger:mastodon-instance`) and reused on subsequent shares.
 

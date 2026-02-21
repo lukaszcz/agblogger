@@ -258,7 +258,6 @@ describe('PostPage', () => {
     await waitFor(() => {
       expect(screen.getByText('Hello World')).toBeInTheDocument()
     })
-    // ShareBar renders platform share buttons (e.g. Share on Bluesky, etc.)
     expect(screen.getByRole('button', { name: 'Share on Bluesky' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Share via email' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Copy link' })).toBeInTheDocument()
@@ -272,9 +271,7 @@ describe('PostPage', () => {
     await waitFor(() => {
       expect(screen.getByText('Hello World')).toBeInTheDocument()
     })
-    // Share button in header
     expect(screen.getByRole('button', { name: 'Share this post' })).toBeInTheDocument()
-    // Share bar platform buttons exist
     expect(screen.getByRole('button', { name: 'Share on Bluesky' })).toBeInTheDocument()
   })
 })

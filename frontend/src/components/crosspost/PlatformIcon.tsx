@@ -95,7 +95,6 @@ export default function PlatformIcon({ platform, size = 16, className = '' }: Pl
     )
   }
 
-  // Fallback for unknown platforms
   return (
     <span
       className={`inline-flex items-center justify-center rounded-full bg-muted/20 text-muted font-medium ${className}`}

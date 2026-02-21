@@ -4,23 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 import MastodonSharePrompt from '../MastodonSharePrompt'
 
-// Mock localStorage since jsdom doesn't always provide full implementation
-const storage = new Map<string, string>()
-const mockLocalStorage = {
-  getItem: (key: string) => storage.get(key) ?? null,
-  setItem: (key: string, value: string) => storage.set(key, value),
-  removeItem: (key: string) => storage.delete(key),
-  clear: () => storage.clear(),
-  get length() {
-    return storage.size
-  },
-  key: (index: number) => [...storage.keys()][index] ?? null,
-}
-
-Object.defineProperty(window, 'localStorage', {
-  value: mockLocalStorage,
-  writable: true,
-})
+import { storage } from './testUtils'
 
 describe('MastodonSharePrompt', () => {
   const defaultProps = {
@@ -74,5 +58,72 @@ describe('MastodonSharePrompt', () => {
 
     await user.click(screen.getByRole('button', { name: 'Cancel' }))
     expect(defaultProps.onClose).toHaveBeenCalled()
+  })
+
+  // Issue #5: label should be associated with input
+  it('has label associated with input via htmlFor', () => {
+    render(<MastodonSharePrompt {...defaultProps} />)
+    const label = screen.getByText('Mastodon instance')
+    const input = screen.getByPlaceholderText('mastodon.social')
+    expect(label).toHaveAttribute('for', input.getAttribute('id'))
+  })
+
+  // Issue #12: Enter key should submit
+  it('submits on Enter key press', async () => {
+    const windowOpen = vi.spyOn(window, 'open').mockReturnValue(null)
+    const user = userEvent.setup()
+    render(<MastodonSharePrompt {...defaultProps} />)
+
+    await user.type(screen.getByPlaceholderText('mastodon.social'), 'mastodon.social{Enter}')
+
+    expect(windowOpen).toHaveBeenCalledWith(
+      expect.stringContaining('https://mastodon.social/share?text='),
+      '_blank',
+      'noopener,noreferrer',
+    )
+    expect(defaultProps.onClose).toHaveBeenCalled()
+    windowOpen.mockRestore()
+  })
+
+  // Issue #1: invalid hostnames should show validation error
+  it('shows validation error for invalid hostname', async () => {
+    const windowOpen = vi.spyOn(window, 'open').mockReturnValue(null)
+    const user = userEvent.setup()
+    render(<MastodonSharePrompt {...defaultProps} />)
+
+    await user.type(screen.getByPlaceholderText('mastodon.social'), 'evil.com/phishing')
+    await user.click(screen.getByRole('button', { name: 'Share' }))
+
+    expect(windowOpen).not.toHaveBeenCalled()
+    expect(screen.getByText(/invalid instance/i)).toBeInTheDocument()
+    windowOpen.mockRestore()
+  })
+
+  // Issue #1: protocol prefix should be stripped
+  it('strips https:// prefix and shares correctly', async () => {
+    const windowOpen = vi.spyOn(window, 'open').mockReturnValue(null)
+    const user = userEvent.setup()
+    render(<MastodonSharePrompt {...defaultProps} />)
+
+    await user.type(screen.getByPlaceholderText('mastodon.social'), 'https://mastodon.social')
+    await user.click(screen.getByRole('button', { name: 'Share' }))
+
+    expect(windowOpen).toHaveBeenCalledWith(
+      expect.stringContaining('https://mastodon.social/share?text='),
+      '_blank',
+      'noopener,noreferrer',
+    )
+    expect(storage.get('agblogger:mastodon-instance')).toBe('mastodon.social')
+    windowOpen.mockRestore()
+  })
+
+  it('does not submit when input contains only whitespace', async () => {
+    const windowOpen = vi.spyOn(window, 'open').mockReturnValue(null)
+    const user = userEvent.setup()
+    render(<MastodonSharePrompt {...defaultProps} />)
+
+    await user.type(screen.getByPlaceholderText('mastodon.social'), '   ')
+    expect(screen.getByRole('button', { name: 'Share' })).toBeDisabled()
+    windowOpen.mockRestore()
   })
 })

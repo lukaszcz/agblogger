@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Check, Link, Mail, Share2 } from 'lucide-react'
+import { Check, Link, Mail, Share2, X as XIcon } from 'lucide-react'
 
 import PlatformIcon from '@/components/crosspost/PlatformIcon'
 
@@ -11,6 +11,7 @@ import {
   getShareText,
   getShareUrl,
   nativeShare,
+  SHARE_PLATFORMS,
 } from './shareUtils'
 
 interface ShareButtonProps {
@@ -19,19 +20,11 @@ interface ShareButtonProps {
   url: string
 }
 
-const PLATFORMS = [
-  { id: 'bluesky', label: 'Share on Bluesky' },
-  { id: 'mastodon', label: 'Share on Mastodon' },
-  { id: 'x', label: 'Share on X' },
-  { id: 'facebook', label: 'Share on Facebook' },
-  { id: 'linkedin', label: 'Share on LinkedIn' },
-  { id: 'reddit', label: 'Share on Reddit' },
-] as const
-
 export default function ShareButton({ title, author, url }: ShareButtonProps) {
   const [showDropdown, setShowDropdown] = useState(false)
   const [showMastodonPrompt, setShowMastodonPrompt] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [copyFailed, setCopyFailed] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
   const shareText = getShareText(title, author, url)
@@ -54,8 +47,12 @@ export default function ShareButton({ title, author, url }: ShareButtonProps) {
     if (canNativeShare()) {
       try {
         await nativeShare(title, shareText, url)
-      } catch {
-        // User cancelled
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          return
+        }
+        // Non-cancellation share failure — fall back to dropdown
+        setShowDropdown(true)
       }
     } else {
       setShowDropdown((prev) => !prev)
@@ -95,6 +92,11 @@ export default function ShareButton({ title, author, url }: ShareButtonProps) {
         setCopied(false)
         setShowDropdown(false)
       }, 1500)
+    } else {
+      setCopyFailed(true)
+      setTimeout(() => {
+        setCopyFailed(false)
+      }, 2000)
     }
   }
 
@@ -122,7 +124,7 @@ export default function ShareButton({ title, author, url }: ShareButtonProps) {
             />
           ) : (
             <div className="space-y-0.5">
-              {PLATFORMS.map((platform) => (
+              {SHARE_PLATFORMS.map((platform) => (
                 <button
                   key={platform.id}
                   onClick={() => {
@@ -156,6 +158,11 @@ export default function ShareButton({ title, author, url }: ShareButtonProps) {
                   <>
                     <Check size={16} className="text-green-600" />
                     <span className="text-green-600">Copied!</span>
+                  </>
+                ) : copyFailed ? (
+                  <>
+                    <XIcon size={16} className="text-red-600" />
+                    <span className="text-red-600">Copy failed</span>
                   </>
                 ) : (
                   <>
