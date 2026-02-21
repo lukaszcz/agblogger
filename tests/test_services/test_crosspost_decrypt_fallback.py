@@ -54,7 +54,7 @@ class TestCrosspostDecryptFallback:
             content_manager=mock_cm,
             post_path="posts/test.md",
             platforms=["bluesky"],
-            user_id=1,
+            actor=MagicMock(id=1, username="tester", display_name="Tester", is_admin=False),
             site_url="https://example.com",
             secret_key="wrong-key",
         )

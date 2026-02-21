@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from backend.filesystem.content_manager import ContentManager
+    from backend.models.user import User
     from backend.schemas.crosspost import SocialAccountCreate
 
 logger = logging.getLogger(__name__)
@@ -88,7 +89,7 @@ async def crosspost(
     content_manager: ContentManager,
     post_path: str,
     platforms: list[str],
-    user_id: int,
+    actor: User,
     site_url: str,
     secret_key: str = "",
 ) -> list[CrossPostResult]:
@@ -103,6 +104,11 @@ async def crosspost(
     if post_data is None:
         msg = f"Post not found: {post_path}"
         raise ValueError(msg)
+    if post_data.is_draft:
+        actor_author = actor.display_name or actor.username
+        if not actor.is_admin and post_data.author != actor_author:
+            msg = f"Post not found: {post_path}"
+            raise ValueError(msg)
 
     # Build the post URL
     # Strip .md extension and leading posts/ for the URL slug
@@ -123,7 +129,7 @@ async def crosspost(
 
     # Get user's social accounts
     stmt = select(SocialAccount).where(
-        SocialAccount.user_id == user_id,
+        SocialAccount.user_id == actor.id,
         SocialAccount.platform.in_(platforms),
     )
     result = await session.execute(stmt)
@@ -138,7 +144,7 @@ async def crosspost(
             # No account configured for this platform
             error_msg = f"No {platform_name} account configured"
             cp = CrossPost(
-                user_id=user_id,
+                user_id=actor.id,
                 post_path=post_path,
                 platform=platform_name,
                 status="failed",
@@ -175,7 +181,7 @@ async def crosspost(
                     "Please reconnect the account."
                 )
                 cp = CrossPost(
-                    user_id=user_id,
+                    user_id=actor.id,
                     post_path=post_path,
                     platform=platform_name,
                     status="failed",
@@ -206,7 +212,7 @@ async def crosspost(
 
         # Record the result
         cp = CrossPost(
-            user_id=user_id,
+            user_id=actor.id,
             post_path=post_path,
             platform=platform_name,
             platform_id=post_result.platform_id or None,

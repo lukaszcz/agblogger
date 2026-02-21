@@ -1308,7 +1308,7 @@ class TestRegistration:
             json={
                 "username": "newuser",
                 "email": "new@test.com",
-                "password": "password123",
+                "password": "password1234",
             },
         )
         assert resp.status_code == 201
@@ -1321,7 +1321,7 @@ class TestRegistration:
             json={
                 "username": "dupuser",
                 "email": "dup1@test.com",
-                "password": "password123",
+                "password": "password1234",
             },
         )
         resp = await client.post(
@@ -1329,7 +1329,7 @@ class TestRegistration:
             json={
                 "username": "dupuser",
                 "email": "dup2@test.com",
-                "password": "password123",
+                "password": "password1234",
             },
         )
         assert resp.status_code == 409
@@ -1341,7 +1341,7 @@ class TestRegistration:
             json={
                 "username": "emailuser1",
                 "email": "same@test.com",
-                "password": "password123",
+                "password": "password1234",
             },
         )
         resp = await client.post(
@@ -1349,7 +1349,7 @@ class TestRegistration:
             json={
                 "username": "emailuser2",
                 "email": "same@test.com",
-                "password": "password123",
+                "password": "password1234",
             },
         )
         assert resp.status_code == 409

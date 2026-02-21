@@ -119,7 +119,7 @@ class TestDraftListingVisibility:
     @pytest.mark.asyncio
     async def test_draft_not_in_listing_for_other_user(self, client: AsyncClient) -> None:
         """A different authenticated user should not see another user's drafts."""
-        token = await _register_and_login(client, "other", "other@test.com", "password123")
+        token = await _register_and_login(client, "other", "other@test.com", "password1234")
         resp = await client.get("/api/posts", headers=_auth_headers(token))
         assert resp.status_code == 200
         data = resp.json()
@@ -141,7 +141,7 @@ class TestDraftDetailVisibility:
     @pytest.mark.asyncio
     async def test_draft_get_returns_404_for_wrong_user(self, client: AsyncClient) -> None:
         """A different authenticated user gets 404 for another user's draft."""
-        token = await _register_and_login(client, "other2", "other2@test.com", "password123")
+        token = await _register_and_login(client, "other2", "other2@test.com", "password1234")
         resp = await client.get(
             "/api/posts/posts/admin-draft.md",
             headers=_auth_headers(token),
@@ -165,13 +165,13 @@ class TestDraftEditVisibility:
 
     @pytest.mark.asyncio
     async def test_draft_edit_returns_404_for_wrong_user(self, client: AsyncClient) -> None:
-        """A different authenticated user gets 404 for another user's draft edit."""
-        token = await _register_and_login(client, "other3", "other3@test.com", "password123")
+        """A non-admin authenticated user is forbidden from using draft edit endpoint."""
+        token = await _register_and_login(client, "other3", "other3@test.com", "password1234")
         resp = await client.get(
             "/api/posts/posts/admin-draft.md/edit",
             headers=_auth_headers(token),
         )
-        assert resp.status_code == 404
+        assert resp.status_code == 403
 
     @pytest.mark.asyncio
     async def test_draft_edit_returns_200_for_author(self, client: AsyncClient) -> None:
@@ -197,7 +197,7 @@ class TestDraftContentFileVisibility:
     @pytest.mark.asyncio
     async def test_draft_asset_returns_404_for_wrong_user(self, client: AsyncClient) -> None:
         """A different authenticated user gets 404 for draft post assets."""
-        token = await _register_and_login(client, "other4", "other4@test.com", "password123")
+        token = await _register_and_login(client, "other4", "other4@test.com", "password1234")
         resp = await client.get(
             "/api/content/posts/draft-with-asset/photo.png",
             headers=_auth_headers(token),

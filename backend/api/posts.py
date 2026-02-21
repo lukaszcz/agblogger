@@ -19,7 +19,7 @@ from backend.api.deps import (
     get_current_user,
     get_git_service,
     get_session,
-    require_auth,
+    require_admin,
 )
 from backend.filesystem.content_manager import ContentManager, hash_content
 from backend.filesystem.frontmatter import (
@@ -168,7 +168,7 @@ async def upload_post(
     session: Annotated[AsyncSession, Depends(get_session)],
     content_manager: Annotated[ContentManager, Depends(get_content_manager)],
     git_service: Annotated[GitService, Depends(get_git_service)],
-    user: Annotated[User, Depends(require_auth)],
+    user: Annotated[User, Depends(require_admin)],
     title: str | None = Query(None),
 ) -> PostDetail:
     """Upload a markdown post (single file or folder with assets).
@@ -292,16 +292,12 @@ async def upload_post(
 async def get_post_for_edit(
     file_path: str,
     content_manager: Annotated[ContentManager, Depends(get_content_manager)],
-    user: Annotated[User, Depends(require_auth)],
+    _user: Annotated[User, Depends(require_admin)],
 ) -> PostEditResponse:
     """Get structured post data for the editor."""
     post_data = content_manager.read_post(file_path)
     if post_data is None:
         raise HTTPException(status_code=404, detail="Post not found")
-    if post_data.is_draft:
-        user_author = user.display_name or user.username
-        if post_data.author != user_author:
-            raise HTTPException(status_code=404, detail="Post not found")
     return PostEditResponse(
         file_path=file_path,
         title=post_data.title,
@@ -321,18 +317,15 @@ async def upload_assets(
     session: Annotated[AsyncSession, Depends(get_session)],
     content_manager: Annotated[ContentManager, Depends(get_content_manager)],
     git_service: Annotated[GitService, Depends(get_git_service)],
-    user: Annotated[User, Depends(require_auth)],
+    _user: Annotated[User, Depends(require_admin)],
 ) -> dict[str, list[str]]:
     """Upload asset files to a post's directory."""
-    # Verify post exists and user is the author
+    # Verify post exists
     stmt = select(PostCache).where(PostCache.file_path == file_path)
     result = await session.execute(stmt)
     post = result.scalar_one_or_none()
     if post is None:
         raise HTTPException(status_code=404, detail="Post not found")
-    user_author = user.display_name or user.username
-    if post.author != user_author:
-        raise HTTPException(status_code=403, detail="Only the post author can upload assets")
 
     post_dir = (content_manager.content_dir / file_path).parent
     uploaded: list[str] = []
@@ -383,7 +376,7 @@ async def create_post_endpoint(
     session: Annotated[AsyncSession, Depends(get_session)],
     content_manager: Annotated[ContentManager, Depends(get_content_manager)],
     git_service: Annotated[GitService, Depends(get_git_service)],
-    user: Annotated[User, Depends(require_auth)],
+    user: Annotated[User, Depends(require_admin)],
 ) -> PostDetail:
     """Create a new post."""
     posts_dir = content_manager.content_dir / "posts"
@@ -469,7 +462,7 @@ async def update_post_endpoint(
     session: Annotated[AsyncSession, Depends(get_session)],
     content_manager: Annotated[ContentManager, Depends(get_content_manager)],
     git_service: Annotated[GitService, Depends(get_git_service)],
-    user: Annotated[User, Depends(require_auth)],
+    user: Annotated[User, Depends(require_admin)],
 ) -> PostDetail:
     """Update an existing post."""
     stmt = select(PostCache).where(PostCache.file_path == file_path)
@@ -608,7 +601,7 @@ async def delete_post_endpoint(
     session: Annotated[AsyncSession, Depends(get_session)],
     content_manager: Annotated[ContentManager, Depends(get_content_manager)],
     git_service: Annotated[GitService, Depends(get_git_service)],
-    user: Annotated[User, Depends(require_auth)],
+    _user: Annotated[User, Depends(require_admin)],
     delete_assets: bool = Query(False),
 ) -> None:
     """Delete a post."""

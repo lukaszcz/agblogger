@@ -71,13 +71,13 @@ async def _check_draft_access(
     # Extract the directory component: "posts/<dir>/file" -> "posts/<dir>/"
     parts = file_path.split("/")
     if len(parts) < 3:
-        # File directly under posts/, e.g. "posts/hello.md" — not a directory post
-        return
+        # Flat post file under posts/, e.g. "posts/hello.md".
+        stmt = select(PostCache).where(PostCache.file_path == file_path).limit(1)
+    else:
+        dir_prefix = "/".join(parts[:2]) + "/"
+        # Find any post whose file_path lives in this directory.
+        stmt = select(PostCache).where(PostCache.file_path.startswith(dir_prefix)).limit(1)
 
-    dir_prefix = "/".join(parts[:2]) + "/"
-
-    # Find any post whose file_path lives in this directory
-    stmt = select(PostCache).where(PostCache.file_path.startswith(dir_prefix)).limit(1)
     result = await session.execute(stmt)
     post = result.scalar_one_or_none()
 

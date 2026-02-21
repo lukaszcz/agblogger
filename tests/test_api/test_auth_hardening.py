@@ -57,7 +57,7 @@ class TestRegistrationPolicy:
             json={
                 "username": "newuser",
                 "email": "new@test.com",
-                "password": "password123",
+                "password": "password1234",
             },
         )
         assert resp.status_code == 403
@@ -86,7 +86,7 @@ class TestRegistrationPolicy:
             json={
                 "username": "invited-user",
                 "email": "invited@test.com",
-                "password": "password123",
+                "password": "password1234",
                 "invite_code": invite_code,
             },
             headers={"X-CSRF-Token": csrf_token},

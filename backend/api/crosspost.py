@@ -110,11 +110,16 @@ async def crosspost_endpoint(
             content_manager,
             body.post_path,
             body.platforms,
-            user.id,
+            user,
             site_url,
             secret_key=settings.secret_key,
         )
     except ValueError as exc:
+        if str(exc).startswith("Post not found"):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Post not found",
+            ) from exc
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),

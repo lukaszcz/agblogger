@@ -206,7 +206,7 @@ On startup, the lifespan handler:
 | Router | Prefix | Purpose |
 |--------|--------|---------|
 | `auth` | `/api/auth` | Login, invite-based register, refresh/logout, invite management, PAT management, current user |
-| `posts` | `/api/posts` | CRUD, search, listing with pagination/filtering, structured editor data, file/folder upload |
+| `posts` | `/api/posts` | Search/list/read for all users; create/update/delete/upload/edit-data are admin-only |
 | `labels` | `/api/labels` | Label CRUD (create, update, delete), listing, graph data, posts by label |
 | `pages` | `/api/pages` | Site config, rendered page content |
 | `sync` | `/api/sync` | Bidirectional sync protocol (admin-only) |
@@ -275,12 +275,12 @@ Lua filter files exist in `backend/pandoc/filters/` as placeholders for future u
 | Role | Access |
 |------|--------|
 | Unauthenticated | Read published (non-draft) posts, labels, pages, search |
-| Authenticated | Above + create/edit/delete posts, cross-post |
-| Admin | Above + admin-only operations |
+| Authenticated | Above + cross-post and user-scoped account actions |
+| Admin | Above + post create/update/delete/upload/edit-data, sync, and admin panel operations |
 
 Public reads require no authentication. The `get_current_user()` dependency returns `None` for unauthenticated requests.
 
-**Draft visibility**: Draft posts and their co-located assets are visible only to their author. The post listing endpoint filters drafts by matching the authenticated user's display name (or username) against the post's author field. Direct access to draft post pages, edit endpoints, and content files under draft post directories all enforce the same author-only restriction.
+**Draft visibility**: Draft posts and their co-located assets are visible only to their author for read endpoints. The post listing endpoint filters drafts by matching the authenticated user's display name (or username) against the post's author field. Direct access to draft post pages and content files enforces the same author-only restriction, including legacy flat draft markdown files under `posts/*.md`. Editing endpoints are admin-only regardless of draft author.
 
 ### Admin Bootstrap
 
@@ -544,6 +544,7 @@ When enabled in the deploy helper, Caddy is configured as a reverse proxy in fro
 ```
 Frontend sends structured data: { title, body, labels, is_draft }
     → POST /api/posts
+        → Require admin
         → Backend generates directory path: posts/<date>-<slug>/index.md
         → Backend sets author from authenticated user
         → Backend sets created_at and modified_at to now
@@ -558,6 +559,7 @@ Frontend sends structured data: { title, body, labels, is_draft }
 ```
 Frontend sends structured data: { title, body, labels, is_draft }
     → PUT /api/posts/{path}
+        → Require admin
         → Backend uses title from request body
         → Backend preserves original author and created_at from filesystem
         → Backend sets modified_at to now
@@ -586,7 +588,7 @@ Write .md file → ContentManager.write_post()
 ### Editing a Post (Loading)
 
 ```
-GET /api/posts/{path}/edit (auth required)
+GET /api/posts/{path}/edit (admin required)
     → ContentManager.read_post()
         → parse .md file from filesystem
         → return structured JSON: title, body, labels, is_draft, timestamps, author
@@ -606,6 +608,7 @@ GET /api/posts/{path}
 ```
 User selects a .md file or a folder (with index.md + assets) on the Timeline page
     → POST /api/posts/upload (multipart form data)
+        → Require admin
         → Find the markdown file (index.md preferred, else single .md file)
         → Parse frontmatter via parse_post() (same as sync/cache rebuild)
         → Normalize: title from frontmatter → first heading → ?title param → 422
@@ -623,6 +626,7 @@ User selects a .md file or a folder (with index.md + assets) on the Timeline pag
 ```
 Frontend sends multipart file upload
     → POST /api/posts/{path}/assets
+        → Require admin
         → Verify post exists in DB cache
         → Write files to post's directory (10 MB limit per file)
         → Git commit
@@ -636,7 +640,7 @@ Frontend sends multipart file upload
 GET /api/content/{file_path}
     → Validate path (no traversal, allowed prefixes: posts/, assets/)
     → Verify resolved path stays within content directory
-    → For files under draft post directories: require author authentication
+    → For draft content files (directory assets and flat draft markdown): require draft author authentication
     → Return FileResponse with guessed content type
 ```
 
@@ -644,6 +648,7 @@ GET /api/content/{file_path}
 
 ```
 DELETE /api/posts/{path}?delete_assets=true|false
+    → Require admin
     → If delete_assets=true and post is index.md:
         → Remove symlinks pointing to directory
         → Remove entire directory (post + all assets)

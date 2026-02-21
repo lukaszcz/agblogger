@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import pytest
+
 from backend.crosspost.base import CrossPostContent
 from backend.crosspost.bluesky import _build_post_text, _find_facets
+from backend.crosspost.mastodon import MastodonCrossPoster
 from backend.crosspost.registry import list_platforms
 
 
@@ -65,3 +68,73 @@ class TestRegistry:
         assert "bluesky" in platforms
         assert "mastodon" in platforms
         assert len(platforms) >= 2
+
+
+class TestMastodonUrlValidation:
+    @pytest.mark.asyncio
+    async def test_authenticate_rejects_localhost_instance_url(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        requested_urls: list[str] = []
+
+        class DummyResponse:
+            status_code = 200
+            text = ""
+
+            @staticmethod
+            def json() -> dict[str, str]:
+                return {"id": "1", "acct": "tester"}
+
+        class DummyAsyncClient:
+            async def __aenter__(self) -> DummyAsyncClient:
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb) -> bool:
+                return False
+
+            async def get(self, url: str, **kwargs) -> DummyResponse:
+                requested_urls.append(url)
+                return DummyResponse()
+
+        monkeypatch.setattr("backend.crosspost.mastodon.httpx.AsyncClient", DummyAsyncClient)
+
+        poster = MastodonCrossPoster()
+        is_ok = await poster.authenticate(
+            {"access_token": "token", "instance_url": "http://127.0.0.1:8080"}
+        )
+        assert is_ok is False
+        assert requested_urls == []
+
+    @pytest.mark.asyncio
+    async def test_authenticate_accepts_public_https_instance_url(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        requested_urls: list[str] = []
+
+        class DummyResponse:
+            status_code = 200
+            text = ""
+
+            @staticmethod
+            def json() -> dict[str, str]:
+                return {"id": "1", "acct": "tester"}
+
+        class DummyAsyncClient:
+            async def __aenter__(self) -> DummyAsyncClient:
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb) -> bool:
+                return False
+
+            async def get(self, url: str, **kwargs) -> DummyResponse:
+                requested_urls.append(url)
+                return DummyResponse()
+
+        monkeypatch.setattr("backend.crosspost.mastodon.httpx.AsyncClient", DummyAsyncClient)
+
+        poster = MastodonCrossPoster()
+        is_ok = await poster.authenticate(
+            {"access_token": "token", "instance_url": "https://93.184.216.34"}
+        )
+        assert is_ok is True
+        assert requested_urls == ["https://93.184.216.34/api/v1/accounts/verify_credentials"]

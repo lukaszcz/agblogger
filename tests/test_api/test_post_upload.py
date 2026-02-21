@@ -219,13 +219,13 @@ class TestAssetUploadAuthorization:
         csrf_token: str = client.cookies.get("csrf_token") or ""
         resp = await client.post(
             "/api/auth/register",
-            json={"username": "other", "email": "other@test.com", "password": "password123"},
+            json={"username": "other", "email": "other@test.com", "password": "password1234"},
             headers={"X-CSRF-Token": csrf_token},
         )
         assert resp.status_code == 201
         resp = await client.post(
             "/api/auth/login",
-            json={"username": "other", "password": "password123"},
+            json={"username": "other", "password": "password1234"},
             headers={"X-CSRF-Token": csrf_token},
         )
         other_token = resp.json()["access_token"]
