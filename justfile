@@ -18,8 +18,10 @@ setup:
 check-static: check-backend-static check-frontend-static check-semgrep check-vulture check-trivy
     @echo "\n✓ Static checks passed"
 
-# Run all test suites
-test: test-backend test-frontend
+# Run all test suites (pass coverage=true for coverage reports)
+test coverage="false":
+    just test-backend "{{ coverage }}"
+    just test-frontend "{{ coverage }}"
     @echo "\n✓ Tests passed"
 
 # Run full quality gate (static checks first, then tests)
@@ -52,10 +54,17 @@ check-backend-static:
     @echo "\n── Backend: vulnerability audit ──"
     uv run pip-audit --progress-spinner off
 
-# Backend tests
-test-backend:
+# Backend tests (pass coverage=true for coverage report)
+test-backend coverage="false":
     @echo "\n── Backend: tests ──"
-    uv run pytest tests/ -v
+    if [ "{{ coverage }}" = "true" ] || [ "{{ coverage }}" = "coverage=true" ]; then \
+        uv run pytest tests/ -v --cov=backend --cov=cli --cov-report=term-missing; \
+    elif [ "{{ coverage }}" = "false" ] || [ "{{ coverage }}" = "coverage=false" ]; then \
+        uv run pytest tests/ -v; \
+    else \
+        echo "Invalid coverage option '{{ coverage }}' (use coverage=true|false)" >&2; \
+        exit 1; \
+    fi
 
 # Backend full gate (static + tests)
 check-backend: check-backend-static test-backend
@@ -73,10 +82,17 @@ check-frontend-static:
     @echo "\n── Frontend: vulnerability audit ──"
     cd frontend && npm run audit
 
-# Frontend tests
-test-frontend:
+# Frontend tests (pass coverage=true for coverage report)
+test-frontend coverage="false":
     @echo "\n── Frontend: tests ──"
-    cd frontend && npm test
+    if [ "{{ coverage }}" = "true" ] || [ "{{ coverage }}" = "coverage=true" ]; then \
+        cd frontend && npm run test:coverage; \
+    elif [ "{{ coverage }}" = "false" ] || [ "{{ coverage }}" = "coverage=false" ]; then \
+        cd frontend && npm test; \
+    else \
+        echo "Invalid coverage option '{{ coverage }}' (use coverage=true|false)" >&2; \
+        exit 1; \
+    fi
 
 # Frontend full gate (static + tests)
 check-frontend: check-frontend-static test-frontend

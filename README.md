@@ -88,12 +88,14 @@ just check-static
 
 # Run tests only (backend + frontend)
 just test
+just test coverage=true
 
 # Backend static checks only
 just check-backend-static
 
 # Backend tests only
 just test-backend
+just test-backend coverage=true
 
 # Backend combined (static checks + tests)
 just check-backend
@@ -103,6 +105,7 @@ just check-frontend-static
 
 # Frontend tests only
 just test-frontend
+just test-frontend coverage=true
 
 # Frontend combined (static checks + tests)
 just check-frontend

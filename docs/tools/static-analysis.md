@@ -97,6 +97,9 @@ All checks are fail-fast and CI-blocking.
 Tests are intentionally split out from static analysis:
 
 - `just test` runs both test suites (`test-backend`, `test-frontend`)
+  - Optional coverage: `just test coverage=true`
+- `just test-backend` supports optional coverage: `just test-backend coverage=true`
+- `just test-frontend` supports optional coverage: `just test-frontend coverage=true`
 - `just check` runs `just check-static` first, then `just test`
 
 This keeps static analysis and runtime verification available separately while preserving a single full gate.
