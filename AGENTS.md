@@ -22,7 +22,6 @@ just check-frontend   # Frontend static checks + frontend tests
 just check-frontend-static # Frontend static checks only
 just test-frontend    # Frontend tests only
 just check-semgrep    # Semgrep SAST (p/ci, p/security-audit, p/secrets, p/python, p/typescript + local rules)
-just check-vulture    # Vulture dead-code analysis for backend/ and cli/
 ```
 
 Always start a dev server with `just start`. Remember to stop a running dev server with `just stop` when finished.
@@ -69,7 +68,7 @@ Always start a dev server with `just start`. Remember to stop a running dev serv
 - PR title format same as commit format (`type: subject`).
 - PR descriptions should summarize changes, rationale and impact. Do not summarize validation or testing. Unless the PR updates documentation only, do not describe documentation changes.
 - Keep commits focused; avoid mixing unrelated changes.
-- Use `git add`, `git commit`, `git merge`, etc. Do NOT use `-C` option with `git`.
+- Use `git add`, `git commit`, `git merge`, etc. Do NOT use the `-C` option with `git`.
 
 ## Security Guidelines
 
