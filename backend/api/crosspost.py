@@ -24,6 +24,9 @@ from backend.schemas.crosspost import (
     CrossPostHistoryResponse,
     CrossPostRequest,
     CrossPostResponse,
+    FacebookAuthorizeResponse,
+    FacebookSelectPageRequest,
+    FacebookSelectPageResponse,
     MastodonAuthorizeRequest,
     MastodonAuthorizeResponse,
     SocialAccountCreate,
@@ -699,3 +702,219 @@ async def x_callback(
 
     base_url = settings.bluesky_client_url.rstrip("/")
     return RedirectResponse(url=f"{base_url}/admin", status_code=303)
+
+
+@router.post("/facebook/authorize", response_model=FacebookAuthorizeResponse)
+async def facebook_authorize(
+    settings: Annotated[Settings, Depends(get_settings)],
+    user: Annotated[User, Depends(require_auth)],
+    request: Request,
+) -> FacebookAuthorizeResponse:
+    """Start Facebook OAuth flow."""
+    if not settings.facebook_app_id or not settings.facebook_app_secret:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "Facebook OAuth not configured: FACEBOOK_APP_ID and FACEBOOK_APP_SECRET not set"
+            ),
+        )
+    if not settings.bluesky_client_url:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="OAuth not configured: BLUESKY_CLIENT_URL not set",
+        )
+
+    import secrets
+    from urllib.parse import urlencode
+
+    base_url = settings.bluesky_client_url.rstrip("/")
+    redirect_uri = f"{base_url}/api/crosspost/facebook/callback"
+    oauth_state = secrets.token_hex(32)
+
+    state_store = request.app.state.facebook_oauth_state
+    state_store.set(
+        oauth_state,
+        {
+            "user_id": user.id,
+            "redirect_uri": redirect_uri,
+            "app_id": settings.facebook_app_id,
+            "app_secret": settings.facebook_app_secret,
+        },
+    )
+
+    auth_params = urlencode(
+        {
+            "client_id": settings.facebook_app_id,
+            "redirect_uri": redirect_uri,
+            "state": oauth_state,
+            "scope": ("pages_manage_posts,pages_read_engagement,pages_show_list"),
+            "response_type": "code",
+        }
+    )
+    authorization_url = f"https://www.facebook.com/v22.0/dialog/oauth?{auth_params}"
+    return FacebookAuthorizeResponse(authorization_url=authorization_url)
+
+
+@router.get("/facebook/callback")
+async def facebook_callback(
+    request: Request,
+    code: Annotated[str, Query()],
+    state: Annotated[str, Query()],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> RedirectResponse:
+    """Handle Facebook OAuth callback.
+
+    Exchanges authorization code for tokens, fetches managed pages.
+    Auto-selects if there is only one page; otherwise stores pages
+    for selection via the select-page endpoint.
+    """
+    state_store = request.app.state.facebook_oauth_state
+    pending = state_store.pop(state)
+    if pending is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired OAuth state",
+        )
+
+    import secrets
+
+    import httpx as httpx_client
+
+    from backend.crosspost.facebook import (
+        FacebookOAuthTokenError,
+        exchange_facebook_oauth_token,
+    )
+
+    try:
+        result = await exchange_facebook_oauth_token(
+            code=code,
+            app_id=pending["app_id"],
+            app_secret=pending["app_secret"],
+            redirect_uri=pending["redirect_uri"],
+        )
+    except FacebookOAuthTokenError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        ) from exc
+    except httpx_client.HTTPError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Facebook OAuth HTTP error: {exc}",
+        ) from exc
+
+    raw_pages = result["pages"]
+    if not isinstance(raw_pages, list):
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Unexpected pages format from Facebook API",
+        )
+    pages: list[dict[str, str]] = raw_pages
+
+    base_url = settings.bluesky_client_url.rstrip("/")
+
+    if len(pages) == 1:
+        page = pages[0]
+        credentials = {
+            "page_access_token": page["access_token"],
+            "page_id": page["id"],
+            "page_name": page.get("name", ""),
+        }
+        account_name = page.get("name", f"Page {page['id']}")
+        account_data = SocialAccountCreate(
+            platform="facebook",
+            account_name=account_name,
+            credentials=credentials,
+        )
+        try:
+            await create_social_account(
+                session,
+                pending["user_id"],
+                account_data,
+                settings.secret_key,
+            )
+        except DuplicateAccountError:
+            existing = await get_social_accounts(session, pending["user_id"])
+            for acct in existing:
+                if acct.platform == "facebook" and acct.account_name == account_name:
+                    await delete_social_account(session, acct.id, pending["user_id"])
+                    break
+            await create_social_account(
+                session,
+                pending["user_id"],
+                account_data,
+                settings.secret_key,
+            )
+        return RedirectResponse(url=f"{base_url}/admin", status_code=303)
+
+    # Multiple pages: store in temp state for page selection
+    from urllib.parse import urlencode
+
+    page_selection_state = secrets.token_hex(32)
+    state_store.set(
+        page_selection_state,
+        {
+            "user_id": pending["user_id"],
+            "pages": pages,
+        },
+    )
+
+    page_params = urlencode({"fb_pages": page_selection_state})
+    return RedirectResponse(url=f"{base_url}/admin?{page_params}", status_code=303)
+
+
+@router.post(
+    "/facebook/select-page",
+    response_model=FacebookSelectPageResponse,
+)
+async def facebook_select_page(
+    body: FacebookSelectPageRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    user: Annotated[User, Depends(require_auth)],
+    request: Request,
+) -> FacebookSelectPageResponse:
+    """Finalize Facebook account by selecting a Page."""
+    state_store = request.app.state.facebook_oauth_state
+    pending = state_store.pop(body.state)
+    if pending is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired page selection state",
+        )
+    if pending["user_id"] != user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User mismatch",
+        )
+
+    pages: list[dict[str, str]] = pending["pages"]
+    page = next((p for p in pages if p["id"] == body.page_id), None)
+    if page is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Page not found in OAuth results",
+        )
+
+    credentials = {
+        "page_access_token": page["access_token"],
+        "page_id": page["id"],
+        "page_name": page.get("name", ""),
+    }
+    account_name = page.get("name", f"Page {page['id']}")
+    account_data = SocialAccountCreate(
+        platform="facebook",
+        account_name=account_name,
+        credentials=credentials,
+    )
+    try:
+        await create_social_account(session, user.id, account_data, settings.secret_key)
+    except DuplicateAccountError:
+        existing = await get_social_accounts(session, user.id)
+        for acct in existing:
+            if acct.platform == "facebook" and acct.account_name == account_name:
+                await delete_social_account(session, acct.id, user.id)
+                break
+        await create_social_account(session, user.id, account_data, settings.secret_key)
+    return FacebookSelectPageResponse(account_name=account_name)
