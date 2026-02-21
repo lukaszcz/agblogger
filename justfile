@@ -1,11 +1,19 @@
 # ── Quality checks ──────────────────────────────────────────────────
 
-# Run all type checking, linting, format checks, and tests
-check: check-backend check-frontend check-semgrep check-vulture
+# Run all static analysis checks (no tests)
+check-static: check-backend-static check-frontend-static check-semgrep check-vulture
+    @echo "\n✓ Static checks passed"
+
+# Run all test suites
+test: test-backend test-frontend
+    @echo "\n✓ Tests passed"
+
+# Run full quality gate (static checks first, then tests)
+check: check-static test
     @echo "\n✓ All checks passed"
 
-# Backend: mypy, ruff check, ruff format --check, pytest
-check-backend:
+# Backend static checks: mypy, pyright, deptry, import-linter, ruff, pip-audit
+check-backend-static:
     @echo "── Backend: type checking ──"
     uv run mypy backend/ cli/ tests/
     @echo "\n── Backend: pyright type checking ──"
@@ -20,11 +28,17 @@ check-backend:
     uv run ruff format --check backend/ cli/ tests/
     @echo "\n── Backend: vulnerability audit ──"
     uv run pip-audit --progress-spinner off
+
+# Backend tests
+test-backend:
     @echo "\n── Backend: tests ──"
     uv run pytest tests/ -v
 
-# Frontend: tsc, eslint, vitest
-check-frontend:
+# Backend full gate (static + tests)
+check-backend: check-backend-static test-backend
+
+# Frontend static checks: tsc, eslint, dependency-cruiser, knip, npm audit
+check-frontend-static:
     @echo "── Frontend: type checking ──"
     cd frontend && npm run typecheck
     @echo "\n── Frontend: linting ──"
@@ -35,8 +49,14 @@ check-frontend:
     cd frontend && npm run lint:unused
     @echo "\n── Frontend: vulnerability audit ──"
     cd frontend && npm run audit
+
+# Frontend tests
+test-frontend:
     @echo "\n── Frontend: tests ──"
     cd frontend && npm test
+
+# Frontend full gate (static + tests)
+check-frontend: check-frontend-static test-frontend
 
 # Runtime security-focused static analysis (Semgrep)
 check-semgrep:

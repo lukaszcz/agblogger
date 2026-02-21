@@ -1,15 +1,15 @@
-# Static Analysis Run By `just check`
+# Static Analysis Run By `just check-static`
 
-`just check` runs these targets:
+`just check-static` runs these targets:
 
-- `check-backend`
-- `check-frontend`
+- `check-backend-static`
+- `check-frontend-static`
 - `check-semgrep`
 - `check-vulture`
 
 All checks are fail-fast and CI-blocking.
 
-## Backend (`check-backend`)
+## Backend (`check-backend-static`)
 
 - `mypy backend/ cli/ tests/`
   - Purpose: strict Python type checking.
@@ -33,7 +33,7 @@ All checks are fail-fast and CI-blocking.
   - Purpose: known-vulnerability scan of Python dependencies.
   - Scope: installed dependency set.
 
-## Frontend (`check-frontend`)
+## Frontend (`check-frontend-static`)
 
 - `npm run typecheck` (`tsc -b --noEmit`)
   - Purpose: TypeScript type checking.
@@ -73,11 +73,11 @@ All checks are fail-fast and CI-blocking.
 - Purpose: detect likely dead/unused Python code in runtime modules.
 - Scope: backend and CLI runtime code.
 
-## Non-static Gates Also In `just check`
+## Related Test Gates
 
-`just check` also runs test suites:
+Tests are intentionally split out from static analysis:
 
-- `pytest` (backend tests)
-- `vitest` (frontend tests)
+- `just test` runs both test suites (`test-backend`, `test-frontend`)
+- `just check` runs `just check-static` first, then `just test`
 
-These are runtime tests, not static analysis, but they are part of the same quality gate.
+This keeps static analysis and runtime verification available separately while preserving a single full gate.

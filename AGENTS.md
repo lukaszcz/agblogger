@@ -12,9 +12,15 @@ AgBlogger is a markdown-first blogging platform where markdown files with YAML f
 just start            # Start backend (:8000) + frontend (:5173) in the background
 just stop             # Stop the running dev server
 just start backend_port=9000 frontend_port=9173  # Custom ports
-just check            # Full gate: backend + frontend + Semgrep + Vulture
-just check-backend    # mypy, basedpyright, deptry, import-linter, ruff, pip-audit, pytest
-just check-frontend   # tsc, eslint, dependency-cruiser, knip, npm audit, vitest
+just check            # Full gate: static checks first, then tests
+just check-static     # Static-only gate: backend + frontend + Semgrep + Vulture
+just test             # Test-only gate: backend + frontend tests
+just check-backend    # Backend static checks + backend tests
+just check-backend-static  # Backend static checks only
+just test-backend     # Backend tests only
+just check-frontend   # Frontend static checks + frontend tests
+just check-frontend-static # Frontend static checks only
+just test-frontend    # Frontend tests only
 just check-semgrep    # Semgrep SAST (p/ci, p/security-audit, p/secrets, p/python, p/typescript + local rules)
 just check-vulture    # Vulture dead-code analysis for backend/ and cli/
 ```

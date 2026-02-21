@@ -79,13 +79,31 @@ npm test
 ### Type Checking, Linting & Formatting
 
 ```bash
-# Run all checks (backend + frontend)
+# Run full quality gate (static checks, then tests)
 just check
 
-# Backend only (mypy, ruff check, ruff format --check)
+# Run static checks only (backend + frontend + Semgrep + Vulture)
+just check-static
+
+# Run tests only (backend + frontend)
+just test
+
+# Backend static checks only
+just check-backend-static
+
+# Backend tests only
+just test-backend
+
+# Backend combined (static checks + tests)
 just check-backend
 
-# Frontend only (tsc, eslint)
+# Frontend static checks only
+just check-frontend-static
+
+# Frontend tests only
+just test-frontend
+
+# Frontend combined (static checks + tests)
 just check-frontend
 
 # CodeQL analysis (requires existing databases)
