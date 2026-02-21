@@ -6,6 +6,7 @@ import { fetchPost, deletePost } from '@/api/posts'
 import { useAuthStore } from '@/stores/authStore'
 import { HTTPError } from '@/api/client'
 import LabelChip from '@/components/labels/LabelChip'
+import CrossPostSection from '@/components/crosspost/CrossPostSection'
 import { useRenderedHtml } from '@/hooks/useKatex'
 import TableOfContents from '@/components/posts/TableOfContents'
 import type { PostDetail } from '@/api/client'
@@ -170,6 +171,10 @@ export default function PostPage() {
           __html: renderedHtml,
         }}
       />
+
+      {user?.is_admin === true && filePath !== undefined && filePath !== '' && (
+        <CrossPostSection filePath={filePath} post={post} />
+      )}
 
       <footer className="mt-16 pt-8 border-t border-border">
         <Link
