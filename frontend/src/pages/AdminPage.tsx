@@ -30,6 +30,7 @@ import {
   changeAdminPassword,
 } from '@/api/admin'
 import { useRenderedHtml } from '@/hooks/useKatex'
+import SocialAccountsPanel from '@/components/crosspost/SocialAccountsPanel'
 
 const BUILTIN_PAGE_IDS = new Set(['timeline', 'labels'])
 
@@ -116,13 +117,17 @@ export default function AdminPage() {
   const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null)
   const [savingPassword, setSavingPassword] = useState(false)
 
+  // === Social accounts state ===
+  const [socialBusy, setSocialBusy] = useState(false)
+
   const busy =
     savingSite ||
     savingOrder ||
     creatingPage ||
     savingPage ||
     deletingPage ||
-    savingPassword
+    savingPassword ||
+    socialBusy
 
   // === Auth redirect ===
   useEffect(() => {
@@ -970,6 +975,9 @@ export default function AdminPage() {
           </button>
         </div>
       </section>
+
+      {/* === Section 4: Social Accounts === */}
+      <SocialAccountsPanel busy={busy} onBusyChange={setSocialBusy} />
     </div>
   )
 }
