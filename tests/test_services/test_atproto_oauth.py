@@ -315,3 +315,43 @@ class TestTokenExchange:
         assert result["access_token"] == "at_new"
         assert result["refresh_token"] == "rt_new"
         assert result["dpop_nonce"] == "refreshed-nonce"
+
+    async def test_dpop_nonce_rotation_on_token_exchange(self, monkeypatch) -> None:
+        private_key, jwk = generate_es256_keypair()
+        call_count = 0
+
+        async def mock_post(self, url, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return httpx.Response(
+                    400,
+                    json={"error": "use_dpop_nonce"},
+                    headers={"DPoP-Nonce": "server-nonce"},
+                )
+            return httpx.Response(
+                200,
+                json={
+                    "access_token": "at_rotated",
+                    "token_type": "DPoP",
+                    "sub": "did:plc:abc123",
+                },
+                headers={"DPoP-Nonce": "server-nonce"},
+            )
+
+        monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
+        monkeypatch.setattr("backend.crosspost.atproto_oauth._is_safe_url", lambda _url: True)
+        result = await exchange_code_for_tokens(
+            token_endpoint="https://auth.example.com/oauth/token",
+            auth_server_issuer="https://auth.example.com",
+            code="auth-code",
+            redirect_uri="https://myblog.example.com/api/crosspost/bluesky/callback",
+            pkce_verifier="verifier",
+            client_id="https://myblog.example.com/api/crosspost/bluesky/client-metadata.json",
+            private_key=private_key,
+            jwk=jwk,
+            dpop_nonce="",
+        )
+        assert call_count == 2
+        assert result["access_token"] == "at_rotated"
+        assert result["dpop_nonce"] == "server-nonce"

@@ -65,6 +65,7 @@ def serialize_keypair(
     pem = private_key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, NoEncryption())
     data = {"private_key_pem": pem.decode("ascii"), "jwk": jwk}
     path.write_text(json.dumps(data, indent=2))
+    path.chmod(0o600)
 
 
 def load_or_create_keypair(

@@ -165,7 +165,8 @@ def _make_oauth_credentials() -> dict[str, str]:
 
 
 class TestBlueskyCrossPosterOAuth:
-    async def test_authenticate_with_oauth_tokens(self) -> None:
+    async def test_authenticate_with_oauth_tokens(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr("backend.crosspost.atproto_oauth._is_safe_url", lambda _url: True)
         creds = _make_oauth_credentials()
         poster = BlueskyCrossPoster()
         result = await poster.authenticate(creds)
@@ -177,6 +178,7 @@ class TestBlueskyCrossPosterOAuth:
         assert result is False
 
     async def test_post_uses_dpop(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr("backend.crosspost.atproto_oauth._is_safe_url", lambda _url: True)
         captured_headers: dict[str, str] = {}
 
         async def mock_post(self: httpx.AsyncClient, url: str, **kwargs: object) -> httpx.Response:

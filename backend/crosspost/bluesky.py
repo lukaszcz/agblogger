@@ -148,6 +148,11 @@ class BlueskyCrossPoster:
         """Load OAuth credentials. No network call needed."""
         if not REQUIRED_CREDENTIAL_FIELDS.issubset(credentials):
             return False
+        from backend.crosspost.atproto_oauth import _is_safe_url
+
+        pds_url = credentials["pds_url"].rstrip("/")
+        if not _is_safe_url(pds_url):
+            return False
         key = load_pem_private_key(
             credentials["dpop_private_key_pem"].encode(),
             password=None,
@@ -158,7 +163,7 @@ class BlueskyCrossPoster:
             access_token=credentials["access_token"],
             did=credentials["did"],
             handle=credentials["handle"],
-            pds_url=credentials["pds_url"].rstrip("/"),
+            pds_url=pds_url,
             dpop_private_key=key,
             dpop_jwk=json.loads(credentials["dpop_jwk"]),
             dpop_nonce=credentials["dpop_nonce"],

@@ -9,13 +9,17 @@ from typing import Any
 class OAuthStateStore:
     """Store pending OAuth authorization state with automatic expiry."""
 
-    def __init__(self, ttl_seconds: int = 600) -> None:
+    def __init__(self, ttl_seconds: int = 600, max_entries: int = 100) -> None:
         self._ttl = ttl_seconds
+        self._max_entries = max_entries
         self._entries: dict[str, tuple[dict[str, Any], float]] = {}
 
     def set(self, state: str, data: dict[str, Any]) -> None:
         """Store data for a pending OAuth flow."""
         self.cleanup()
+        if len(self._entries) >= self._max_entries:
+            oldest_key = min(self._entries, key=lambda k: self._entries[k][1])
+            del self._entries[oldest_key]
         self._entries[state] = (data, time.time())
 
     def pop(self, state: str) -> dict[str, Any] | None:

@@ -282,7 +282,6 @@ async def bluesky_callback(
     from backend.crosspost.atproto_oauth import (
         ATProtoOAuthError,
         exchange_code_for_tokens,
-        generate_es256_keypair,
     )
 
     base_url = settings.bluesky_client_url.rstrip("/")
@@ -313,8 +312,9 @@ async def bluesky_callback(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="DID mismatch in token response",
         )
-    dpop_key, dpop_jwk = generate_es256_keypair()
-    dpop_pem = dpop_key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, NoEncryption()).decode()
+    # The DPoP key used for PDS requests must match the key used during token
+    # exchange, because the access token is DPoP-bound to that key.
+    dpop_pem = private_key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, NoEncryption()).decode()
     credentials = {
         "access_token": token_data["access_token"],
         "refresh_token": token_data.get("refresh_token", ""),
@@ -322,7 +322,7 @@ async def bluesky_callback(
         "handle": pending["handle"],
         "pds_url": auth_meta["pds_url"],
         "dpop_private_key_pem": dpop_pem,
-        "dpop_jwk": json_mod.dumps(dpop_jwk),
+        "dpop_jwk": json_mod.dumps(jwk),
         "dpop_nonce": token_data.get("dpop_nonce", ""),
         "auth_server_issuer": auth_meta["issuer"],
         "token_endpoint": auth_meta["token_endpoint"],
