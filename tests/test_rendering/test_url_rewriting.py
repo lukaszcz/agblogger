@@ -111,6 +111,24 @@ class TestRewriteRelativeUrls:
         result = rewrite_relative_urls("", "posts/hello.md")
         assert result == ""
 
+    def test_rewrite_single_quoted_src(self) -> None:
+        """Single-quoted img src is rewritten correctly."""
+        html = "<img src='photo.png'>"
+        result = rewrite_relative_urls(html, "posts/2026-02-20-my-post/index.md")
+        assert result == "<img src='/api/content/posts/2026-02-20-my-post/photo.png'>"
+
+    def test_rewrite_single_quoted_href(self) -> None:
+        """Single-quoted href is rewritten correctly."""
+        html = "<a href='doc.pdf'>"
+        result = rewrite_relative_urls(html, "posts/2026-02-20-my-post/index.md")
+        assert result == "<a href='/api/content/posts/2026-02-20-my-post/doc.pdf'>"
+
+    def test_skip_single_quoted_absolute(self) -> None:
+        """Single-quoted absolute URLs are left unchanged."""
+        html = "<img src='https://example.com/img.png'>"
+        result = rewrite_relative_urls(html, "posts/hello.md")
+        assert result == "<img src='https://example.com/img.png'>"
+
     def test_no_src_or_href(self) -> None:
         """HTML without src/href attributes is returned unchanged."""
         html = "<p>Hello world</p>"

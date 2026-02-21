@@ -257,7 +257,8 @@ def rewrite_relative_urls(html: str, file_path: str) -> str:
 
     def _replace(match: re.Match[str]) -> str:
         attr = match.group(1)
-        value = match.group(2)
+        quote = match.group(2)
+        value = match.group(3)
 
         if any(value.startswith(prefix) for prefix in _SKIP_PREFIXES):
             return match.group(0)
@@ -269,6 +270,6 @@ def rewrite_relative_urls(html: str, file_path: str) -> str:
         # Don't produce URLs that escape the content root
         if resolved.startswith(".."):
             return match.group(0)
-        return f'{attr}="/api/content/{resolved}"'
+        return f"{attr}={quote}/api/content/{resolved}{quote}"
 
-    return re.sub(r'(src|href)="([^"]*)"', _replace, html)
+    return re.sub(r"""(src|href)=(["'])([^"']*)\2""", _replace, html)

@@ -40,14 +40,21 @@ class TestCliEntry:
         """cli_entry() should use the global app's settings, not create a new Settings()."""
         from backend.main import app, cli_entry
 
+        original_settings = getattr(app.state, "settings", None)
         app.state.settings = Settings(_env_file=None, host="127.0.0.1", port=9999, debug=True)
 
-        with patch("uvicorn.run") as mock_run:
-            cli_entry()
+        try:
+            with patch("uvicorn.run") as mock_run:
+                cli_entry()
 
-        mock_run.assert_called_once_with(
-            "backend.main:app",
-            host="127.0.0.1",
-            port=9999,
-            reload=True,
-        )
+            mock_run.assert_called_once_with(
+                "backend.main:app",
+                host="127.0.0.1",
+                port=9999,
+                reload=True,
+            )
+        finally:
+            if original_settings is None:
+                del app.state.settings
+            else:
+                app.state.settings = original_settings

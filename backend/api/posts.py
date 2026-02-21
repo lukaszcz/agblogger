@@ -158,7 +158,8 @@ async def search_endpoint(
     return await search_posts(session, q, limit=limit)
 
 
-_MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10 MB
+_MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10 MB per file
+_MAX_TOTAL_UPLOAD_SIZE = 50 * 1024 * 1024  # 50 MB total
 
 
 @router.post("/upload", response_model=PostDetail, status_code=201)
@@ -177,12 +178,19 @@ async def upload_post(
     protocol: fills missing timestamps, author, and title.
     """
     file_data: list[tuple[str, bytes]] = []
+    total_size = 0
     for upload_file in files:
         content = await upload_file.read()
         if len(content) > _MAX_UPLOAD_SIZE:
             raise HTTPException(
                 status_code=413,
                 detail=f"File too large: {upload_file.filename}",
+            )
+        total_size += len(content)
+        if total_size > _MAX_TOTAL_UPLOAD_SIZE:
+            raise HTTPException(
+                status_code=413,
+                detail="Total upload size exceeds 50 MB limit",
             )
         filename = FilePath(upload_file.filename or "upload").name
         file_data.append((filename, content))
@@ -215,11 +223,13 @@ async def upload_post(
     # Write asset files to directory
     post_dir = post_path.parent
     post_dir.mkdir(parents=True, exist_ok=True)
+    written_assets: list[FilePath] = []
     for name, data in file_data:
         if name == md_filename:
             continue
         dest = post_dir / FilePath(name).name
         dest.write_bytes(data)
+        written_assets.append(dest)
 
     md_excerpt = generate_markdown_excerpt(post_data.content)
     rendered_excerpt = await render_markdown(md_excerpt) if md_excerpt else ""
@@ -253,6 +263,10 @@ async def upload_post(
         content_manager.write_post(file_path, post_data)
     except Exception as exc:
         logger.error("Failed to write uploaded post %s: %s", file_path, exc)
+        for asset in written_assets:
+            asset.unlink(missing_ok=True)
+        if post_dir.exists() and not any(post_dir.iterdir()):
+            post_dir.rmdir()
         await session.rollback()
         raise HTTPException(status_code=500, detail="Failed to write post file") from exc
 
@@ -310,19 +324,27 @@ async def upload_assets(
     user: Annotated[User, Depends(require_auth)],
 ) -> dict[str, list[str]]:
     """Upload asset files to a post's directory."""
-    # Verify post exists
+    # Verify post exists and user is the author
     stmt = select(PostCache).where(PostCache.file_path == file_path)
     result = await session.execute(stmt)
-    if result.scalar_one_or_none() is None:
+    post = result.scalar_one_or_none()
+    if post is None:
         raise HTTPException(status_code=404, detail="Post not found")
+    user_author = user.display_name or user.username
+    if post.author != user_author:
+        raise HTTPException(status_code=403, detail="Only the post author can upload assets")
 
     post_dir = (content_manager.content_dir / file_path).parent
     uploaded: list[str] = []
+    total_size = 0
 
     for upload_file in files:
         content = await upload_file.read()
         if len(content) > _MAX_UPLOAD_SIZE:
             raise HTTPException(status_code=413, detail=f"File too large: {upload_file.filename}")
+        total_size += len(content)
+        if total_size > _MAX_TOTAL_UPLOAD_SIZE:
+            raise HTTPException(status_code=413, detail="Total upload size exceeds 50 MB limit")
         filename = FilePath(upload_file.filename or "upload").name
         if not filename or filename.startswith("."):
             raise HTTPException(status_code=400, detail=f"Invalid filename: {upload_file.filename}")

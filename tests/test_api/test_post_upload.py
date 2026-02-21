@@ -27,6 +27,7 @@ def upload_settings(tmp_content_dir: Path, tmp_path: Path) -> Settings:
         frontend_dir=tmp_path / "frontend",
         admin_username="admin",
         admin_password="admin123",
+        auth_self_registration=True,
     )
 
 
@@ -179,3 +180,81 @@ class TestPostUpload:
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 413
+
+    @pytest.mark.asyncio
+    async def test_upload_total_size_too_large(self, client: AsyncClient) -> None:
+        """Multiple files each under 10 MB but exceeding 50 MB total should be rejected."""
+        token = await login(client)
+        md_content = "---\ntitle: Multi\n---\nBody\n"
+        # 6 files of 9 MB each = 54 MB total, each under per-file limit
+        large_asset = b"\x00" * (9 * 1024 * 1024)
+        file_list = [("files", ("index.md", md_content.encode(), "text/markdown"))]
+        for i in range(6):
+            file_list.append(("files", (f"asset{i}.bin", large_asset, "application/octet-stream")))
+        resp = await client.post(
+            "/api/posts/upload",
+            files=file_list,
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 413
+        assert "50 MB" in resp.json()["detail"]
+
+
+class TestAssetUploadAuthorization:
+    @pytest.mark.asyncio
+    async def test_asset_upload_forbidden_for_non_author(self, client: AsyncClient) -> None:
+        """A different user should not be able to upload assets to another user's post."""
+        # Admin creates a post
+        admin_token = await login(client)
+        md_content = "---\ntitle: Admin Post\n---\nBody\n"
+        resp = await client.post(
+            "/api/posts/upload",
+            files={"files": ("post.md", md_content.encode(), "text/markdown")},
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
+        assert resp.status_code == 201
+        file_path = resp.json()["file_path"]
+
+        # Register another user (need CSRF token since admin login set cookies)
+        csrf_token = client.cookies.get("csrf_token", "")
+        resp = await client.post(
+            "/api/auth/register",
+            json={"username": "other", "email": "other@test.com", "password": "password123"},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+        assert resp.status_code == 201
+        resp = await client.post(
+            "/api/auth/login",
+            json={"username": "other", "password": "password123"},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+        other_token = resp.json()["access_token"]
+
+        # Other user tries to upload assets to admin's post
+        resp = await client.post(
+            f"/api/posts/{file_path}/assets",
+            files={"files": ("evil.txt", b"malicious content", "text/plain")},
+            headers={"Authorization": f"Bearer {other_token}"},
+        )
+        assert resp.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_asset_upload_allowed_for_author(self, client: AsyncClient) -> None:
+        """The post author should be able to upload assets."""
+        token = await login(client)
+        md_content = "---\ntitle: My Post\n---\nBody\n"
+        resp = await client.post(
+            "/api/posts/upload",
+            files={"files": ("post.md", md_content.encode(), "text/markdown")},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 201
+        file_path = resp.json()["file_path"]
+
+        resp = await client.post(
+            f"/api/posts/{file_path}/assets",
+            files={"files": ("photo.png", b"\x89PNG\r\n\x1a\n" + b"\x00" * 50, "image/png")},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+        assert "photo.png" in resp.json()["uploaded"]
