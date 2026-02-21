@@ -460,6 +460,34 @@ The frontend cross-posting interface spans three pages:
 
 **Cross-post dialog** (`CrossPostDialog`): A modal with a single editable textarea (auto-generated from post title + URL), per-platform character counters (300 for Bluesky, 500 for Mastodon, turning red when over limit), platform checkboxes, and a results view showing per-platform success/failure after posting.
 
+### Post Sharing (Client-Side)
+
+Separate from the admin-only cross-posting system, post sharing is a client-side feature available to all users (including unauthenticated visitors). It requires no backend changes — share links are constructed entirely in the browser.
+
+**Components** live in `frontend/src/components/share/`:
+
+```
+frontend/src/components/share/
+├── shareUtils.ts           Share URL generation, native share API, clipboard, Mastodon instance helpers
+├── ShareButton.tsx         Compact header share button with dropdown popover
+├── ShareBar.tsx            Bottom-of-post horizontal row of platform icon buttons
+└── MastodonSharePrompt.tsx Inline form for Mastodon instance URL input
+```
+
+**Placement on PostPage**: `ShareButton` appears inline in the post header metadata row (date, author, labels). `ShareBar` appears as a horizontal icon row below the post content, above the admin-only cross-post section.
+
+**Share mechanism**: On browsers that support the Web Share API (`navigator.share`), `ShareButton` invokes the native OS share sheet directly — clicking the button invokes the OS share sheet without showing platform options. On browsers without Web Share API support, it opens a dropdown popover listing platform buttons. `ShareBar` always shows individual platform buttons and additionally shows the native share button alongside them when the API is available.
+
+**Supported platforms**: Bluesky, Mastodon, X, Facebook, LinkedIn, Reddit, Email, and Copy Link. Platform buttons open a pre-filled compose URL in a new tab (e.g., `https://bsky.app/intent/compose?text=...`). Email uses a `mailto:` link in the current window. Copy Link writes the post URL to the clipboard.
+
+**Share text format**: When an author is present: `"\u201c{title}\u201d by {author} {url}"`. When the author is null: `"\u201c{title}\u201d {url}"`. Both formats use curly (typographic) quotes around the title.
+
+**Mastodon instance handling**: Mastodon requires a per-instance share URL (`https://{instance}/share?text=...`). When a user clicks the Mastodon share button for the first time, `MastodonSharePrompt` asks for their instance URL (e.g., `mastodon.social`). The instance is saved to `localStorage` (key: `agblogger:mastodon-instance`) and reused on subsequent shares.
+
+**Platform icons**: The existing `PlatformIcon` component (`frontend/src/components/crosspost/PlatformIcon.tsx`) was extended with SVG icons for X, Facebook, LinkedIn, and Reddit to support the additional share platforms.
+
+**Distinction from cross-posting**: Sharing opens external compose pages for the reader to post from their own accounts. Cross-posting publishes server-side from the admin's connected OAuth accounts. The two features are independent and appear in separate sections on the post page.
+
 ## Frontend Architecture
 
 ### Routing
