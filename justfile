@@ -66,6 +66,32 @@ check-vulture:
     @echo "── Runtime dead-code analysis (Vulture) ──"
     uv run vulture backend cli --exclude "backend/migrations" --min-confidence 80
 
+# ── CodeQL ────────────────────────────────────────────────────────
+
+# Create CodeQL databases for Python and JavaScript/TypeScript
+setup-codeql:
+    mkdir -p codeql-db
+    @echo "── CodeQL: creating Python database ──"
+    codeql database create codeql-db/python --language=python --source-root=. --overwrite
+    @echo "\n── CodeQL: creating JavaScript database ──"
+    codeql database create codeql-db/javascript --language=javascript --source-root=. --overwrite --command="cd frontend && npm run build"
+    @echo "\n✓ CodeQL databases created in codeql-db/"
+
+# Analyze CodeQL databases (security + quality suite)
+codeql:
+    @echo "── CodeQL: analyzing Python database ──"
+    codeql database analyze codeql-db/python \
+        codeql/python-queries:codeql-suites/python-security-and-quality.qls \
+        --format=sarifv2.1.0 --output=codeql-db/python-results.sarif
+    @echo "\n── CodeQL: analyzing JavaScript database ──"
+    codeql database analyze codeql-db/javascript \
+        codeql/javascript-queries:codeql-suites/javascript-security-and-quality.qls \
+        --format=sarifv2.1.0 --output=codeql-db/javascript-results.sarif
+    @echo "\n✓ CodeQL analysis complete — results in codeql-db/*.sarif"
+
+# Rebuild CodeQL databases and analyze
+check-codeql: setup-codeql codeql
+
 # ── Build ─────────────────────────────────────────────────────────
 
 # Create a full production build (frontend + backend dependency sync)

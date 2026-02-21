@@ -87,6 +87,15 @@ just check-backend
 
 # Frontend only (tsc, eslint)
 just check-frontend
+
+# CodeQL analysis (requires existing databases)
+just codeql
+
+# Rebuild CodeQL databases and analyze
+just check-codeql
+
+# Create/rebuild CodeQL databases only
+just setup-codeql
 ```
 
 ## Sync Client

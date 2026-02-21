@@ -42,6 +42,9 @@ data/
 # ── Content (auto-generated on first startup) ──────────────────────
 content/
 
+# ── CodeQL ──────────────────────────────────────────────────────────
+codeql-db/
+
 # ── Playwright ────────────────────────────────────────────────────────
 playwright-report/
 playwright-results/
