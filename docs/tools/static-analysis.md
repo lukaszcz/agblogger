@@ -100,3 +100,15 @@ Tests are intentionally split out from static analysis:
 - `just check` runs `just check-static` first, then `just test`
 
 This keeps static analysis and runtime verification available separately while preserving a single full gate.
+
+## Extra Security Gates
+
+These are intentionally separate from `just check` and `just check-static`:
+
+- `just check-audit-full`
+  - Runs `npm audit --audit-level=high` in `frontend/`.
+  - Includes development dependencies (unlike `npm run audit`, which uses `--omit=dev`).
+- `just check-codeql`
+  - Rebuilds CodeQL databases and runs CodeQL analysis for Python and JavaScript.
+- `just check-extra`
+  - Runs only extra checks not covered by `just check`: `check-audit-full` + `check-codeql`.

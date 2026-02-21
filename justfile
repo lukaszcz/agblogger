@@ -26,6 +26,15 @@ test: test-backend test-frontend
 check: check-static test
     @echo "\n✓ All checks passed"
 
+# Run full frontend vulnerability audit (including dev dependencies)
+check-audit-full:
+    @echo "\n── Frontend: full vulnerability audit (including dev dependencies) ──"
+    cd frontend && npm audit --audit-level=high
+
+# Run extra checks not covered by `check`
+check-extra: check-audit-full check-codeql
+    @echo "\n✓ Extra checks passed"
+
 # Backend static checks: mypy, pyright, deptry, import-linter, ruff, pip-audit
 check-backend-static:
     @echo "── Backend: type checking ──"

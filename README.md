@@ -80,6 +80,9 @@ npm test
 # Run full quality gate (static checks, then tests)
 just check
 
+# Run extra checks not covered by just check (full npm audit + CodeQL)
+just check-extra
+
 # Run static checks only (backend + frontend + Semgrep + Vulture + Trivy)
 just check-static
 
