@@ -185,6 +185,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        expose_headers=["X-CSRF-Token"],
     )
 
     trusted_hosts = settings.trusted_hosts or (
@@ -224,6 +225,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
         response = await call_next(request)
+        csrf_token = request.cookies.get("csrf_token")
+        if csrf_token:
+            response.headers.setdefault("X-CSRF-Token", csrf_token)
         if settings.security_headers_enabled:
             response.headers.setdefault("X-Content-Type-Options", "nosniff")
             response.headers.setdefault("X-Frame-Options", "DENY")

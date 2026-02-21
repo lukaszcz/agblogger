@@ -1,35 +1,77 @@
 import ky, { HTTPError } from 'ky'
 
 const UNSAFE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
+const CSRF_HEADER_NAME = 'X-CSRF-Token'
+const CSRF_STORAGE_KEY = 'agb_csrf_token'
 
-function readCookie(name: string): string | null {
-  if (typeof document === 'undefined') {
+function readPersistedCsrfToken(): string | null {
+  if (typeof window === 'undefined') {
     return null
   }
-  const prefix = `${encodeURIComponent(name)}=`
-  const part = document.cookie
-    .split('; ')
-    .find((cookiePart) => cookiePart.startsWith(prefix))
-  if (part === undefined) {
+  try {
+    return window.localStorage.getItem(CSRF_STORAGE_KEY)
+  } catch {
     return null
   }
-  return decodeURIComponent(part.slice(prefix.length))
+}
+
+function persistCsrfToken(token: string): void {
+  if (typeof window === 'undefined') {
+    return
+  }
+  try {
+    window.localStorage.setItem(CSRF_STORAGE_KEY, token)
+  } catch {
+    // Ignore storage failures; keep in-memory token only.
+  }
+}
+
+function clearPersistedCsrfToken(): void {
+  if (typeof window === 'undefined') {
+    return
+  }
+  try {
+    window.localStorage.removeItem(CSRF_STORAGE_KEY)
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
+let csrfToken: string | null = readPersistedCsrfToken()
+
+function setCsrfHeader(headers: Headers): void {
+  if (csrfToken !== null) {
+    headers.set(CSRF_HEADER_NAME, csrfToken)
+  }
+}
+
+function updateCsrfTokenFromResponse(response: Response): void {
+  const token = response.headers.get(CSRF_HEADER_NAME)
+  if (token === null) {
+    return
+  }
+  const normalizedToken = token.trim()
+  if (normalizedToken === '') {
+    csrfToken = null
+    clearPersistedCsrfToken()
+    return
+  }
+  csrfToken = normalizedToken
+  persistCsrfToken(normalizedToken)
 }
 
 async function refreshAccessToken(): Promise<boolean> {
-  const csrfToken = readCookie('csrf_token')
   const headers = new Headers()
-  if (csrfToken !== null) {
-    headers.set('X-CSRF-Token', csrfToken)
-  }
+  setCsrfHeader(headers)
 
   try {
-    await ky.post('auth/refresh', {
+    const response = await ky.post('auth/refresh', {
       prefixUrl: '/api',
       credentials: 'include',
       headers,
       json: {},
     })
+    updateCsrfTokenFromResponse(response)
     return true
   } catch (err) {
     console.error('Token refresh failed:', err)
@@ -44,15 +86,13 @@ const api = ky.create({
     beforeRequest: [
       (request) => {
         if (UNSAFE_METHODS.has(request.method)) {
-          const csrfToken = readCookie('csrf_token')
-          if (csrfToken !== null) {
-            request.headers.set('X-CSRF-Token', csrfToken)
-          }
+          setCsrfHeader(request.headers)
         }
       },
     ],
     afterResponse: [
       async (request, _options, response) => {
+        updateCsrfTokenFromResponse(response)
         const alreadyRetried = request.headers.get('X-Auth-Retry') === '1'
         if (response.status === 401 && !request.url.includes('/auth/refresh') && !alreadyRetried) {
           const refreshed = await refreshAccessToken()
@@ -64,10 +104,7 @@ const api = ky.create({
             const headers = new Headers(request.headers)
             headers.set('X-Auth-Retry', '1')
             if (UNSAFE_METHODS.has(request.method)) {
-              const csrfToken = readCookie('csrf_token')
-              if (csrfToken !== null) {
-                headers.set('X-CSRF-Token', csrfToken)
-              }
+              setCsrfHeader(headers)
             }
             const retryRequest = new Request(request, { headers })
             return await ky(retryRequest, {

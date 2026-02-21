@@ -57,6 +57,7 @@ def _set_auth_cookies(
     refresh_token: str,
 ) -> None:
     secure = not settings.debug
+    csrf_token = secrets.token_urlsafe(32)
     response.set_cookie(
         key="access_token",
         value=access_token,
@@ -77,19 +78,21 @@ def _set_auth_cookies(
     )
     response.set_cookie(
         key="csrf_token",
-        value=secrets.token_urlsafe(32),
-        httponly=False,
+        value=csrf_token,
+        httponly=True,
         secure=secure,
         samesite="strict",
         path="/",
         max_age=settings.refresh_token_expire_days * 24 * 60 * 60,
     )
+    response.headers["X-CSRF-Token"] = csrf_token
 
 
 def _clear_auth_cookies(response: Response) -> None:
     response.delete_cookie("access_token", path="/")
     response.delete_cookie("refresh_token", path="/")
     response.delete_cookie("csrf_token", path="/")
+    response.headers["X-CSRF-Token"] = ""
 
 
 def _get_client_ip(request: Request) -> str:

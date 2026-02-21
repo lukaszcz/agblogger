@@ -96,6 +96,40 @@ class TestRegistrationPolicy:
 
 class TestCsrf:
     @pytest.mark.asyncio
+    async def test_login_sets_httponly_csrf_cookie_and_response_header(
+        self, client: AsyncClient
+    ) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        assert login_resp.status_code == 200
+
+        csrf_header = login_resp.headers.get("X-CSRF-Token")
+        assert csrf_header is not None
+        assert csrf_header != ""
+
+        set_cookie_values = login_resp.headers.get_list("set-cookie")
+        csrf_cookie_header = next(
+            (value for value in set_cookie_values if value.startswith("csrf_token=")),
+            None,
+        )
+        assert csrf_cookie_header is not None
+        assert "HttpOnly" in csrf_cookie_header
+
+    @pytest.mark.asyncio
+    async def test_authenticated_get_echoes_csrf_token_header(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        assert login_resp.status_code == 200
+
+        me_resp = await client.get("/api/auth/me")
+        assert me_resp.status_code == 200
+        assert me_resp.headers.get("X-CSRF-Token") == client.cookies.get("csrf_token")
+
+    @pytest.mark.asyncio
     async def test_cookie_authenticated_post_requires_csrf(self, client: AsyncClient) -> None:
         login_resp = await client.post(
             "/api/auth/login",

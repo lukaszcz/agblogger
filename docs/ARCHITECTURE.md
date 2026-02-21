@@ -235,7 +235,7 @@ The database serves as a **cache**, not the source of truth:
 
 ### Rendering Pipeline
 
-Pandoc renders markdown to HTML at publish time (during cache rebuild), not per-request. The rendered HTML is stored in `PostCache.rendered_html`. A rendered excerpt is also generated from a markdown-preserving truncation (`generate_markdown_excerpt()`) and stored in `PostCache.rendered_excerpt` — used in timeline cards and search results. KaTeX math in excerpts is processed client-side by the `useRenderedHtml` hook.
+Pandoc renders markdown to HTML at publish time (during cache rebuild), not per-request. The rendered HTML is stored in `PostCache.rendered_html`. A rendered excerpt is also generated from a markdown-preserving truncation (`generate_markdown_excerpt()`) and stored in `PostCache.rendered_excerpt`. Search results render excerpt HTML client-side (including KaTeX via `useRenderedHtml`), while timeline cards render excerpts as plain text extracted from sanitized HTML.
 
 Pandoc output is sanitized through an allowlist HTML sanitizer before storage and before heading-anchor injection. Unsafe tags/attributes and unsafe URL schemes (for example `javascript:`) are stripped.
 
@@ -254,8 +254,8 @@ Lua filter files exist in `backend/pandoc/filters/` as placeholders for future u
 
 ### Token and Session Flow
 
-- **Web sessions**: Login issues `access_token` and `refresh_token` as `HttpOnly` cookies, plus a readable `csrf_token` cookie.
-- **CSRF protection**: Unsafe API methods (`POST/PUT/PATCH/DELETE`) with cookie auth require `X-CSRF-Token` matching the `csrf_token` cookie.
+- **Web sessions**: Login issues `access_token`, `refresh_token`, and `csrf_token` as `HttpOnly` cookies.
+- **CSRF protection**: Unsafe API methods (`POST/PUT/PATCH/DELETE`) with cookie auth require `X-CSRF-Token` matching the `csrf_token` cookie. The token is mirrored in an `X-CSRF-Token` response header and persisted by the frontend client for subsequent unsafe requests.
 - **Login origin enforcement**: Login requests with `Origin`/`Referer` must match the app origin or configured CORS origins.
 - **Access tokens**: Short-lived (15 min), HS256 JWT containing `{sub: user_id, username, is_admin}`.
 - **Refresh tokens**: Long-lived (7 days), cryptographically random 48-byte strings. Only SHA-256 hashes are stored in DB. Refresh rotates tokens and revokes the old one.
