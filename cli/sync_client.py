@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import getpass
 import hashlib
 import json
 import os
@@ -384,7 +385,6 @@ def main() -> None:
         help="Allow http:// server URLs for non-localhost hosts",
     )
     parser.add_argument("--username", "-u", help="Username for authentication")
-    parser.add_argument("--password", "-p", help="Password for authentication")
     parser.add_argument("--pat", help="Personal access token for authentication")
 
     subparsers = parser.add_subparsers(dest="command")
@@ -433,10 +433,9 @@ def main() -> None:
     token = args.pat or config.get("pat")
     if token is None:
         username = args.username or config.get("username")
-        password = args.password or config.get("password")
-        if not username or not password:
-            print("Error: Provide --pat, or username/password via --username/--password or config.")
-            sys.exit(1)
+        if not username:
+            username = input("Username: ")
+        password = getpass.getpass("Password: ")
 
         # Create client and login
         temp_client = httpx.Client(base_url=server_url, timeout=30.0)
