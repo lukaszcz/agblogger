@@ -6,8 +6,11 @@ import {
   deleteSocialAccount,
   authorizeBluesky,
   authorizeMastodon,
+  authorizeX,
+  authorizeFacebook,
+  selectFacebookPage,
 } from '@/api/crosspost'
-import type { SocialAccount } from '@/api/crosspost'
+import type { SocialAccount, FacebookPage } from '@/api/crosspost'
 import { HTTPError } from '@/api/client'
 import PlatformIcon from '@/components/crosspost/PlatformIcon'
 
@@ -32,16 +35,23 @@ export default function SocialAccountsPanel({ busy, onBusyChange }: SocialAccoun
   const [success, setSuccess] = useState<string | null>(null)
 
   // Connect form state
-  const [connectingPlatform, setConnectingPlatform] = useState<'bluesky' | 'mastodon' | null>(null)
+  const [connectingPlatform, setConnectingPlatform] = useState<
+    'bluesky' | 'mastodon' | 'x' | 'facebook' | null
+  >(null)
   const [handle, setHandle] = useState('')
   const [instanceUrl, setInstanceUrl] = useState('')
   const [submitting, setSubmitting] = useState(false)
+
+  // Facebook page selection state
+  const [facebookPages, setFacebookPages] = useState<FacebookPage[]>([])
+  const [facebookPageState, setFacebookPageState] = useState<string | null>(null)
+  const [selectingPage, setSelectingPage] = useState(false)
 
   // Disconnect confirmation state
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null)
   const [deleting, setDeleting] = useState(false)
 
-  const localBusy = submitting || deleting
+  const localBusy = submitting || deleting || selectingPage
   const onBusyChangeRef = useRef(onBusyChange)
   onBusyChangeRef.current = onBusyChange
 
@@ -51,6 +61,17 @@ export default function SocialAccountsPanel({ busy, onBusyChange }: SocialAccoun
 
   useEffect(() => {
     void loadAccounts()
+  }, [])
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const fbPagesState = params.get('fb_pages')
+    if (fbPagesState) {
+      setFacebookPageState(fbPagesState)
+      const url = new URL(window.location.href)
+      url.searchParams.delete('fb_pages')
+      window.history.replaceState({}, '', url.toString())
+    }
   }, [])
 
   async function loadAccounts() {
@@ -105,6 +126,61 @@ export default function SocialAccountsPanel({ busy, onBusyChange }: SocialAccoun
         setError('Failed to start Mastodon authorization. Please try again.')
       }
       setSubmitting(false)
+    }
+  }
+
+  async function handleConnectX() {
+    setSubmitting(true)
+    setError(null)
+    setSuccess(null)
+    try {
+      const { authorization_url } = await authorizeX()
+      window.location.href = authorization_url
+    } catch (err) {
+      if (err instanceof HTTPError && err.response.status === 401) {
+        setError('Session expired. Please log in again.')
+      } else {
+        setError('Failed to start X authorization. Please try again.')
+      }
+      setSubmitting(false)
+    }
+  }
+
+  async function handleConnectFacebook() {
+    setSubmitting(true)
+    setError(null)
+    setSuccess(null)
+    try {
+      const { authorization_url } = await authorizeFacebook()
+      window.location.href = authorization_url
+    } catch (err) {
+      if (err instanceof HTTPError && err.response.status === 401) {
+        setError('Session expired. Please log in again.')
+      } else {
+        setError('Failed to start Facebook authorization. Please try again.')
+      }
+      setSubmitting(false)
+    }
+  }
+
+  async function handleSelectFacebookPage(pageId: string) {
+    if (!facebookPageState) return
+    setSelectingPage(true)
+    setError(null)
+    try {
+      const result = await selectFacebookPage(facebookPageState, pageId)
+      setFacebookPageState(null)
+      setFacebookPages([])
+      setSuccess(`Connected Facebook Page: ${result.account_name}`)
+      await loadAccounts()
+    } catch (err) {
+      if (err instanceof HTTPError && err.response.status === 401) {
+        setError('Session expired. Please log in again.')
+      } else {
+        setError('Failed to connect Facebook Page. Please try again.')
+      }
+    } finally {
+      setSelectingPage(false)
     }
   }
 
@@ -334,7 +410,127 @@ export default function SocialAccountsPanel({ busy, onBusyChange }: SocialAccoun
                 Connect Mastodon
               </button>
             )}
+
+            {/* X connect */}
+            {connectingPlatform === 'x' ? (
+              <div className="p-4 bg-paper-warm border border-border rounded-lg space-y-3">
+                <p className="text-xs text-muted">
+                  You will be redirected to X to authorize AgBlogger.
+                </p>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => void handleConnectX()}
+                    disabled={allBusy}
+                    className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-accent text-white rounded-lg
+                             hover:bg-accent-light disabled:opacity-50 transition-colors"
+                  >
+                    <Plus size={14} />
+                    {submitting ? 'Connecting...' : 'Connect'}
+                  </button>
+                  <button
+                    onClick={() => setConnectingPlatform(null)}
+                    disabled={allBusy}
+                    className="px-4 py-2 text-sm font-medium border border-border rounded-lg
+                             hover:bg-paper-warm disabled:opacity-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => {
+                  setConnectingPlatform('x')
+                  setError(null)
+                  setSuccess(null)
+                }}
+                disabled={allBusy}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium
+                         border border-border rounded-lg hover:bg-paper-warm
+                         disabled:opacity-50 transition-colors"
+              >
+                <PlatformIcon platform="x" size={14} />
+                Connect X
+              </button>
+            )}
+
+            {/* Facebook connect */}
+            {connectingPlatform === 'facebook' ? (
+              <div className="p-4 bg-paper-warm border border-border rounded-lg space-y-3">
+                <p className="text-xs text-muted">
+                  You will be redirected to Facebook to authorize AgBlogger and select a Page.
+                </p>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => void handleConnectFacebook()}
+                    disabled={allBusy}
+                    className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-accent text-white rounded-lg
+                             hover:bg-accent-light disabled:opacity-50 transition-colors"
+                  >
+                    <Plus size={14} />
+                    {submitting ? 'Connecting...' : 'Connect'}
+                  </button>
+                  <button
+                    onClick={() => setConnectingPlatform(null)}
+                    disabled={allBusy}
+                    className="px-4 py-2 text-sm font-medium border border-border rounded-lg
+                             hover:bg-paper-warm disabled:opacity-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => {
+                  setConnectingPlatform('facebook')
+                  setError(null)
+                  setSuccess(null)
+                }}
+                disabled={allBusy}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium
+                         border border-border rounded-lg hover:bg-paper-warm
+                         disabled:opacity-50 transition-colors"
+              >
+                <PlatformIcon platform="facebook" size={14} />
+                Connect Facebook
+              </button>
+            )}
           </div>
+
+          {/* Facebook page picker */}
+          {facebookPageState !== null && (
+            <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg space-y-3">
+              <p className="text-sm font-medium text-ink">Select a Facebook Page</p>
+              <p className="text-xs text-muted">
+                Choose which Page AgBlogger should post to:
+              </p>
+              <div className="space-y-2">
+                {facebookPages.map((page) => (
+                  <button
+                    key={page.id}
+                    onClick={() => void handleSelectFacebookPage(page.id)}
+                    disabled={selectingPage}
+                    className="w-full text-left px-4 py-3 border border-border rounded-lg
+                             hover:bg-paper-warm disabled:opacity-50 transition-colors"
+                  >
+                    <span className="text-sm font-medium text-ink">{page.name}</span>
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={() => {
+                  setFacebookPageState(null)
+                  setFacebookPages([])
+                }}
+                disabled={selectingPage}
+                className="px-4 py-2 text-sm font-medium border border-border rounded-lg
+                         hover:bg-paper-warm disabled:opacity-50 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
         </>
       )}
     </section>
