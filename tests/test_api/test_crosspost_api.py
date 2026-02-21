@@ -1,4 +1,4 @@
-"""Tests for Mastodon OAuth API endpoints."""
+"""Tests for cross-posting OAuth API endpoints."""
 
 from __future__ import annotations
 
@@ -66,6 +66,93 @@ class TestMastodonCallback:
         async with create_test_client(test_settings) as client:
             resp = await client.get(
                 "/api/crosspost/mastodon/callback",
+                params={"code": "test-code", "state": "invalid-state"},
+                follow_redirects=False,
+            )
+            assert resp.status_code == 400
+            assert resp.json()["detail"] == "Invalid or expired OAuth state"
+
+
+class TestXAuthorize:
+    async def test_x_authorize_requires_auth(self, test_settings: Settings) -> None:
+        test_settings.bluesky_client_url = "https://myblog.example.com"
+        test_settings.x_client_id = "test_client_id"
+        test_settings.x_client_secret = "test_client_secret"
+        async with create_test_client(test_settings) as client:
+            resp = await client.post("/api/crosspost/x/authorize")
+            assert resp.status_code == 401
+
+    async def test_x_authorize_returns_503_when_not_configured(
+        self, test_settings: Settings
+    ) -> None:
+        test_settings.bluesky_client_url = "https://myblog.example.com"
+        test_settings.x_client_id = ""
+        test_settings.admin_password = "admin"
+        async with create_test_client(test_settings) as client:
+            login_resp = await client.post(
+                "/api/auth/login",
+                json={"username": "admin", "password": "admin"},
+            )
+            token = login_resp.json()["access_token"]
+            resp = await client.post(
+                "/api/crosspost/x/authorize",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert resp.status_code == 503
+
+    async def test_x_authorize_returns_authorization_url(self, test_settings: Settings) -> None:
+        test_settings.bluesky_client_url = "https://myblog.example.com"
+        test_settings.x_client_id = "test_client_id"
+        test_settings.x_client_secret = "test_client_secret"
+        test_settings.admin_password = "admin"
+        async with create_test_client(test_settings) as client:
+            login_resp = await client.post(
+                "/api/auth/login",
+                json={"username": "admin", "password": "admin"},
+            )
+            token = login_resp.json()["access_token"]
+            resp = await client.post(
+                "/api/crosspost/x/authorize",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert resp.status_code == 200
+            data = resp.json()
+            assert "authorization_url" in data
+            auth_url = data["authorization_url"]
+            assert auth_url.startswith("https://x.com/i/oauth2/authorize?")
+            assert "client_id=test_client_id" in auth_url
+            assert "code_challenge_method=S256" in auth_url
+            assert "response_type=code" in auth_url
+            assert "scope=tweet.read+tweet.write+users.read+offline.access" in auth_url
+
+    async def test_x_authorize_returns_503_when_bluesky_client_url_not_set(
+        self, test_settings: Settings
+    ) -> None:
+        test_settings.bluesky_client_url = ""
+        test_settings.x_client_id = "test_client_id"
+        test_settings.x_client_secret = "test_client_secret"
+        test_settings.admin_password = "admin"
+        async with create_test_client(test_settings) as client:
+            login_resp = await client.post(
+                "/api/auth/login",
+                json={"username": "admin", "password": "admin"},
+            )
+            token = login_resp.json()["access_token"]
+            resp = await client.post(
+                "/api/crosspost/x/authorize",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert resp.status_code == 503
+
+
+class TestXCallback:
+    async def test_x_callback_rejects_invalid_state(self, test_settings: Settings) -> None:
+        test_settings.bluesky_client_url = "https://myblog.example.com"
+        test_settings.x_client_id = "test_client_id"
+        test_settings.x_client_secret = "test_client_secret"
+        async with create_test_client(test_settings) as client:
+            resp = await client.get(
+                "/api/crosspost/x/callback",
                 params={"code": "test-code", "state": "invalid-state"},
                 follow_redirects=False,
             )

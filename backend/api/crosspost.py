@@ -28,6 +28,7 @@ from backend.schemas.crosspost import (
     MastodonAuthorizeResponse,
     SocialAccountCreate,
     SocialAccountResponse,
+    XAuthorizeResponse,
 )
 from backend.services.crosspost_service import (
     DuplicateAccountError,
@@ -527,6 +528,172 @@ async def mastodon_callback(
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Mastodon account already exists",
+            ) from None
+        await create_social_account(session, pending["user_id"], account_data, settings.secret_key)
+
+    base_url = settings.bluesky_client_url.rstrip("/")
+    return RedirectResponse(url=f"{base_url}/admin", status_code=303)
+
+
+@router.post("/x/authorize", response_model=XAuthorizeResponse)
+async def x_authorize(
+    settings: Annotated[Settings, Depends(get_settings)],
+    user: Annotated[User, Depends(require_auth)],
+    request: Request,
+) -> XAuthorizeResponse:
+    """Start X (Twitter) OAuth 2.0 flow with PKCE."""
+    if not settings.x_client_id or not settings.x_client_secret:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="X OAuth not configured: X_CLIENT_ID and X_CLIENT_SECRET not set",
+        )
+    if not settings.bluesky_client_url:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="OAuth not configured: BLUESKY_CLIENT_URL not set",
+        )
+
+    import base64
+    import hashlib
+    import secrets
+    from urllib.parse import urlencode
+
+    base_url = settings.bluesky_client_url.rstrip("/")
+    redirect_uri = f"{base_url}/api/crosspost/x/callback"
+
+    # PKCE
+    unreserved = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
+    code_verifier = "".join(secrets.choice(unreserved) for _ in range(64))
+    code_challenge_bytes = hashlib.sha256(code_verifier.encode("ascii")).digest()
+    code_challenge = base64.urlsafe_b64encode(code_challenge_bytes).rstrip(b"=").decode("ascii")
+
+    oauth_state = secrets.token_hex(32)
+
+    state_store = request.app.state.x_oauth_state
+    state_store.set(
+        oauth_state,
+        {
+            "pkce_verifier": code_verifier,
+            "user_id": user.id,
+            "redirect_uri": redirect_uri,
+            "client_id": settings.x_client_id,
+            "client_secret": settings.x_client_secret,
+        },
+    )
+
+    auth_params = urlencode(
+        {
+            "response_type": "code",
+            "client_id": settings.x_client_id,
+            "redirect_uri": redirect_uri,
+            "scope": "tweet.read tweet.write users.read offline.access",
+            "state": oauth_state,
+            "code_challenge": code_challenge,
+            "code_challenge_method": "S256",
+        }
+    )
+    authorization_url = f"https://x.com/i/oauth2/authorize?{auth_params}"
+    return XAuthorizeResponse(authorization_url=authorization_url)
+
+
+@router.get("/x/callback")
+async def x_callback(
+    request: Request,
+    code: Annotated[str, Query()],
+    state: Annotated[str, Query()],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> RedirectResponse:
+    """Handle X OAuth callback: exchange code for tokens, store account."""
+    state_store = request.app.state.x_oauth_state
+    pending = state_store.pop(state)
+    if pending is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired OAuth state",
+        )
+
+    import httpx
+
+    # Exchange code for tokens
+    async with httpx.AsyncClient() as http_client:
+        try:
+            token_resp = await http_client.post(
+                "https://api.x.com/2/oauth2/token",
+                data={
+                    "grant_type": "authorization_code",
+                    "code": code,
+                    "redirect_uri": pending["redirect_uri"],
+                    "client_id": pending["client_id"],
+                    "code_verifier": pending["pkce_verifier"],
+                },
+                auth=(pending["client_id"], pending["client_secret"]),
+                timeout=15.0,
+            )
+        except httpx.HTTPError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"X OAuth HTTP error: {exc}",
+            ) from exc
+
+    if token_resp.status_code != 200:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"X token exchange failed: {token_resp.status_code}",
+        )
+    token_data = token_resp.json()
+    access_token = token_data.get("access_token", "")
+    refresh_token = token_data.get("refresh_token", "")
+
+    # Fetch username
+    async with httpx.AsyncClient() as http_client:
+        try:
+            user_resp = await http_client.get(
+                "https://api.x.com/2/users/me",
+                headers={"Authorization": f"Bearer {access_token}"},
+                timeout=15.0,
+            )
+        except httpx.HTTPError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"X user fetch failed: {exc}",
+            ) from exc
+
+    if user_resp.status_code != 200:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"X user fetch failed: {user_resp.status_code}",
+        )
+    user_data = user_resp.json()
+    username = user_data.get("data", {}).get("username", "unknown")
+
+    credentials = {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "username": username,
+        "client_id": pending["client_id"],
+        "client_secret": pending["client_secret"],
+    }
+    account_name = f"@{username}"
+    account_data = SocialAccountCreate(
+        platform="x",
+        account_name=account_name,
+        credentials=credentials,
+    )
+    try:
+        await create_social_account(session, pending["user_id"], account_data, settings.secret_key)
+    except DuplicateAccountError:
+        existing = await get_social_accounts(session, pending["user_id"])
+        replaced = False
+        for acct in existing:
+            if acct.platform == "x" and acct.account_name == account_name:
+                await delete_social_account(session, acct.id, pending["user_id"])
+                replaced = True
+                break
+        if not replaced:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="X account already exists",
             ) from None
         await create_social_account(session, pending["user_id"], account_data, settings.secret_key)
 
