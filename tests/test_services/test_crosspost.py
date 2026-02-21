@@ -18,6 +18,7 @@ from backend.crosspost.mastodon import (
     exchange_mastodon_oauth_token,
 )
 from backend.crosspost.registry import list_platforms
+from backend.crosspost.x import X_CHAR_LIMIT, XCrossPoster, _build_tweet_text
 
 
 async def _always_safe(_url: str) -> bool:
@@ -320,3 +321,232 @@ class TestBlueskyCrossPosterOAuth:
         assert result.success
         assert captured_headers.get("Authorization", "").startswith("DPoP ")
         assert "DPoP" in captured_headers
+
+
+class TestXFormatting:
+    def test_build_tweet_text_short(self) -> None:
+        content = CrossPostContent(
+            title="Test Post",
+            excerpt="Short excerpt.",
+            url="https://blog.example.com/posts/test",
+            labels=["swe", "ai"],
+        )
+        text = _build_tweet_text(content)
+        assert "Short excerpt." in text
+        assert "#swe" in text
+        assert "#ai" in text
+        assert "https://blog.example.com/posts/test" in text
+        assert len(text) <= X_CHAR_LIMIT
+
+    def test_build_tweet_text_long_truncation(self) -> None:
+        content = CrossPostContent(
+            title="Test Post",
+            excerpt="A" * 500,
+            url="https://blog.example.com/posts/test",
+            labels=["swe"],
+        )
+        text = _build_tweet_text(content)
+        assert len(text) <= X_CHAR_LIMIT
+        assert "..." in text
+
+    def test_build_tweet_text_uses_custom_text(self) -> None:
+        content = CrossPostContent(
+            title="Test",
+            excerpt="Excerpt.",
+            url="https://example.com/posts/test",
+            custom_text="My custom tweet!",
+        )
+        text = _build_tweet_text(content)
+        assert text == "My custom tweet!"
+
+    def test_build_tweet_text_rejects_custom_text_over_limit(self) -> None:
+        content = CrossPostContent(
+            title="Test",
+            excerpt="Excerpt.",
+            url="https://example.com/posts/test",
+            custom_text="A" * 281,
+        )
+        with pytest.raises(ValueError, match="280"):
+            _build_tweet_text(content)
+
+    def test_build_tweet_text_accepts_custom_text_at_limit(self) -> None:
+        content = CrossPostContent(
+            title="Test",
+            excerpt="Excerpt.",
+            url="https://example.com/posts/test",
+            custom_text="A" * 280,
+        )
+        text = _build_tweet_text(content)
+        assert text == "A" * 280
+
+
+class TestXCrossPoster:
+    async def test_authenticate_with_valid_credentials(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        class DummyResponse:
+            status_code = 200
+            text = ""
+
+            @staticmethod
+            def json() -> dict[str, object]:
+                return {"data": {"id": "123", "username": "testuser"}}
+
+        class DummyAsyncClient:
+            async def __aenter__(self) -> DummyAsyncClient:
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb) -> bool:
+                return False
+
+            async def get(self, url: str, **kwargs) -> DummyResponse:
+                return DummyResponse()
+
+        monkeypatch.setattr("backend.crosspost.x.httpx.AsyncClient", DummyAsyncClient)
+
+        poster = XCrossPoster()
+        result = await poster.authenticate(
+            {
+                "access_token": "test_token",
+                "refresh_token": "test_rt",
+                "username": "testuser",
+            }
+        )
+        assert result is True
+
+    async def test_authenticate_rejects_missing_token(self) -> None:
+        poster = XCrossPoster()
+        result = await poster.authenticate({"refresh_token": "rt"})
+        assert result is False
+
+    async def test_post_creates_tweet(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        captured: dict[str, object] = {}
+
+        class DummyResponse:
+            status_code = 201
+            text = ""
+
+            @staticmethod
+            def json() -> dict[str, object]:
+                return {"data": {"id": "1234567890", "text": "Hello"}}
+
+        class DummyVerifyResponse:
+            status_code = 200
+            text = ""
+
+            @staticmethod
+            def json() -> dict[str, object]:
+                return {"data": {"id": "123", "username": "testuser"}}
+
+        class DummyAsyncClient:
+            async def __aenter__(self) -> DummyAsyncClient:
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb) -> bool:
+                return False
+
+            async def get(self, url: str, **kwargs) -> DummyVerifyResponse:
+                return DummyVerifyResponse()
+
+            async def post(self, url: str, **kwargs) -> DummyResponse:
+                captured["url"] = url
+                captured["json"] = kwargs.get("json")
+                return DummyResponse()
+
+        monkeypatch.setattr("backend.crosspost.x.httpx.AsyncClient", DummyAsyncClient)
+
+        poster = XCrossPoster()
+        await poster.authenticate(
+            {
+                "access_token": "test_token",
+                "refresh_token": "test_rt",
+                "username": "testuser",
+            }
+        )
+        content = CrossPostContent(
+            title="Test",
+            excerpt="Hello world",
+            url="https://blog.example.com/post",
+            labels=["swe"],
+        )
+        result = await poster.post(content)
+        assert result.success
+        assert result.platform_id == "1234567890"
+        assert captured["url"] == "https://api.x.com/2/tweets"
+
+    async def test_post_refreshes_on_401(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        call_count = 0
+
+        class DummyRefreshResponse:
+            status_code = 200
+            text = ""
+
+            @staticmethod
+            def json() -> dict[str, str]:
+                return {"access_token": "new_at", "refresh_token": "new_rt"}
+
+        class DummyTweetResponse:
+            status_code = 201
+            text = ""
+
+            @staticmethod
+            def json() -> dict[str, object]:
+                return {"data": {"id": "999", "text": "Hello"}}
+
+        class Dummy401Response:
+            status_code = 401
+            text = "Unauthorized"
+
+            @staticmethod
+            def json() -> dict[str, str]:
+                return {"detail": "Unauthorized"}
+
+        class DummyVerifyResponse:
+            status_code = 200
+            text = ""
+
+            @staticmethod
+            def json() -> dict[str, object]:
+                return {"data": {"id": "123", "username": "testuser"}}
+
+        class DummyAsyncClient:
+            async def __aenter__(self) -> DummyAsyncClient:
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb) -> bool:
+                return False
+
+            async def get(self, url: str, **kwargs) -> DummyVerifyResponse:
+                return DummyVerifyResponse()
+
+            async def post(self, url: str, **kwargs) -> object:
+                nonlocal call_count
+                call_count += 1
+                if url == "https://api.x.com/2/oauth2/token":
+                    return DummyRefreshResponse()
+                if call_count == 1:
+                    return Dummy401Response()
+                return DummyTweetResponse()
+
+        monkeypatch.setattr("backend.crosspost.x.httpx.AsyncClient", DummyAsyncClient)
+
+        poster = XCrossPoster()
+        await poster.authenticate(
+            {
+                "access_token": "old_at",
+                "refresh_token": "old_rt",
+                "username": "testuser",
+                "client_id": "test_client_id",
+            }
+        )
+        content = CrossPostContent(
+            title="Test",
+            excerpt="Hello",
+            url="https://example.com/post",
+            labels=[],
+        )
+        result = await poster.post(content)
+        assert result.success
+        updated = poster.get_updated_credentials()
+        assert updated is not None
+        assert updated["access_token"] == "new_at"
