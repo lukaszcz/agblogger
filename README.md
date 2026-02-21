@@ -31,14 +31,8 @@ A markdown-first blogging platform where markdown files with YAML front matter a
 ## Quick Start
 
 ```bash
-# Install backend dependencies
-uv sync
-
-# Install frontend dependencies
-cd frontend && npm install && cd ..
-
-# Copy and edit environment config
-cp .env.example .env
+# Set up a fresh worktree (deps + .env + local db dir)
+just setup
 
 # Start both backend and frontend dev servers in the background
 just start
@@ -51,6 +45,8 @@ just start backend_port=9000 frontend_port=9173
 # Stop the dev server
 just stop
 ```
+
+`just setup` creates `.env` from `.env.example` only when `.env` is missing.
 
 This starts the backend at http://localhost:8000 and the frontend at http://localhost:5173 (proxying API calls to the backend). API docs are at http://localhost:8000/docs.
 

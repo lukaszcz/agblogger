@@ -1,3 +1,17 @@
+# ── Bootstrap ───────────────────────────────────────────────────────
+
+# Set up a fresh worktree: deps, env file, and local db directory
+setup:
+    @echo "── Backend: sync dependencies ──"
+    uv sync
+    @echo "\n── Frontend: install dependencies ──"
+    cd frontend && npm install
+    @echo "\n── Environment: ensure .env exists ──"
+    if [ -f .env ]; then echo ".env already exists (leaving as-is)"; else cp .env.example .env && echo "Created .env from .env.example"; fi
+    @echo "\n── Database: ensure local dir exists ──"
+    mkdir -p data/db
+    @echo "\n✓ Fresh worktree setup complete"
+
 # ── Quality checks ──────────────────────────────────────────────────
 
 # Run all static analysis checks (no tests)
