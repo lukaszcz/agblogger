@@ -80,4 +80,4 @@ Always start a dev server with `just start`. Remeber to stop a running dev serve
 - While waiting on an async operation, UI controls should **ALWAYS** be disabled.
 - Do NOT try to circumvent static analysis tools. Adapt the code to pass `just check` properly - do not ignore checks or suppress rules. If you absolutely need to bypass a static analysis tool, ALWAYS ask the user for approval and explain why this is necessary.
 - When finished browser testing, remove any leftover *.png screenshot files.
-- When finished, verify with `just check` that there are no compilation, formatting or test errors.
+- When finished, verify with `just check`.
