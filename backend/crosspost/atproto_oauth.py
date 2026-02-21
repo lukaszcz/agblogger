@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import hashlib
 import ipaddress
 import json
@@ -96,7 +97,7 @@ def load_or_create_keypair(
         private_key = load_pem_private_key(data["private_key_pem"].encode("ascii"), password=None)
         if not isinstance(private_key, EllipticCurvePrivateKey):
             raise TypeError("Stored key is not an elliptic curve private key")
-        jwk = cast(dict[str, str], data["jwk"])
+        jwk = cast("dict[str, str]", data["jwk"])
         return private_key, jwk
 
     if path.exists():
@@ -124,10 +125,8 @@ def load_or_create_keypair(
     finally:
         if lock_fd is not None:
             os.close(lock_fd)
-        try:
+        with contextlib.suppress(FileNotFoundError):
             os.unlink(lock_path)
-        except FileNotFoundError:
-            pass
 
 
 def create_dpop_proof(

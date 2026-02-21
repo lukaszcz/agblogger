@@ -123,9 +123,13 @@ class TestCallbackEndpoint:
             "backend.crosspost.atproto_oauth.exchange_code_for_tokens",
             mock_exchange_code_for_tokens,
         )
-        monkeypatch.setattr("backend.api.crosspost.create_social_account", mock_create_social_account)
+        monkeypatch.setattr(
+            "backend.api.crosspost.create_social_account", mock_create_social_account
+        )
         monkeypatch.setattr("backend.api.crosspost.get_social_accounts", mock_get_social_accounts)
-        monkeypatch.setattr("backend.api.crosspost.delete_social_account", mock_delete_social_account)
+        monkeypatch.setattr(
+            "backend.api.crosspost.delete_social_account", mock_delete_social_account
+        )
 
         async with create_test_client(test_settings) as client:
             resp = await client.get(
