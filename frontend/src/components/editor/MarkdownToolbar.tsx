@@ -34,6 +34,7 @@ export default function MarkdownToolbar({ textareaRef, value, onChange, disabled
     if (!textarea) return
 
     const action = actions[key]
+    if (action === undefined) return
     const { newValue, cursorStart, cursorEnd } = wrapSelection(
       value,
       textarea.selectionStart,

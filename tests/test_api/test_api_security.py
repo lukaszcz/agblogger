@@ -36,7 +36,7 @@ def app_settings(tmp_content_dir: Path, tmp_path: Path) -> Settings:
     )
     db_path = tmp_path / "test.db"
     return Settings(
-        secret_key="test-secret",
+        secret_key="test-secret-key-with-at-least-32-characters",
         debug=True,
         database_url=f"sqlite+aiosqlite:///{db_path}",
         content_dir=tmp_content_dir,
@@ -133,7 +133,7 @@ class TestAuthTokenValidation:
         # Create a token that expires immediately (negative minutes)
         token = create_access_token(
             {"sub": "1", "username": "admin", "is_admin": True},
-            "test-secret",
+            "test-secret-key-with-at-least-32-characters",
             expires_minutes=-1,
         )
         resp = await client.get(

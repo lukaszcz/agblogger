@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import jwt
 import pytest
-from jose import jwt
 from sqlalchemy import select
 
 from backend.models.base import Base

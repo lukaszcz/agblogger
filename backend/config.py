@@ -7,6 +7,9 @@ from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+INSECURE_DEV_SENTINEL = "change-me-in-production"
+INSECURE_BOOTSTRAP_SENTINEL = "admin"
+
 
 class Settings(BaseSettings):
     """AgBlogger application settings."""
@@ -18,7 +21,7 @@ class Settings(BaseSettings):
     )
 
     # Core
-    secret_key: str = "change-me-in-production"
+    secret_key: str = INSECURE_DEV_SENTINEL
     debug: bool = False
     expose_docs: bool = False
 
@@ -30,7 +33,7 @@ class Settings(BaseSettings):
     frontend_dir: Path = Path("./frontend/dist")
 
     # Server
-    host: str = "0.0.0.0"
+    host: str = "127.0.0.1"
     port: int = Field(default=8000, ge=1, le=65535)
 
     # CORS
@@ -51,7 +54,7 @@ class Settings(BaseSettings):
 
     # Admin bootstrap
     admin_username: str = "admin"
-    admin_password: str = "admin"
+    admin_password: str = INSECURE_BOOTSTRAP_SENTINEL
 
     # Response hardening
     security_headers_enabled: bool = True
@@ -73,11 +76,11 @@ class Settings(BaseSettings):
             return
 
         violations: list[str] = []
-        if self.secret_key == "change-me-in-production" or len(self.secret_key) < 32:
+        if self.secret_key == INSECURE_DEV_SENTINEL or len(self.secret_key) < 32:
             violations.append(
                 "SECRET_KEY must be overridden with a high-entropy value (>=32 chars)"
             )
-        if self.admin_password == "admin" or len(self.admin_password) < 12:
+        if self.admin_password == INSECURE_BOOTSTRAP_SENTINEL or len(self.admin_password) < 12:
             violations.append("ADMIN_PASSWORD must be overridden with a strong value (>=12 chars)")
         if not self.trusted_hosts:
             violations.append("TRUSTED_HOSTS must be configured in production")

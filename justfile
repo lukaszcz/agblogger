@@ -1,17 +1,25 @@
 # ── Quality checks ──────────────────────────────────────────────────
 
 # Run all type checking, linting, format checks, and tests
-check: check-backend check-frontend
+check: check-backend check-frontend check-semgrep check-vulture
     @echo "\n✓ All checks passed"
 
 # Backend: mypy, ruff check, ruff format --check, pytest
 check-backend:
     @echo "── Backend: type checking ──"
-    uv run mypy backend/ cli/
+    uv run mypy backend/ cli/ tests/
+    @echo "\n── Backend: pyright type checking ──"
+    uv run basedpyright backend/ cli/
+    @echo "\n── Backend: dependency hygiene ──"
+    uv run deptry .
+    @echo "\n── Backend: import contracts ──"
+    uv run lint-imports
     @echo "\n── Backend: linting ──"
     uv run ruff check backend/ cli/ tests/
     @echo "\n── Backend: format check ──"
     uv run ruff format --check backend/ cli/ tests/
+    @echo "\n── Backend: vulnerability audit ──"
+    uv run pip-audit --progress-spinner off
     @echo "\n── Backend: tests ──"
     uv run pytest tests/ -v
 
@@ -21,8 +29,38 @@ check-frontend:
     cd frontend && npm run typecheck
     @echo "\n── Frontend: linting ──"
     cd frontend && npm run lint
+    @echo "\n── Frontend: dependency graph checks ──"
+    cd frontend && npm run lint:deps
+    @echo "\n── Frontend: dependency hygiene ──"
+    cd frontend && npm run lint:unused
+    @echo "\n── Frontend: vulnerability audit ──"
+    cd frontend && npm run audit
     @echo "\n── Frontend: tests ──"
     cd frontend && npm test
+
+# Runtime security-focused static analysis (Semgrep)
+check-semgrep:
+    @echo "── Runtime static security analysis (Semgrep) ──"
+    uv run semgrep scan \
+        --config p/ci \
+        --config p/security-audit \
+        --config p/secrets \
+        --config p/python \
+        --config p/typescript \
+        --config .semgrep.yml \
+        --exclude-rule typescript.react.security.audit.react-dangerouslysetinnerhtml.react-dangerouslysetinnerhtml \
+        --error \
+        --quiet \
+        backend/ cli/ frontend/src/ \
+        --exclude tests \
+        --exclude "frontend/src/**/__tests__" \
+        --exclude "frontend/src/**/*.test.ts" \
+        --exclude "frontend/src/**/*.test.tsx"
+
+# Dead-code analysis (Vulture), scoped to runtime Python code only.
+check-vulture:
+    @echo "── Runtime dead-code analysis (Vulture) ──"
+    uv run vulture backend cli --exclude "backend/migrations" --min-confidence 80
 
 # ── Build ─────────────────────────────────────────────────────────
 

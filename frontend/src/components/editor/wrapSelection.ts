@@ -12,10 +12,10 @@ export function wrapSelection(
   action: WrapAction,
 ): { newValue: string; cursorStart: number; cursorEnd: number } {
   const selected = value.slice(selectionStart, selectionEnd)
-  const text = selected || action.placeholder
+  const text = selected.length > 0 ? selected : action.placeholder
 
   let before = action.before
-  if (action.block && selectionStart > 0 && value[selectionStart - 1] !== '\n') {
+  if (action.block === true && selectionStart > 0 && value[selectionStart - 1] !== '\n') {
     before = '\n' + before
   }
 

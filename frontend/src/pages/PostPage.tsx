@@ -24,7 +24,7 @@ export default function PostPage() {
   const renderedHtml = useRenderedHtml(post?.rendered_html)
 
   async function handleDelete(withAssets: boolean) {
-    if (!filePath) return
+    if (filePath === undefined) return
     setDeleting(true)
     setDeleteError(null)
     try {
@@ -43,7 +43,7 @@ export default function PostPage() {
   }
 
   useEffect(() => {
-    if (!filePath) return
+    if (filePath === undefined) return
     void (async () => {
       setLoading(true)
       setLoadError(null)
@@ -70,7 +70,7 @@ export default function PostPage() {
     )
   }
 
-  if (loadError || !post) {
+  if (loadError !== null || post === null) {
     return (
       <div className="text-center py-24">
         <p className="font-display text-3xl text-muted italic">
@@ -117,7 +117,7 @@ export default function PostPage() {
               <time>{dateStr}</time>
             </div>
 
-            {post.author && (
+            {post.author !== null && (
               <div className="flex items-center gap-1.5">
                 <User size={14} />
                 <span>{post.author}</span>
@@ -157,7 +157,7 @@ export default function PostPage() {
         <div className="mt-6 h-px bg-gradient-to-r from-accent/40 via-border to-transparent" />
       </header>
 
-      {deleteError && (
+      {deleteError !== null && (
         <div className="mb-6 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
           {deleteError}
         </div>

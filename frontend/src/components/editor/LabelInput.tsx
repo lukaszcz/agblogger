@@ -87,7 +87,10 @@ export default function LabelInput({ value, onChange, disabled }: LabelInputProp
 
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === 'Backspace' && query === '' && value.length > 0) {
-      removeLabel(value[value.length - 1])
+      const lastLabel = value[value.length - 1]
+      if (lastLabel !== undefined) {
+        removeLabel(lastLabel)
+      }
     }
     if (e.key === 'ArrowDown') {
       e.preventDefault()
@@ -107,13 +110,19 @@ export default function LabelInput({ value, onChange, disabled }: LabelInputProp
     if (e.key === 'Enter') {
       e.preventDefault()
       if (activeIndex >= 0 && activeIndex < filtered.length) {
-        addLabel(filtered[activeIndex].id)
+        const selected = filtered[activeIndex]
+        if (selected) {
+          addLabel(selected.id)
+        }
       } else if (activeIndex === filtered.length && showCreate) {
         void handleCreate()
       } else if (showCreate) {
         void handleCreate()
       } else if (filtered.length > 0) {
-        addLabel(filtered[0].id)
+        const first = filtered[0]
+        if (first) {
+          addLabel(first.id)
+        }
       }
     }
     if (e.key === 'Escape') {
@@ -141,7 +150,7 @@ export default function LabelInput({ value, onChange, disabled }: LabelInputProp
                        bg-accent/10 text-accent rounded-full"
           >
             #{id}
-            {!disabled && (
+            {disabled !== true && (
               <button
                 type="button"
                 onClick={() => removeLabel(id)}
@@ -188,7 +197,9 @@ export default function LabelInput({ value, onChange, disabled }: LabelInputProp
           className="absolute z-10 mt-1 w-full bg-paper border border-border rounded-lg
                       shadow-lg max-h-48 overflow-y-auto"
         >
-          {filtered.map((label, index) => (
+          {filtered.map((label, index) => {
+            const primaryName = label.names[0]
+            return (
             <button
               key={label.id}
               id={`label-option-${index}`}
@@ -201,11 +212,12 @@ export default function LabelInput({ value, onChange, disabled }: LabelInputProp
               }`}
             >
               <span className="font-medium">#{label.id}</span>
-              {label.names.length > 0 && label.names[0] !== label.id && (
-                <span className="ml-2 text-muted">{label.names[0]}</span>
+              {primaryName !== undefined && primaryName !== label.id && (
+                <span className="ml-2 text-muted">{primaryName}</span>
               )}
             </button>
-          ))}
+            )
+          })}
           {showCreate && (
             <button
               id={`label-option-${filtered.length}`}

@@ -10,20 +10,22 @@ authors = [{ name = "Lukasz" }]
 dependencies = [
     # Web framework
     "fastapi>=0.115",
+    "starlette>=0.46",
     "uvicorn[standard]>=0.34",
     # Database
     "sqlalchemy[asyncio]>=2.0",
     "aiosqlite>=0.21",
     "alembic>=1.15",
-    # Markdown rendering
-    "pypandoc>=1.14",
+
+
     # YAML / front matter
     "pyyaml>=6.0",
     "python-frontmatter>=1.1",
     # TOML writing (reading via stdlib tomllib)
     "tomli-w>=1.1",
     # Auth
-    "python-jose[cryptography]>=3.3",
+    "pyjwt>=2.10",
+    "cryptography>=45.0",
     "bcrypt>=4.0",
     # Validation & settings
     "pydantic[email]>=2.10",
@@ -40,11 +42,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-crosspost = [
-    "tweepy>=4.14",
-    "atproto>=0.0.55",
-    "Mastodon.py>=1.8",
-]
 dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.25",
@@ -52,6 +49,12 @@ dev = [
     "httpx>=0.28",
     "ruff>=0.9",
     "mypy>=1.14",
+    "basedpyright>=1.29",
+    "deptry>=0.24",
+    "import-linter>=2.4",
+    "pip-audit>=2.9",
+    "semgrep==1.152.0",
+    "vulture==2.14",
     "types-PyYAML>=6.0",
     "pre-commit>=4.1",
     "pyinstaller>=6.0",
@@ -87,19 +90,13 @@ select = [
     "TC",  # flake8-type-checking
     "RUF", # ruff-specific rules
 ]
-ignore = [
-    "S101",  # allow assert in tests
-    "S104",  # allow binding to 0.0.0.0
-    "S105",  # allow hardcoded passwords in config/tests
-    "S106",  # allow hardcoded passwords in function args
-]
-
 [tool.ruff.lint.per-file-ignores]
 "cli/**" = ["T201"]                # CLI tools need print statements
 "backend/api/**" = ["TC", "B008"]  # FastAPI needs runtime type imports and Depends() defaults
 "backend/models/**" = ["RUF012", "TC003"]  # SQLAlchemy needs runtime types for Mapped[]
 "backend/pandoc/**" = ["S607"]     # pandoc is invoked by name
 "backend/services/git_service.py" = ["S603", "S607"]  # git CLI invoked via subprocess
+"tests/**" = ["S101", "S105", "S106"]  # test code intentionally uses asserts and fixed credentials
 
 [tool.ruff.lint.isort]
 known-first-party = ["backend", "cli"]
@@ -107,10 +104,71 @@ known-first-party = ["backend", "cli"]
 [tool.mypy]
 python_version = "3.14"
 strict = true
+disallow_any_unimported = true
+disallow_any_decorated = true
+warn_unreachable = true
+extra_checks = true
+enable_error_code = ["possibly-undefined", "truthy-bool", "redundant-expr"]
 warn_return_any = true
 warn_unused_configs = true
 plugins = ["pydantic.mypy"]
 mypy_path = "stubs"
+
+[tool.pydantic-mypy]
+init_typed = true
+init_forbid_extra = true
+warn_required_dynamic_aliases = true
+
+[tool.deptry]
+known_first_party = ["backend", "cli", "tests"]
+ignore_notebooks = true
+
+[tool.deptry.per_rule_ignores]
+DEP002 = [
+    "aiosqlite",
+    "python-multipart",
+    "types-PyYAML",
+    "pytest",
+    "pytest-asyncio",
+    "pytest-cov",
+    "ruff",
+    "mypy",
+    "basedpyright",
+    "deptry",
+    "import-linter",
+    "pip-audit",
+    "semgrep",
+    "vulture",
+    "pre-commit",
+    "pyinstaller",
+]
+
+[tool.basedpyright]
+pythonVersion = "3.14"
+typeCheckingMode = "standard"
+exclude = [
+    ".venv",
+    "backend/migrations",
+]
+reportMissingTypeStubs = false
+reportUnknownArgumentType = false
+reportUnknownMemberType = false
+reportUnknownParameterType = false
+reportUnknownVariableType = false
+
+[tool.vulture]
+paths = ["backend", "cli"]
+exclude = ["backend/migrations"]
+min_confidence = 80
+
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+check_untyped_defs = false
+disallow_any_unimported = false
+warn_return_any = false
+disable_error_code = ["method-assign", "no-any-return", "union-attr"]
 
 [[tool.mypy.overrides]]
 module = [
@@ -120,7 +178,6 @@ module = [
     "atproto.*",
     "mastodon.*",
     "merge3.*",
-    "jose.*",
 ]
 ignore_missing_imports = true
 
@@ -128,6 +185,7 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+filterwarnings = ["error"]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks integration tests requiring external services",

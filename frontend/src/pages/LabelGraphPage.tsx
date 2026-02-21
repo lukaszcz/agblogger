@@ -11,6 +11,7 @@ import {
   useEdgesState,
   type NodeTypes,
   type NodeProps,
+  type ReactFlowProps,
   Handle,
   Position,
   MarkerType,
@@ -126,11 +127,19 @@ function computeDepths(graphData: LabelGraphResponse): Map<string, number> {
   const parentOf = new Map<string, string[]>()
 
   for (const e of graphData.edges) {
-    if (!children.has(e.target)) children.set(e.target, [])
-    children.get(e.target)!.push(e.source)
+    const existingChildren = children.get(e.target)
+    if (existingChildren === undefined) {
+      children.set(e.target, [e.source])
+    } else {
+      existingChildren.push(e.source)
+    }
 
-    if (!parentOf.has(e.source)) parentOf.set(e.source, [])
-    parentOf.get(e.source)!.push(e.target)
+    const existingParents = parentOf.get(e.source)
+    if (existingParents === undefined) {
+      parentOf.set(e.source, [e.target])
+    } else {
+      existingParents.push(e.target)
+    }
   }
 
   // Roots = nodes with no parents
@@ -139,7 +148,9 @@ function computeDepths(graphData: LabelGraphResponse): Map<string, number> {
 
   const queue = roots.map((id) => ({ id, depth: 0 }))
   while (queue.length > 0) {
-    const { id, depth } = queue.shift()!
+    const next = queue.shift()
+    if (next === undefined) break
+    const { id, depth } = next
     if (depthMap.has(id)) continue
     depthMap.set(id, depth)
     for (const child of children.get(id) ?? []) {
@@ -173,14 +184,19 @@ function wouldCreateCycle(
   for (const e of graphData.edges) {
     // edge.source = child, edge.target = parent
     // So if target is the parent, source is the child
-    if (!children.has(e.target)) children.set(e.target, [])
-    children.get(e.target)!.push(e.source)
+    const existingChildren = children.get(e.target)
+    if (existingChildren === undefined) {
+      children.set(e.target, [e.source])
+    } else {
+      existingChildren.push(e.source)
+    }
   }
   // BFS from childId to see if proposedParentId is a descendant
   const visited = new Set<string>()
   const queue = [childId]
   while (queue.length > 0) {
-    const node = queue.shift()!
+    const node = queue.shift()
+    if (node === undefined) break
     if (node === proposedParentId) return true
     if (visited.has(node)) continue
     visited.add(node)
@@ -196,11 +212,13 @@ function wouldCreateCycle(
 export default function LabelGraphPage({ viewToggle }: { viewToggle: React.ReactNode }) {
   const navigate = useNavigate()
   const user = useAuthStore((s) => s.user)
+  const initialNodes: Node[] = []
+  const initialEdges: Edge[] = []
   const [graphData, setGraphData] = useState<LabelGraphResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
-  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
   const [mutating, setMutating] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
 
@@ -209,7 +227,7 @@ export default function LabelGraphPage({ viewToggle }: { viewToggle: React.React
   useEffect(() => {
     fetchLabelGraph()
       .then(setGraphData)
-      .catch((err) => {
+      .catch((err: unknown) => {
         if (err instanceof HTTPError && err.response.status === 401) {
           setError('Session expired. Please log in to view the graph.')
         } else {
@@ -256,7 +274,7 @@ export default function LabelGraphPage({ viewToggle }: { viewToggle: React.React
 
   const isValidConnection = useCallback(
     (connection: { source: string | null; target: string | null }) => {
-      if (!graphData || !connection.source || !connection.target) return false
+      if (graphData === null || connection.source === null || connection.target === null) return false
       if (connection.source === connection.target) return false
       // connection.source = parent node (React Flow source), connection.target = child node
       // Check if child -> parent would create a cycle
@@ -321,6 +339,22 @@ export default function LabelGraphPage({ viewToggle }: { viewToggle: React.React
     [graphData, user, mutating],
   )
 
+  const interactiveFlowProps: Pick<
+    ReactFlowProps,
+    'isValidConnection' | 'onConnect' | 'onEdgeClick' | 'edgesReconnectable'
+  > = user
+    ? {
+        isValidConnection,
+        onConnect: (connection) => {
+          void onConnect(connection)
+        },
+        onEdgeClick: (event, edge) => {
+          void onEdgeClick(event, edge)
+        },
+        edgesReconnectable: true,
+      }
+    : { edgesReconnectable: false }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-24">
@@ -329,7 +363,7 @@ export default function LabelGraphPage({ viewToggle }: { viewToggle: React.React
     )
   }
 
-  if (error) {
+  if (error !== null) {
     return (
       <div className="text-center py-24 animate-fade-in">
         <p className="text-red-600">{error}</p>
@@ -359,7 +393,7 @@ export default function LabelGraphPage({ viewToggle }: { viewToggle: React.React
           {mutating && (
             <div className="w-4 h-4 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
           )}
-          {editError && (
+          {editError !== null && (
             <div className="text-sm text-red-600 bg-red-50 px-3 py-1.5 rounded-lg">
               {editError}
             </div>
@@ -392,10 +426,7 @@ export default function LabelGraphPage({ viewToggle }: { viewToggle: React.React
           onEdgesChange={onEdgesChange}
           nodeTypes={nodeTypes}
           onNodeClick={onNodeClick}
-          isValidConnection={user ? isValidConnection : undefined}
-          onConnect={user ? (conn) => void onConnect(conn) : undefined}
-          onEdgeClick={user ? (e, edge) => void onEdgeClick(e, edge) : undefined}
-          edgesReconnectable={!!user}
+          {...interactiveFlowProps}
           connectOnClick={false}
           fitView
           fitViewOptions={{ padding: 0.3 }}

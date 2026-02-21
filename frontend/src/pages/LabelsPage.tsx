@@ -67,7 +67,7 @@ function LabelListView() {
   useEffect(() => {
     fetchLabels()
       .then(setLabels)
-      .catch((err) => {
+      .catch((err: unknown) => {
         if (err instanceof HTTPError && err.response.status === 401) {
           setError('Session expired. Please log in again.')
         } else {
@@ -85,7 +85,7 @@ function LabelListView() {
     )
   }
 
-  if (error) {
+  if (error !== null) {
     return (
       <div className="text-center py-24">
         <p className="text-red-600">{error}</p>

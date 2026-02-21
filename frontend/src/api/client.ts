@@ -10,7 +10,7 @@ function readCookie(name: string): string | null {
   const part = document.cookie
     .split('; ')
     .find((cookiePart) => cookiePart.startsWith(prefix))
-  if (!part) {
+  if (part === undefined) {
     return null
   }
   return decodeURIComponent(part.slice(prefix.length))
@@ -19,7 +19,7 @@ function readCookie(name: string): string | null {
 async function refreshAccessToken(): Promise<boolean> {
   const csrfToken = readCookie('csrf_token')
   const headers = new Headers()
-  if (csrfToken) {
+  if (csrfToken !== null) {
     headers.set('X-CSRF-Token', csrfToken)
   }
 
@@ -45,7 +45,7 @@ const api = ky.create({
       (request) => {
         if (UNSAFE_METHODS.has(request.method)) {
           const csrfToken = readCookie('csrf_token')
-          if (csrfToken) {
+          if (csrfToken !== null) {
             request.headers.set('X-CSRF-Token', csrfToken)
           }
         }
@@ -65,12 +65,12 @@ const api = ky.create({
             headers.set('X-Auth-Retry', '1')
             if (UNSAFE_METHODS.has(request.method)) {
               const csrfToken = readCookie('csrf_token')
-              if (csrfToken) {
+              if (csrfToken !== null) {
                 headers.set('X-CSRF-Token', csrfToken)
               }
             }
             const retryRequest = new Request(request, { headers })
-            return ky(retryRequest, {
+            return await ky(retryRequest, {
               credentials: 'include',
               retry: 0,
             })

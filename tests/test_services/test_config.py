@@ -30,7 +30,7 @@ class TestSettings:
         assert s.content_dir == tmp_path / "content"
 
     def test_settings_from_fixture(self, test_settings: Settings) -> None:
-        assert test_settings.secret_key == "test-secret-key"
+        assert test_settings.secret_key == "test-secret-key-with-at-least-32-characters"
         assert test_settings.debug is True
         assert test_settings.content_dir.exists()
 

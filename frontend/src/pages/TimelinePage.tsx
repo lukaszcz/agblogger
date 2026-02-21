@@ -3,7 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, Upload } from 'lucide-react'
 import PostCard from '@/components/posts/PostCard'
 import FilterPanel, { EMPTY_FILTER, type FilterState } from '@/components/filters/FilterPanel'
-import { fetchPosts, uploadPost } from '@/api/posts'
+import { fetchPosts, uploadPost, type PostListParams } from '@/api/posts'
 import { HTTPError } from '@/api/client'
 import type { PostListResponse } from '@/api/client'
 import { useAuthStore } from '@/stores/authStore'
@@ -25,9 +25,11 @@ export default function TimelinePage() {
 
   // Parse filter state from URL
   const page = Number(searchParams.get('page') ?? '1')
+  const urlLabelMode = searchParams.get('labelMode')
+  const parsedLabelMode: 'or' | 'and' = urlLabelMode === 'and' ? 'and' : 'or'
   const filterState: FilterState = {
     labels: searchParams.get('labels')?.split(',').filter(Boolean) ?? [],
-    labelMode: (searchParams.get('labelMode') as 'or' | 'and') ?? 'or',
+    labelMode: parsedLabelMode,
     author: searchParams.get('author') ?? '',
     fromDate: searchParams.get('from') ?? '',
     toDate: searchParams.get('to') ?? '',
@@ -51,7 +53,8 @@ export default function TimelinePage() {
   useEffect(() => {
     const p = Number(searchParams.get('page') ?? '1')
     const labels = searchParams.get('labels')?.split(',').filter(Boolean) ?? []
-    const labelMode = (searchParams.get('labelMode') as 'or' | 'and') ?? 'or'
+    const labelModeParam = searchParams.get('labelMode')
+    const labelMode: 'or' | 'and' = labelModeParam === 'and' ? 'and' : 'or'
     const author = searchParams.get('author') ?? ''
     const fromDate = searchParams.get('from') ?? ''
     const toDate = searchParams.get('to') ?? ''
@@ -60,15 +63,16 @@ export default function TimelinePage() {
       setLoading(true)
       setError(null)
       try {
-        const d = await fetchPosts({
+        const params: PostListParams = {
           page: p,
           per_page: 10,
-          labels: labels.length > 0 ? labels.join(',') : undefined,
-          labelMode: labelMode !== 'or' ? labelMode : undefined,
-          author: author || undefined,
-          from: fromDate || undefined,
-          to: toDate || undefined,
-        })
+        }
+        if (labels.length > 0) params.labels = labels.join(',')
+        if (labelMode !== 'or') params.labelMode = labelMode
+        if (author) params.author = author
+        if (fromDate) params.from = fromDate
+        if (toDate) params.to = toDate
+        const d = await fetchPosts(params)
         setData(d)
       } catch (err) {
         console.error('Failed to fetch posts:', err)
@@ -192,7 +196,7 @@ export default function TimelinePage() {
         </div>
       )}
 
-      {uploadError && (
+      {uploadError !== null && (
         <div className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
           {uploadError}
         </div>
@@ -219,7 +223,7 @@ export default function TimelinePage() {
             </div>
           ))}
         </div>
-      ) : error ? (
+      ) : error !== null ? (
         <div className="text-center py-24">
           <p className="font-display text-2xl text-red-600">{error}</p>
           <button

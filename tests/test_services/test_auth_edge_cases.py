@@ -4,17 +4,19 @@ from __future__ import annotations
 
 from backend.services.auth_service import decode_access_token
 
+VALID_SECRET = "test-secret-key-with-at-least-32-characters"
+OTHER_SECRET = "test-secret-key-with-at-least-32-characters-other"
+
 
 class TestDecodeAccessToken:
     def test_valid_token_decodes(self) -> None:
         from backend.services.auth_service import create_access_token
 
-        secret = "test-secret"
         token = create_access_token(
             {"sub": "1", "username": "admin", "is_admin": True},
-            secret,
+            VALID_SECRET,
         )
-        payload = decode_access_token(token, secret)
+        payload = decode_access_token(token, VALID_SECRET)
         assert payload is not None
         assert payload["sub"] == "1"
 
@@ -23,15 +25,15 @@ class TestDecodeAccessToken:
 
         token = create_access_token(
             {"sub": "1", "username": "admin", "is_admin": True},
-            "correct-secret",
+            VALID_SECRET,
         )
-        assert decode_access_token(token, "wrong-secret") is None
+        assert decode_access_token(token, OTHER_SECRET) is None
 
     def test_garbage_token_returns_none(self) -> None:
-        assert decode_access_token("not.a.jwt", "secret") is None
+        assert decode_access_token("not.a.jwt", VALID_SECRET) is None
 
     def test_empty_token_returns_none(self) -> None:
-        assert decode_access_token("", "secret") is None
+        assert decode_access_token("", VALID_SECRET) is None
 
 
 class TestUserIdValidation:
@@ -41,14 +43,13 @@ class TestUserIdValidation:
         """JWT with non-numeric sub should not crash the server."""
         from backend.services.auth_service import create_access_token
 
-        secret = "test-secret"
         # Manually craft a token with a non-numeric sub
         # The create_access_token function sets type=access, so we need to decode
         token = create_access_token(
             {"sub": "not-a-number", "username": "hacker", "is_admin": False},
-            secret,
+            VALID_SECRET,
         )
-        payload = decode_access_token(token, secret)
+        payload = decode_access_token(token, VALID_SECRET)
         assert payload is not None
         # The sub is "not-a-number" — deps.py should handle this gracefully
         assert payload["sub"] == "not-a-number"

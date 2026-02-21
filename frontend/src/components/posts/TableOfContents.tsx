@@ -14,7 +14,7 @@ function extractHeadings(container: HTMLElement): HeadingEntry[] {
   container.querySelectorAll('h2, h3').forEach((el) => {
     entries.push({
       id: el.id,
-      text: el.textContent ?? '',
+      text: el.textContent,
       level: el.tagName === 'H2' ? 2 : 3,
     })
   })

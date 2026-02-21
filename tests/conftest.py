@@ -22,6 +22,8 @@ if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
     from pathlib import Path
 
+TEST_SECRET_KEY = "test-secret-key-with-at-least-32-characters"
+
 
 @asynccontextmanager
 async def create_test_client(settings: Settings) -> AsyncGenerator[AsyncClient]:
@@ -103,7 +105,7 @@ def test_settings(tmp_content_dir: Path, tmp_path: Path) -> Settings:
     """Create test settings with temporary paths."""
     db_path = tmp_path / "test.db"
     return Settings(
-        secret_key="test-secret-key",
+        secret_key=TEST_SECRET_KEY,
         debug=True,
         database_url=f"sqlite+aiosqlite:///{db_path}",
         content_dir=tmp_content_dir,

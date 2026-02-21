@@ -164,9 +164,7 @@ async def list_posts(
     )
 
 
-async def get_post(
-    session: AsyncSession, file_path: str, *, include_content: bool = False
-) -> PostDetail | None:
+async def get_post(session: AsyncSession, file_path: str) -> PostDetail | None:
     """Get a single post by file path."""
     stmt = select(PostCache).where(PostCache.file_path == file_path)
     result = await session.execute(stmt)

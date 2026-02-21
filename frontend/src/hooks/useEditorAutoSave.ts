@@ -41,11 +41,15 @@ function statesEqual(a: DraftData, b: DraftData): boolean {
 function readDraft(key: string): DraftData | null {
   try {
     const stored = localStorage.getItem(key)
-    if (stored) {
-      const parsed = JSON.parse(stored) as DraftData
-      // Ensure title exists for drafts saved before the title field was added
-      parsed.title = parsed.title ?? ''
-      return parsed
+    if (stored !== null) {
+      const parsed = JSON.parse(stored) as Partial<DraftData>
+      return {
+        title: typeof parsed.title === 'string' ? parsed.title : '',
+        body: typeof parsed.body === 'string' ? parsed.body : '',
+        labels: Array.isArray(parsed.labels) ? parsed.labels.filter((label) => typeof label === 'string') : [],
+        isDraft: parsed.isDraft === true,
+        ...(typeof parsed.savedAt === 'string' ? { savedAt: parsed.savedAt } : {}),
+      }
     }
   } catch {
     // Ignore invalid JSON

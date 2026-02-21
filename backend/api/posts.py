@@ -488,7 +488,7 @@ async def update_post_endpoint(
         logger.warning(
             "Post %s exists in DB cache but not on filesystem; using cached metadata", file_path
         )
-        created_at = existing.created_at if existing.created_at else now_utc()
+        created_at = existing.created_at
         author = existing.author or user.display_name or user.username
 
     now = now_utc()

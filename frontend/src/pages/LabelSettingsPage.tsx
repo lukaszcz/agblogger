@@ -14,7 +14,8 @@ function computeDescendants(labelId: string, labelsById: Map<string, LabelRespon
   const descendants = new Set<string>()
   const queue = [labelId]
   while (queue.length > 0) {
-    const current = queue.shift()!
+    const current = queue.shift()
+    if (current === undefined) break
     const label = labelsById.get(current)
     if (!label) continue
     for (const child of label.children) {
@@ -56,7 +57,7 @@ export default function LabelSettingsPage() {
   }, [user, isInitialized, navigate])
 
   useEffect(() => {
-    if (!labelId) return
+    if (labelId === undefined) return
     setLoading(true)
     setError(null)
     void Promise.all([fetchLabel(labelId), fetchLabels()])
@@ -66,7 +67,7 @@ export default function LabelSettingsPage() {
         setNames([...l.names])
         setParents([...l.parents])
       })
-      .catch((err) => {
+      .catch((err: unknown) => {
         if (err instanceof HTTPError && err.response.status === 404) {
           setError('Label not found.')
         } else if (err instanceof HTTPError && err.response.status === 401) {
@@ -81,7 +82,7 @@ export default function LabelSettingsPage() {
   }, [labelId])
 
   const excludedIds = useMemo(() => {
-    if (!labelId) return new Set<string>()
+    if (labelId === undefined) return new Set<string>()
     const labelsById = new Map(allLabels.map((l) => [l.id, l]))
     const descendants = computeDescendants(labelId, labelsById)
     descendants.add(labelId)
@@ -112,7 +113,7 @@ export default function LabelSettingsPage() {
   }
 
   async function handleSave() {
-    if (!labelId) return
+    if (labelId === undefined) return
     if (names.length === 0) {
       setError('At least one display name is required.')
       return
@@ -145,7 +146,7 @@ export default function LabelSettingsPage() {
   }
 
   async function handleDelete() {
-    if (!labelId) return
+    if (labelId === undefined) return
     setDeleting(true)
     setError(null)
     try {
@@ -175,7 +176,7 @@ export default function LabelSettingsPage() {
     )
   }
 
-  if (error && !label) {
+  if (error !== null && label === null) {
     return (
       <div className="text-center py-24">
         <p className="text-red-600">{error}</p>
@@ -201,7 +202,7 @@ export default function LabelSettingsPage() {
         <h1 className="font-display text-3xl text-ink">Label Settings: #{labelId}</h1>
       </div>
 
-      {error && (
+      {error !== null && (
         <div className="mb-6 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
           {error}
         </div>
@@ -250,7 +251,7 @@ export default function LabelSettingsPage() {
           />
           <button
             onClick={handleAddName}
-            disabled={busy || !newName.trim()}
+            disabled={busy || newName.trim().length === 0}
             className="px-4 py-2 text-sm font-medium border border-border rounded-lg
                      hover:bg-paper-warm disabled:opacity-50 transition-colors"
           >

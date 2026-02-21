@@ -64,7 +64,7 @@ export async function uploadPost(files: File[], title?: string): Promise<PostDet
   for (const file of files) {
     form.append('files', file)
   }
-  const searchParams = title ? { title } : undefined
+  const searchParams = title !== undefined && title.length > 0 ? { title } : undefined
   return api.post('posts/upload', { body: form, searchParams }).json<PostDetail>()
 }
 

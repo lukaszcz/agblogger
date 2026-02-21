@@ -22,7 +22,7 @@ def app_settings(tmp_content_dir: Path, tmp_path: Path) -> Settings:
     (tmp_content_dir / "labels.toml").write_text("[labels]\n")
     db_path = tmp_path / "test.db"
     return Settings(
-        secret_key="test-secret",
+        secret_key="test-secret-key-with-at-least-32-characters",
         debug=True,
         database_url=f"sqlite+aiosqlite:///{db_path}",
         content_dir=tmp_content_dir,
@@ -48,7 +48,7 @@ async def _login(client: AsyncClient) -> str:
     return resp.json()["access_token"]
 
 
-async def _create_post(client: AsyncClient, token: str, title: str) -> dict:
+async def _create_post(client: AsyncClient, token: str, title: str) -> dict[str, str]:
     """Create a post and return the response data."""
     resp = await client.post(
         "/api/posts",

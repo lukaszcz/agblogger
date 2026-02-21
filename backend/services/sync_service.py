@@ -335,7 +335,7 @@ def normalize_post_frontmatter(
                 if isinstance(raw_value, datetime):
                     post[ts_field] = format_datetime(raw_value)
                 else:
-                    post[ts_field] = format_datetime(parse_datetime(raw_value))
+                    post[ts_field] = format_datetime(parse_datetime(str(raw_value)))
 
         if is_edit:
             # Edited post: always update modified_at, fill missing fields

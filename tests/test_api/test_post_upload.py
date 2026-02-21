@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 def upload_settings(tmp_content_dir: Path, tmp_path: Path) -> Settings:
     db_path = tmp_path / "test.db"
     return Settings(
-        secret_key="test-secret",
+        secret_key="test-secret-key-with-at-least-32-characters",
         debug=True,
         database_url=f"sqlite+aiosqlite:///{db_path}",
         content_dir=tmp_content_dir,
@@ -216,7 +216,7 @@ class TestAssetUploadAuthorization:
         file_path = resp.json()["file_path"]
 
         # Register another user (need CSRF token since admin login set cookies)
-        csrf_token = client.cookies.get("csrf_token", "")
+        csrf_token: str = client.cookies.get("csrf_token") or ""
         resp = await client.post(
             "/api/auth/register",
             json={"username": "other", "email": "other@test.com", "password": "password123"},

@@ -1,0 +1,16 @@
+[importlinter]
+root_package = backend
+
+[importlinter:contract:no-api-dependency-in-core]
+name = Core modules must not depend on API package
+type = forbidden
+source_modules =
+    backend.services
+    backend.filesystem
+    backend.models
+    backend.schemas
+    backend.crosspost
+    backend.sync
+    backend.pandoc
+forbidden_modules =
+    backend.api
