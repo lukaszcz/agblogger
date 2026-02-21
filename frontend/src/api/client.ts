@@ -4,8 +4,15 @@ const UNSAFE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
 const CSRF_HEADER_NAME = 'X-CSRF-Token'
 const CSRF_STORAGE_KEY = 'agb_csrf_token'
 
+function hasBrowserDom(): boolean {
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return false
+  }
+  return document.defaultView === window
+}
+
 function readPersistedCsrfToken(): string | null {
-  if (typeof window === 'undefined') {
+  if (!hasBrowserDom()) {
     return null
   }
   try {
@@ -16,7 +23,7 @@ function readPersistedCsrfToken(): string | null {
 }
 
 function persistCsrfToken(token: string): void {
-  if (typeof window === 'undefined') {
+  if (!hasBrowserDom()) {
     return
   }
   try {
@@ -27,7 +34,7 @@ function persistCsrfToken(token: string): void {
 }
 
 function clearPersistedCsrfToken(): void {
-  if (typeof window === 'undefined') {
+  if (!hasBrowserDom()) {
     return
   }
   try {
@@ -37,9 +44,19 @@ function clearPersistedCsrfToken(): void {
   }
 }
 
-let csrfToken: string | null = readPersistedCsrfToken()
+let csrfToken: string | null = null
+let csrfTokenLoaded = false
+
+function ensureCsrfTokenLoaded(): void {
+  if (csrfTokenLoaded) {
+    return
+  }
+  csrfToken = readPersistedCsrfToken()
+  csrfTokenLoaded = true
+}
 
 function setCsrfHeader(headers: Headers): void {
+  ensureCsrfTokenLoaded()
   if (csrfToken !== null) {
     headers.set(CSRF_HEADER_NAME, csrfToken)
   }
@@ -53,10 +70,12 @@ function updateCsrfTokenFromResponse(response: Response): void {
   const normalizedToken = token.trim()
   if (normalizedToken === '') {
     csrfToken = null
+    csrfTokenLoaded = true
     clearPersistedCsrfToken()
     return
   }
   csrfToken = normalizedToken
+  csrfTokenLoaded = true
   persistCsrfToken(normalizedToken)
 }
 
