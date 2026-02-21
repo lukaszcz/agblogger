@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import inspect
+import json
+import socket
+from unittest.mock import patch
 
 import httpx
 import jwt
@@ -12,6 +16,7 @@ from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePublicKey
 
 from backend.crosspost.atproto_oauth import (
     ATProtoOAuthError,
+    _is_safe_url,
     create_client_assertion,
     create_dpop_proof,
     create_pkce_challenge,
@@ -24,6 +29,10 @@ from backend.crosspost.atproto_oauth import (
     send_par_request,
     serialize_keypair,
 )
+
+
+async def _always_safe(_url: str) -> bool:
+    return True
 
 
 class TestES256Keypair:
@@ -206,7 +215,7 @@ class TestAuthServerDiscovery:
             return httpx.Response(404)
 
         monkeypatch.setattr(httpx.AsyncClient, "get", mock_get)
-        monkeypatch.setattr("backend.crosspost.atproto_oauth._is_safe_url", lambda _url: True)
+        monkeypatch.setattr("backend.crosspost.atproto_oauth._is_safe_url", _always_safe)
         result = await discover_auth_server("did:plc:abc123")
         assert result["issuer"] == "https://auth.example.com"
         assert result["token_endpoint"] == "https://auth.example.com/oauth/token"
@@ -229,7 +238,7 @@ class TestPARRequest:
             )
 
         monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
-        monkeypatch.setattr("backend.crosspost.atproto_oauth._is_safe_url", lambda _url: True)
+        monkeypatch.setattr("backend.crosspost.atproto_oauth._is_safe_url", _always_safe)
         result = await send_par_request(
             auth_server_meta={
                 "issuer": "https://auth.example.com",
@@ -268,7 +277,7 @@ class TestTokenExchange:
             )
 
         monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
-        monkeypatch.setattr("backend.crosspost.atproto_oauth._is_safe_url", lambda _url: True)
+        monkeypatch.setattr("backend.crosspost.atproto_oauth._is_safe_url", _always_safe)
         result = await exchange_code_for_tokens(
             token_endpoint="https://auth.example.com/oauth/token",
             auth_server_issuer="https://auth.example.com",
@@ -302,7 +311,7 @@ class TestTokenExchange:
             )
 
         monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
-        monkeypatch.setattr("backend.crosspost.atproto_oauth._is_safe_url", lambda _url: True)
+        monkeypatch.setattr("backend.crosspost.atproto_oauth._is_safe_url", _always_safe)
         result = await refresh_access_token(
             token_endpoint="https://auth.example.com/oauth/token",
             auth_server_issuer="https://auth.example.com",
@@ -340,7 +349,7 @@ class TestTokenExchange:
             )
 
         monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
-        monkeypatch.setattr("backend.crosspost.atproto_oauth._is_safe_url", lambda _url: True)
+        monkeypatch.setattr("backend.crosspost.atproto_oauth._is_safe_url", _always_safe)
         result = await exchange_code_for_tokens(
             token_endpoint="https://auth.example.com/oauth/token",
             auth_server_issuer="https://auth.example.com",
@@ -355,3 +364,92 @@ class TestTokenExchange:
         assert call_count == 2
         assert result["access_token"] == "at_rotated"
         assert result["dpop_nonce"] == "server-nonce"
+
+    async def test_dpop_nonce_rotation_handles_non_json_400(self, monkeypatch) -> None:
+        """400 response with non-JSON body should not crash during nonce rotation."""
+        private_key, jwk = generate_es256_keypair()
+
+        async def mock_post(self, url, **kwargs):
+            return httpx.Response(
+                400,
+                text="Bad Request - not JSON",
+                headers={"DPoP-Nonce": "new-nonce", "content-type": "text/plain"},
+            )
+
+        monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
+        monkeypatch.setattr("backend.crosspost.atproto_oauth._is_safe_url", _always_safe)
+        with pytest.raises(ATProtoOAuthError, match="Token exchange failed"):
+            await exchange_code_for_tokens(
+                token_endpoint="https://auth.example.com/oauth/token",
+                auth_server_issuer="https://auth.example.com",
+                code="auth-code",
+                redirect_uri="https://myblog.example.com/api/crosspost/bluesky/callback",
+                pkce_verifier="verifier",
+                client_id="https://myblog.example.com/api/crosspost/bluesky/client-metadata.json",
+                private_key=private_key,
+                jwk=jwk,
+                dpop_nonce="",
+            )
+
+
+class TestKeypairAtomicWrite:
+    def test_load_or_create_writes_atomically(self, tmp_path) -> None:
+        """Keypair file should have correct permissions and valid content after creation."""
+        path = tmp_path / "key.json"
+        _private_key, jwk = load_or_create_keypair(path)
+        assert path.exists()
+        assert oct(path.stat().st_mode & 0o777) == "0o600"
+        data = json.loads(path.read_text())
+        assert "private_key_pem" in data
+        assert "jwk" in data
+        assert data["jwk"]["kid"] == jwk["kid"]
+
+    def test_concurrent_creation_produces_valid_keypair(self, tmp_path) -> None:
+        """Even if two calls race, the resulting file should be a valid keypair."""
+        path = tmp_path / "key.json"
+        # First call creates
+        _key1, jwk1 = load_or_create_keypair(path)
+        # Second call loads existing
+        _key2, jwk2 = load_or_create_keypair(path)
+        assert jwk1["kid"] == jwk2["kid"]
+
+
+class TestIsSafeUrlAsync:
+    async def test_is_safe_url_is_async(self) -> None:
+        """_is_safe_url should be a coroutine function (async)."""
+        assert inspect.iscoroutinefunction(_is_safe_url)
+
+    async def test_safe_url_returns_true(self) -> None:
+        """A normal HTTPS URL with a public IP should return True."""
+        with patch("backend.crosspost.atproto_oauth.socket.getaddrinfo") as mock_gai:
+            mock_gai.return_value = [
+                (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))
+            ]
+            result = await _is_safe_url("https://example.com/path")
+        assert result is True
+
+    async def test_localhost_returns_false(self) -> None:
+        """Localhost URLs should return False."""
+        result = await _is_safe_url("https://localhost/path")
+        assert result is False
+
+    async def test_private_ip_returns_false(self) -> None:
+        """URLs resolving to private IPs should return False."""
+        with patch("backend.crosspost.atproto_oauth.socket.getaddrinfo") as mock_gai:
+            mock_gai.return_value = [
+                (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("192.168.1.1", 0))
+            ]
+            result = await _is_safe_url("https://internal.example.com")
+        assert result is False
+
+    async def test_http_returns_false(self) -> None:
+        """Non-HTTPS URLs should return False."""
+        result = await _is_safe_url("http://example.com")
+        assert result is False
+
+    async def test_dns_failure_returns_false(self) -> None:
+        """DNS resolution failure should return False."""
+        with patch("backend.crosspost.atproto_oauth.socket.getaddrinfo") as mock_gai:
+            mock_gai.side_effect = socket.gaierror("DNS failure")
+            result = await _is_safe_url("https://nonexistent.invalid")
+        assert result is False

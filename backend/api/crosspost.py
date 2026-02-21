@@ -28,6 +28,7 @@ from backend.schemas.crosspost import (
     SocialAccountResponse,
 )
 from backend.services.crosspost_service import (
+    DuplicateAccountError,
     create_social_account,
     crosspost,
     delete_social_account,
@@ -335,7 +336,7 @@ async def bluesky_callback(
     )
     try:
         await create_social_account(session, pending["user_id"], account_data, settings.secret_key)
-    except ValueError:
+    except DuplicateAccountError:
         existing = await get_social_accounts(session, pending["user_id"])
         for acct in existing:
             if acct.platform == "bluesky":

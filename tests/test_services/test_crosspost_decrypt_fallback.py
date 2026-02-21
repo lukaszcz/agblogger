@@ -9,7 +9,12 @@ import pytest
 
 from backend.models.base import Base
 from backend.models.crosspost import SocialAccount
-from backend.services.crosspost_service import crosspost
+from backend.schemas.crosspost import SocialAccountCreate
+from backend.services.crosspost_service import (
+    DuplicateAccountError,
+    create_social_account,
+    crosspost,
+)
 from backend.services.crypto_service import decrypt_value, encrypt_value
 from backend.services.datetime_service import format_datetime, now_utc
 from tests.conftest import TEST_SECRET_KEY
@@ -139,3 +144,27 @@ class TestCrosspostTokenRefreshPersistence:
         stored = json.loads(decrypt_value(updated_acct.credentials, TEST_SECRET_KEY))
         assert stored["access_token"] == "new_at"
         assert stored["refresh_token"] == "new_rt"
+
+
+class TestDuplicateAccountError:
+    async def test_create_duplicate_account_raises_duplicate_error(self, session):
+        """Creating an account with the same user/platform/name raises DuplicateAccountError."""
+        data = SocialAccountCreate(
+            platform="bluesky",
+            account_name="alice.bsky.social",
+            credentials={"access_token": "at1"},
+        )
+        await create_social_account(session, 1, data, TEST_SECRET_KEY)
+
+        with pytest.raises(DuplicateAccountError):
+            await create_social_account(session, 1, data, TEST_SECRET_KEY)
+
+    async def test_unknown_platform_still_raises_value_error(self, session):
+        """Unknown platform should still raise ValueError, not DuplicateAccountError."""
+        data = SocialAccountCreate(
+            platform="nonexistent",
+            account_name="test",
+            credentials={"token": "x"},
+        )
+        with pytest.raises(ValueError, match="Unknown platform"):
+            await create_social_account(session, 1, data, TEST_SECRET_KEY)

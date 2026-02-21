@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import ipaddress
@@ -61,11 +62,24 @@ def generate_es256_keypair() -> tuple[EllipticCurvePrivateKey, dict[str, str]]:
 def serialize_keypair(
     private_key: EllipticCurvePrivateKey, jwk: dict[str, str], path: Path
 ) -> None:
-    """Serialize keypair to a JSON file (PEM private key + public JWK)."""
+    """Serialize keypair to a JSON file (PEM private key + public JWK).
+
+    Uses atomic write (temp file + rename) to avoid race conditions.
+    """
+    import os
+    import tempfile
+
     pem = private_key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, NoEncryption())
     data = {"private_key_pem": pem.decode("ascii"), "jwk": jwk}
-    path.write_text(json.dumps(data, indent=2))
-    path.chmod(0o600)
+    fd, tmp_path = tempfile.mkstemp(dir=path.parent, prefix=".keypair_")
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(data, f, indent=2)
+        os.chmod(tmp_path, 0o600)
+        os.rename(tmp_path, str(path))
+    except BaseException:
+        os.unlink(tmp_path)
+        raise
 
 
 def load_or_create_keypair(
@@ -139,10 +153,11 @@ class ATProtoOAuthError(Exception):
     """Error during AT Protocol OAuth operations."""
 
 
-def _is_safe_url(url: str) -> bool:
+async def _is_safe_url(url: str) -> bool:
     """Check that a URL is safe (HTTPS, non-private IP, not localhost).
 
     Returns True if the URL is safe to fetch, False otherwise.
+    DNS resolution is run in a thread pool to avoid blocking the event loop.
     """
     parsed = urllib.parse.urlparse(url)
     if parsed.scheme != "https":
@@ -159,7 +174,10 @@ def _is_safe_url(url: str) -> bool:
     except ValueError:
         # Not an IP literal — resolve to check for private IPs
         try:
-            results = socket.getaddrinfo(hostname, None, proto=socket.IPPROTO_TCP)
+            loop = asyncio.get_running_loop()
+            results = await loop.run_in_executor(
+                None, lambda: socket.getaddrinfo(hostname, None, proto=socket.IPPROTO_TCP)
+            )
             for _family, _type, _proto, _canonname, sockaddr in results:
                 ip = ipaddress.ip_address(sockaddr[0])
                 if ip.is_private or ip.is_loopback or ip.is_reserved or ip.is_link_local:
@@ -182,7 +200,7 @@ async def _resolve_handle_dns(handle: str) -> str | None:
 async def _resolve_handle_http(handle: str) -> str | None:
     """Resolve an AT Protocol handle via HTTP well-known endpoint."""
     url = f"https://{handle}/.well-known/atproto-did"
-    if not _is_safe_url(url):
+    if not await _is_safe_url(url):
         return None
     try:
         async with httpx.AsyncClient(timeout=ATPROTO_TIMEOUT) as client:
@@ -229,7 +247,7 @@ async def discover_auth_server(did: str) -> dict[str, Any]:
         msg = f"Unsupported DID method: {did}"
         raise ATProtoOAuthError(msg)
 
-    if not _is_safe_url(did_doc_url):
+    if not await _is_safe_url(did_doc_url):
         msg = f"Unsafe URL for DID resolution: {did_doc_url}"
         raise ATProtoOAuthError(msg)
 
@@ -253,7 +271,7 @@ async def discover_auth_server(did: str) -> dict[str, Any]:
 
         # Step 3: Fetch OAuth protected resource metadata from PDS
         resource_url = f"{pds_url}/.well-known/oauth-protected-resource"
-        if not _is_safe_url(resource_url):
+        if not await _is_safe_url(resource_url):
             msg = f"Unsafe PDS URL: {resource_url}"
             raise ATProtoOAuthError(msg)
         resp = await client.get(resource_url)
@@ -270,7 +288,7 @@ async def discover_auth_server(did: str) -> dict[str, Any]:
 
         # Step 4: Fetch authorization server metadata
         as_meta_url = f"{auth_server_url}/.well-known/oauth-authorization-server"
-        if not _is_safe_url(as_meta_url):
+        if not await _is_safe_url(as_meta_url):
             msg = f"Unsafe auth server URL: {as_meta_url}"
             raise ATProtoOAuthError(msg)
         resp = await client.get(as_meta_url)
@@ -297,7 +315,7 @@ async def _auth_server_post(
 
     Handles automatic DPoP nonce rotation on 400 responses with use_dpop_nonce error.
     """
-    if not _is_safe_url(url):
+    if not await _is_safe_url(url):
         msg = f"Unsafe auth server URL: {url}"
         raise ATProtoOAuthError(msg)
 
@@ -322,7 +340,10 @@ async def _auth_server_post(
             # Handle DPoP nonce rotation
             new_nonce = resp.headers.get("DPoP-Nonce", "")
             if resp.status_code == 400 and new_nonce:
-                body = resp.json()
+                try:
+                    body = resp.json()
+                except ValueError:
+                    return resp
                 if body.get("error") == "use_dpop_nonce":
                     current_nonce = new_nonce
                     continue

@@ -15,6 +15,10 @@ from backend.crosspost.mastodon import MastodonCrossPoster
 from backend.crosspost.registry import list_platforms
 
 
+async def _always_safe(_url: str) -> bool:
+    return True
+
+
 class TestBlueSkyFormatting:
     def test_build_post_text_short(self) -> None:
         content = CrossPostContent(
@@ -166,7 +170,7 @@ def _make_oauth_credentials() -> dict[str, str]:
 
 class TestBlueskyCrossPosterOAuth:
     async def test_authenticate_with_oauth_tokens(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr("backend.crosspost.atproto_oauth._is_safe_url", lambda _url: True)
+        monkeypatch.setattr("backend.crosspost.atproto_oauth._is_safe_url", _always_safe)
         creds = _make_oauth_credentials()
         poster = BlueskyCrossPoster()
         result = await poster.authenticate(creds)
@@ -178,7 +182,7 @@ class TestBlueskyCrossPosterOAuth:
         assert result is False
 
     async def test_post_uses_dpop(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr("backend.crosspost.atproto_oauth._is_safe_url", lambda _url: True)
+        monkeypatch.setattr("backend.crosspost.atproto_oauth._is_safe_url", _always_safe)
         captured_headers: dict[str, str] = {}
 
         async def mock_post(self: httpx.AsyncClient, url: str, **kwargs: object) -> httpx.Response:

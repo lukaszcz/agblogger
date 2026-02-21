@@ -151,7 +151,7 @@ class BlueskyCrossPoster:
         from backend.crosspost.atproto_oauth import _is_safe_url
 
         pds_url = credentials["pds_url"].rstrip("/")
-        if not _is_safe_url(pds_url):
+        if not await _is_safe_url(pds_url):
             return False
         key = load_pem_private_key(
             credentials["dpop_private_key_pem"].encode(),

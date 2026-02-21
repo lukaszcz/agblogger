@@ -7,6 +7,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from backend.crosspost.base import CrossPostContent, CrossPostResult
 from backend.crosspost.registry import get_poster, list_platforms
@@ -22,6 +23,10 @@ if TYPE_CHECKING:
     from backend.schemas.crosspost import SocialAccountCreate
 
 logger = logging.getLogger(__name__)
+
+
+class DuplicateAccountError(Exception):
+    """Raised when a social account with the same user/platform/name already exists."""
 
 
 async def create_social_account(
@@ -50,7 +55,12 @@ async def create_social_account(
         updated_at=now,
     )
     session.add(account)
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        msg = f"Account already exists for {data.platform}/{data.account_name}"
+        raise DuplicateAccountError(msg) from exc
     await session.refresh(account)
     return account
 
