@@ -26,3 +26,5 @@
 12. Proper sync conflict resolution (three-way merge).
 13. Actually look at the code, particularly auth logic. Ask Claude about the codebase.
 14. CodeRabbit review: remove dead code, fix LabelInput error state, update docs.
+
+- Codex wrote deployment script
