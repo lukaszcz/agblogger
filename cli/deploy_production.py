@@ -17,10 +17,23 @@ MIN_SECRET_KEY_LENGTH = 32
 MIN_ADMIN_PASSWORD_LENGTH = 12
 DEFAULT_HOST_PORT = 8000
 DEFAULT_ENV_FILE = ".env.production"
+DEFAULT_CADDYFILE = "Caddyfile.production"
+DEFAULT_NO_CADDY_COMPOSE_FILE = "docker-compose.nocaddy.yml"
+DEFAULT_CADDY_PUBLIC_COMPOSE_FILE = "docker-compose.caddy-public.yml"
+PUBLIC_BIND_IP = ".".join(("0", "0", "0", "0"))
+LOCALHOST_BIND_IP = "127.0.0.1"
 
 
 class DeployError(RuntimeError):
     """Raised for deployment workflow failures."""
+
+
+@dataclass(frozen=True)
+class CaddyConfig:
+    """Caddy reverse-proxy settings."""
+
+    domain: str
+    email: str | None
 
 
 @dataclass(frozen=True)
@@ -33,6 +46,9 @@ class DeployConfig:
     trusted_hosts: list[str]
     trusted_proxy_ips: list[str]
     host_port: int
+    host_bind_ip: str
+    caddy_config: CaddyConfig | None
+    caddy_public: bool
 
 
 @dataclass(frozen=True)
@@ -71,6 +87,7 @@ def build_env_content(config: DeployConfig) -> str:
         f"ADMIN_USERNAME={_quote_env_value(config.admin_username)}",
         f"ADMIN_PASSWORD={_quote_env_value(config.admin_password)}",
         f"HOST_PORT={config.host_port}",
+        f"HOST_BIND_IP={config.host_bind_ip}",
         "HOST=0.0.0.0",
         "PORT=8000",
         "DEBUG=false",
@@ -82,9 +99,82 @@ def build_env_content(config: DeployConfig) -> str:
     return "\n".join(lines) + "\n"
 
 
-def build_lifecycle_commands(env_filename: str = DEFAULT_ENV_FILE) -> dict[str, str]:
+def build_caddyfile_content(config: CaddyConfig) -> str:
+    """Build Caddyfile content for HTTPS reverse proxy."""
+    global_block = f"{{\n    email {config.email}\n}}\n\n" if config.email else ""
+    return (
+        f"{global_block}"
+        f"{config.domain} {{\n"
+        "    reverse_proxy agblogger:8000\n\n"
+        "    # Static asset caching\n"
+        "    header /assets/* {\n"
+        '        Cache-Control "public, max-age=31536000, immutable"\n'
+        "    }\n\n"
+        "    # HTML caching (short TTL for freshness)\n"
+        "    header /*.html {\n"
+        '        Cache-Control "public, max-age=60"\n'
+        "    }\n\n"
+        "    # API caching\n"
+        "    header /api/* {\n"
+        '        Cache-Control "no-cache"\n'
+        "    }\n\n"
+        "    # Compression\n"
+        "    encode gzip zstd\n"
+        "}\n"
+    )
+
+
+def build_direct_compose_content() -> str:
+    """Build a no-Caddy compose file for direct AgBlogger exposure."""
+    return (
+        "services:\n"
+        "  agblogger:\n"
+        "    build: .\n"
+        "    ports:\n"
+        '      - "${HOST_BIND_IP:-127.0.0.1}:${HOST_PORT:-8000}:8000"\n'
+        "    volumes:\n"
+        "      - ./content:/data/content\n"
+        "      - agblogger-db:/data/db\n"
+        "    environment:\n"
+        "      - SECRET_KEY=${SECRET_KEY?Set SECRET_KEY}\n"
+        "      - ADMIN_USERNAME=${ADMIN_USERNAME?Set ADMIN_USERNAME}\n"
+        "      - ADMIN_PASSWORD=${ADMIN_PASSWORD?Set ADMIN_PASSWORD}\n"
+        "      - TRUSTED_HOSTS=${TRUSTED_HOSTS?Set TRUSTED_HOSTS}\n"
+        "      - TRUSTED_PROXY_IPS=${TRUSTED_PROXY_IPS:-[]}\n"
+        "      - CONTENT_DIR=/data/content\n"
+        "      - DATABASE_URL=sqlite+aiosqlite:///data/db/agblogger.db\n"
+        "    restart: unless-stopped\n"
+        "    healthcheck:\n"
+        '      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]\n'
+        "      interval: 30s\n"
+        "      timeout: 5s\n"
+        "      start_period: 10s\n"
+        "      retries: 3\n\n"
+        "volumes:\n"
+        "  agblogger-db:\n"
+    )
+
+
+def build_caddy_public_compose_override_content() -> str:
+    """Build compose override that exposes Caddy publicly."""
+    return 'services:\n  caddy:\n    ports:\n      - "80:80"\n      - "443:443"\n'
+
+
+def build_lifecycle_commands(
+    use_caddy: bool,
+    caddy_public: bool,
+    env_filename: str = DEFAULT_ENV_FILE,
+) -> dict[str, str]:
     """Build Docker Compose lifecycle commands shown to the user."""
-    base = f"docker compose --env-file {env_filename}"
+    if use_caddy and caddy_public:
+        base = (
+            f"docker compose --env-file {env_filename} -f docker-compose.yml "
+            f"-f {DEFAULT_CADDY_PUBLIC_COMPOSE_FILE}"
+        )
+    elif use_caddy:
+        base = f"docker compose --env-file {env_filename}"
+    else:
+        base = f"docker compose --env-file {env_filename} -f {DEFAULT_NO_CADDY_COMPOSE_FILE}"
     return {
         "start": f"{base} up -d",
         "stop": f"{base} down",
@@ -106,6 +196,15 @@ def _validate_config(config: DeployConfig) -> None:
         raise DeployError("TRUSTED_HOSTS must include at least one host")
     if not (1 <= config.host_port <= 65535):
         raise DeployError("HOST_PORT must be between 1 and 65535")
+    if config.host_bind_ip not in {LOCALHOST_BIND_IP, PUBLIC_BIND_IP}:
+        raise DeployError(f"HOST_BIND_IP must be either {LOCALHOST_BIND_IP} or {PUBLIC_BIND_IP}")
+    if config.caddy_config is not None:
+        if "." not in config.caddy_config.domain or " " in config.caddy_config.domain:
+            raise DeployError("Caddy domain must be a valid public hostname")
+        if config.caddy_config.email and "@" not in config.caddy_config.email:
+            raise DeployError("Caddy contact email must contain '@'")
+    if config.caddy_public and config.caddy_config is None:
+        raise DeployError("Caddy public exposure requires Caddy to be enabled")
 
 
 def check_prerequisites(project_dir: Path) -> None:
@@ -120,10 +219,7 @@ def check_prerequisites(project_dir: Path) -> None:
     subprocess.run(["/usr/bin/env", "docker", "compose", "version"], cwd=project_dir, check=True)
 
 
-def deploy(
-    config: DeployConfig,
-    project_dir: Path,
-) -> DeployResult:
+def deploy(config: DeployConfig, project_dir: Path) -> DeployResult:
     """Write deployment config and run docker compose deployment."""
     if not (project_dir / "docker-compose.yml").exists():
         raise FileNotFoundError(f"Missing docker-compose.yml in {project_dir}")
@@ -134,22 +230,81 @@ def deploy(
     with suppress(OSError):
         env_path.chmod(0o600)
 
-    subprocess.run(
-        [
-            "/usr/bin/env",
-            "docker",
-            "compose",
-            "--env-file",
-            ".env.production",
-            "up",
-            "-d",
-            "--build",
-        ],
-        cwd=project_dir,
-        check=True,
-    )
+    if config.caddy_config is not None:
+        caddyfile_path = project_dir / DEFAULT_CADDYFILE
+        caddyfile_path.write_text(build_caddyfile_content(config.caddy_config), encoding="utf-8")
+        with suppress(FileNotFoundError):
+            (project_dir / DEFAULT_NO_CADDY_COMPOSE_FILE).unlink()
+        if config.caddy_public:
+            caddy_public_override_path = project_dir / DEFAULT_CADDY_PUBLIC_COMPOSE_FILE
+            caddy_public_override_path.write_text(
+                build_caddy_public_compose_override_content(),
+                encoding="utf-8",
+            )
+            subprocess.run(
+                [
+                    "/usr/bin/env",
+                    "docker",
+                    "compose",
+                    "--env-file",
+                    ".env.production",
+                    "-f",
+                    "docker-compose.yml",
+                    "-f",
+                    "docker-compose.caddy-public.yml",
+                    "up",
+                    "-d",
+                    "--build",
+                ],
+                cwd=project_dir,
+                check=True,
+            )
+        else:
+            with suppress(FileNotFoundError):
+                (project_dir / DEFAULT_CADDY_PUBLIC_COMPOSE_FILE).unlink()
+            subprocess.run(
+                [
+                    "/usr/bin/env",
+                    "docker",
+                    "compose",
+                    "--env-file",
+                    ".env.production",
+                    "up",
+                    "-d",
+                    "--build",
+                ],
+                cwd=project_dir,
+                check=True,
+            )
+    else:
+        no_caddy_path = project_dir / DEFAULT_NO_CADDY_COMPOSE_FILE
+        no_caddy_path.write_text(build_direct_compose_content(), encoding="utf-8")
+        with suppress(FileNotFoundError):
+            (project_dir / DEFAULT_CADDY_PUBLIC_COMPOSE_FILE).unlink()
+        subprocess.run(
+            [
+                "/usr/bin/env",
+                "docker",
+                "compose",
+                "--env-file",
+                ".env.production",
+                "-f",
+                "docker-compose.nocaddy.yml",
+                "up",
+                "-d",
+                "--build",
+            ],
+            cwd=project_dir,
+            check=True,
+        )
 
-    return DeployResult(env_path=env_path, commands=build_lifecycle_commands())
+    return DeployResult(
+        env_path=env_path,
+        commands=build_lifecycle_commands(
+            use_caddy=config.caddy_config is not None,
+            caddy_public=config.caddy_public,
+        ),
+    )
 
 
 def _prompt_non_empty(prompt: str, default: str | None = None) -> str:
@@ -162,6 +317,25 @@ def _prompt_non_empty(prompt: str, default: str | None = None) -> str:
         if default is not None:
             return default
         print("Value cannot be empty.")
+
+
+def _prompt_yes_no(prompt: str, default: bool) -> bool:
+    """Prompt for a yes/no answer."""
+    suffix = "[Y/n]" if default else "[y/N]"
+    while True:
+        value = input(f"{prompt} {suffix}: ").strip().lower()
+        if not value:
+            return default
+        if value in {"y", "yes"}:
+            return True
+        if value in {"n", "no"}:
+            return False
+        print("Please answer yes or no.")
+
+
+def _prompt_public_exposure(prompt: str, default: bool) -> bool:
+    """Prompt whether ports should be reachable from other machines."""
+    return _prompt_yes_no(prompt, default=default)
 
 
 def _prompt_host_port(default: int = DEFAULT_HOST_PORT) -> int:
@@ -209,21 +383,56 @@ def _prompt_password() -> str:
 
 def collect_config() -> DeployConfig:
     """Collect interactive production settings from the user."""
-    print("Enter production configuration values.")
-    print("Trusted hosts should include every domain/IP used to access the app.")
+    print("Enter production configuration values for your blog server.")
+    print("Trusted hosts are the public domains or IPs people will use to access your blog.")
     secret_key = _prompt_secret_key()
     admin_username = _prompt_non_empty("Admin username", default="admin")
     admin_password = _prompt_password()
 
+    use_caddy = _prompt_yes_no(
+        (
+            "Set up HTTPS with Caddy? "
+            "Caddy is a web server that automatically handles TLS certificates "
+            "and forwards traffic to AgBlogger"
+        ),
+        default=True,
+    )
+
+    caddy_config: CaddyConfig | None = None
+    host_port = DEFAULT_HOST_PORT
+    caddy_public = False
+    if use_caddy:
+        caddy_domain = _prompt_non_empty("Public domain for your blog (example: blog.example.com)")
+        caddy_email = input("Email for TLS certificate notices (optional, recommended): ").strip()
+        caddy_config = CaddyConfig(domain=caddy_domain, email=caddy_email or None)
+        caddy_public = _prompt_public_exposure(
+            "Expose Caddy ports 80/443 publicly so your site is Internet-reachable?",
+            default=True,
+        )
+        host_bind_ip = LOCALHOST_BIND_IP
+    else:
+        host_bind_ip = (
+            PUBLIC_BIND_IP
+            if _prompt_public_exposure(
+                "Expose AgBlogger directly on the Internet (without Caddy)?",
+                default=True,
+            )
+            else LOCALHOST_BIND_IP
+        )
+        host_port = _prompt_host_port()
+
     trusted_hosts: list[str] = []
     while not trusted_hosts:
-        raw_hosts = input("Trusted hosts (comma-separated, required): ").strip()
+        raw_hosts = input(
+            "Public hostnames or IPs allowed to reach this server (comma-separated): "
+        ).strip()
         trusted_hosts = parse_csv_list(raw_hosts)
+        if caddy_config and caddy_config.domain not in trusted_hosts:
+            trusted_hosts.append(caddy_config.domain)
         if not trusted_hosts:
             print("Provide at least one trusted host.")
 
     proxy_ips = parse_csv_list(input("Trusted proxy IPs (comma-separated, optional): ").strip())
-    host_port = _prompt_host_port()
 
     return DeployConfig(
         secret_key=secret_key,
@@ -232,6 +441,9 @@ def collect_config() -> DeployConfig:
         trusted_hosts=trusted_hosts,
         trusted_proxy_ips=proxy_ips,
         host_port=host_port,
+        host_bind_ip=host_bind_ip,
+        caddy_config=caddy_config,
+        caddy_public=caddy_public,
     )
 
 
@@ -273,7 +485,10 @@ def main() -> None:
     print(f"  Start:  {result.commands['start']}")
     print(f"  Stop:   {result.commands['stop']}")
     print(f"  Status: {result.commands['status']}")
-    print(f"Open the app at: http://<your-server-host>:{config.host_port}/login")
+    if config.caddy_config is not None:
+        print(f"Open the app at: https://{config.caddy_config.domain}/login")
+    else:
+        print(f"Open the app at: http://<your-server-host>:{config.host_port}/login")
 
 
 if __name__ == "__main__":

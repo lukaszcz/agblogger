@@ -382,9 +382,12 @@ An interactive deployment script (`agblogger-deploy`) that:
 
 1. Validates Docker/Docker Compose availability.
 2. Prompts for required production settings (`SECRET_KEY`, `ADMIN_*`, `TRUSTED_HOSTS`, optional `TRUSTED_PROXY_IPS`, `HOST_PORT`).
-3. Writes `.env.production` with hardened defaults (`DEBUG=false`, `EXPOSE_DOCS=false`, `AUTH_ENFORCE_LOGIN_ORIGIN=true`).
-4. Deploys with `docker compose --env-file .env.production up -d --build`.
-5. Prints operational commands for start/stop/status.
+3. Optionally configures Caddy by asking for a public domain and optional ACME contact email.
+4. Writes `.env.production` with hardened defaults (`DEBUG=false`, `EXPOSE_DOCS=false`, `AUTH_ENFORCE_LOGIN_ORIGIN=true`).
+5. Uses checked-in `docker-compose.yml` as the default Caddy-based deployment and generates `Caddyfile.production` when Caddy is enabled.
+6. For public Caddy exposure, generates `docker-compose.caddy-public.yml` and deploys with `-f docker-compose.yml -f docker-compose.caddy-public.yml`.
+7. When Caddy is disabled, generates `docker-compose.nocaddy.yml` and deploys with `-f docker-compose.nocaddy.yml`.
+8. Prints operational commands for start/stop/status and the correct login URL.
 
 ## Cross-Posting
 
@@ -504,7 +507,11 @@ Volumes: `/data/content` (blog content) and `/data/db` (SQLite database).
 
 Health check: `curl -f http://localhost:8000/api/health`.
 
-`docker-compose.yml` maps `${HOST_PORT:-8000}:8000` and passes `TRUSTED_HOSTS` / `TRUSTED_PROXY_IPS` into the container so production security validation can succeed.
+`docker-compose.yml` is Caddy-first: AgBlogger is internal-only (`expose: 8000`), Caddy publishes `127.0.0.1:80:80` and `127.0.0.1:443:443`, and Caddy forwards to `agblogger:8000`.
+
+For public Caddy deployment, the script generates `docker-compose.caddy-public.yml` that overrides Caddy ports to `80:80` and `443:443`.
+
+For deployments without Caddy, the deploy script generates `docker-compose.nocaddy.yml` that publishes AgBlogger directly on `${HOST_BIND_IP:-127.0.0.1}:${HOST_PORT:-8000}:8000`.
 
 Recommended deployment path is the interactive helper:
 
@@ -514,7 +521,7 @@ uv run agblogger-deploy
 
 ### Production HTTPS
 
-The `Caddyfile` configures automatic Let's Encrypt TLS, reverse proxy to the backend, static asset caching with `Cache-Control: immutable`, and gzip/zstd compression.
+When enabled in the deploy helper, Caddy is configured as a reverse proxy in front of AgBlogger with automatic Let's Encrypt TLS, static asset caching with `Cache-Control: immutable`, and gzip/zstd compression.
 
 ## Key Design Decisions
 

@@ -1,7 +1,7 @@
 # AgBlogger Caddy reverse proxy configuration
 # Replace myblog.example.com with your domain
 #
-# Usage with docker-compose:
+# Manual usage with docker-compose (the deploy script can generate this automatically):
 #   Add this to docker-compose.yml:
 #
 #   caddy:

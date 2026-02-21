@@ -1,0 +1,24 @@
+# AgBlogger production Caddy config.
+# The deployment script overwrites this file with your configured domain.
+
+myblog.example.com {
+    reverse_proxy agblogger:8000
+
+    # Static asset caching
+    header /assets/* {
+        Cache-Control "public, max-age=31536000, immutable"
+    }
+
+    # HTML caching (short TTL for freshness)
+    header /*.html {
+        Cache-Control "public, max-age=60"
+    }
+
+    # API caching
+    header /api/* {
+        Cache-Control "no-cache"
+    }
+
+    # Compression
+    encode gzip zstd
+}

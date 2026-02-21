@@ -1,8 +1,8 @@
 services:
   agblogger:
     build: .
-    ports:
-      - "${HOST_PORT:-8000}:8000"
+    expose:
+      - "8000"
     volumes:
       - ./content:/data/content
       - agblogger-db:/data/db
@@ -22,5 +22,20 @@ services:
       start_period: 10s
       retries: 3
 
+  caddy:
+    image: caddy:2
+    ports:
+      - "127.0.0.1:80:80"
+      - "127.0.0.1:443:443"
+    volumes:
+      - ./Caddyfile.production:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - agblogger
+    restart: unless-stopped
+
 volumes:
   agblogger-db:
+  caddy-data:
+  caddy-config:

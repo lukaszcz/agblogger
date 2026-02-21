@@ -141,24 +141,46 @@ The script asks for all required production settings:
 - `SECRET_KEY` (or auto-generate)
 - `ADMIN_USERNAME`
 - `ADMIN_PASSWORD`
-- `TRUSTED_HOSTS` (required in production)
+- public hostnames/IPs for your blog (`TRUSTED_HOSTS`)
 - `TRUSTED_PROXY_IPS` (optional)
-- host port mapping (`HOST_PORT`, default `8000`)
+- host port mapping (`HOST_PORT`, only used when Caddy is disabled)
+- whether to set up HTTPS with Caddy (recommended)
 
-It writes `.env.production`, builds the Docker image, and deploys with:
+Caddy is a web server and reverse proxy. It sits in front of AgBlogger, handles HTTPS certificates automatically, and forwards traffic to the app container.
 
-```bash
-docker compose --env-file .env.production up -d --build
-```
+If you enable Caddy, the script also generates:
+
+- `Caddyfile.production`
+- `docker-compose.caddy-public.yml` (only when you choose public Internet exposure)
+
+If you disable Caddy, the script generates:
+
+- `docker-compose.nocaddy.yml`
 
 ### 2. Manage the deployed server
 
-After deployment, use:
+After deployment, use the exact commands printed by the script.
 
 ```bash
-docker compose --env-file .env.production up -d   # start
-docker compose --env-file .env.production down    # stop
-docker compose --env-file .env.production ps      # status
+docker compose --env-file .env.production up -d   # start (Caddy, localhost-only)
+docker compose --env-file .env.production down    # stop (Caddy, localhost-only)
+docker compose --env-file .env.production ps      # status (Caddy, localhost-only)
+```
+
+With Caddy and public Internet exposure enabled, commands include the generated public override:
+
+```bash
+docker compose --env-file .env.production -f docker-compose.yml -f docker-compose.caddy-public.yml up -d
+docker compose --env-file .env.production -f docker-compose.yml -f docker-compose.caddy-public.yml down
+docker compose --env-file .env.production -f docker-compose.yml -f docker-compose.caddy-public.yml ps
+```
+
+With Caddy disabled, commands use the generated no-Caddy compose file:
+
+```bash
+docker compose --env-file .env.production -f docker-compose.nocaddy.yml up -d
+docker compose --env-file .env.production -f docker-compose.nocaddy.yml down
+docker compose --env-file .env.production -f docker-compose.nocaddy.yml ps
 ```
 
 ### 3. Admin user creation
@@ -174,36 +196,14 @@ docker compose --env-file .env.production up -d     # recreates admin from .env.
 
 ### 4. Log in
 
-Visit `http://<your-server>:8000/login` and sign in with the admin credentials from `.env.production`.
+Visit `https://<your-domain>/login` when Caddy is enabled, or `http://<your-server>:<host-port>/login` when Caddy is disabled. Sign in with the admin credentials from `.env.production`.
 
 Self-registration is disabled by default. To add more users, create invite codes from the admin account — other users can then register at `/login` with an invite code.
 
-### 5. Add HTTPS with Caddy (recommended)
+### 5. HTTPS behavior
 
-Edit `Caddyfile` and replace `myblog.example.com` with your domain, then add a Caddy service to `docker-compose.yml`:
-
-```yaml
-services:
-  agblogger:
-    # ... existing config ...
-
-  caddy:
-    image: caddy:2
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile
-      - caddy-data:/data
-    depends_on:
-      - agblogger
-
-volumes:
-  agblogger-db:
-  caddy-data:
-```
-
-Caddy automatically obtains Let's Encrypt certificates and reverse-proxies to the backend.
+If Caddy is enabled, users access the app at `https://<your-domain>/login`.
+If Caddy is not enabled, users access the app directly via `http://<your-server>:<host-port>/login`.
 
 ### Data volumes
 
@@ -225,7 +225,8 @@ Key deployment variables used by `.env.production`:
 | `ADMIN_PASSWORD` | prompt input | Bootstrap admin password (hashed on storage) |
 | `TRUSTED_HOSTS` | prompt input | Allowed Host headers in production |
 | `TRUSTED_PROXY_IPS` | `[]` | Trusted proxy source IPs |
-| `HOST_PORT` | `8000` | Host port mapped to container port 8000 |
+| `HOST_PORT` | `8000` | Host port mapped to container port 8000 in no-Caddy mode |
+| `HOST_BIND_IP` | script-selected | Bind IP for no-Caddy mode |
 
 Cross-posting credentials (Bluesky, Mastodon, X, LinkedIn, Facebook) are configured through additional environment variables documented in `.env.example`.
 
