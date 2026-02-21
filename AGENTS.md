@@ -72,13 +72,17 @@ Always start a dev server with `just start`. Remember to stop a running dev serv
 
 ## Security Guidelines
 
-- Secrets: stored in `.env` (never committed); loaded via `pydantic-settings` `Settings` class
-- Passwords: bcrypt hashed; never stored or logged in plaintext
-- JWT: access tokens (15 min, HS256), refresh tokens (7 days, random 48-byte string hashed with SHA-256 in DB); rotation on refresh revokes old tokens
-- Input validation: all request bodies validated by Pydantic models with `Field()` constraints; query params validated via `Query()`
-- No hardcoded secrets: default values in `Settings` are development-only; production must override via environment
-- CORS: configured in `main.py` middleware
-- Static files: served via FastAPI `StaticFiles`; Caddy adds `Cache-Control: immutable` in production
+- Treat authentication as a coupled system. If you touch login/refresh/logout or cookies, update backend token logic, CSRF middleware, and frontend CSRF header persistence together; do not change one side in isolation.
+- Preserve production fail-fast guards in `Settings.validate_runtime_security()` (`SECRET_KEY`, `ADMIN_PASSWORD`, `TRUSTED_HOSTS`). Do not bypass them outside explicit debug/test scenarios.
+- Keep auth abuse protections intact: login origin enforcement, failed-attempt rate limiting, hashed refresh token storage, and refresh-token rotation with old-token revocation.
+- Use dependency-based authorization (`require_auth`, `require_admin`, `get_current_user`) for protected endpoints. Avoid ad-hoc inline auth checks inside handlers.
+- Never log or persist plaintext credentials/tokens. This includes passwords, refresh tokens, PATs, invite codes, and third-party OAuth credentials.
+- Cross-post account credentials must remain encrypted at rest via `crypto_service`; do not store raw JSON credentials in DB writes or migrations.
+- Keep cookie security defaults intact: `HttpOnly`, `SameSite=Strict`, `Secure` outside debug, and CSRF validation for unsafe `/api/` methods when cookie auth is used.
+- Preserve trust-boundary controls (`TrustedHostMiddleware`, strict CORS origins, trusted proxy IP handling). Do not introduce wildcard-style permissive production defaults.
+- For file-serving or path logic changes, maintain traversal protections and draft asset access controls in `/api/content`; add regression tests for traversal and unauthorized draft access.
+- For markdown/rendering changes, keep HTML sanitization and safe URL-scheme filtering in place before content is stored or served.
+- Any security-sensitive bug fix or feature change must include failing-first regression tests that cover abuse paths, not only happy paths.
 
 ## Instructions
 
