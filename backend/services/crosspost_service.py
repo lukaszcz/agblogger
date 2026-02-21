@@ -102,6 +102,7 @@ async def crosspost(
     actor: User,
     site_url: str,
     secret_key: str = "",
+    custom_text: str | None = None,
 ) -> list[CrossPostResult]:
     """Cross-post a blog post to the specified platforms.
 
@@ -135,6 +136,7 @@ async def crosspost(
         excerpt=excerpt,
         url=post_url,
         labels=post_data.labels,
+        custom_text=custom_text,
     )
 
     # Get user's social accounts

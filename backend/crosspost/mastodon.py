@@ -83,11 +83,77 @@ def _normalize_instance_url(raw_url: str) -> str | None:
     return f"https://{parsed.hostname}{port}"
 
 
+class MastodonOAuthTokenError(Exception):
+    """Raised when Mastodon OAuth token exchange or verification fails."""
+
+
+async def exchange_mastodon_oauth_token(
+    instance_url: str,
+    code: str,
+    client_id: str,
+    client_secret: str,
+    redirect_uri: str,
+    pkce_verifier: str,
+) -> dict[str, str]:
+    """Exchange authorization code for Mastodon access token and verify credentials.
+
+    Returns dict with keys: access_token, acct, hostname.
+    Raises MastodonOAuthTokenError on failure.
+    """
+    validated_url = _normalize_instance_url(instance_url)
+    if validated_url is None:
+        msg = "Invalid instance URL"
+        raise MastodonOAuthTokenError(msg)
+
+    async with httpx.AsyncClient() as http_client:
+        token_resp = await http_client.post(
+            f"{validated_url}/oauth/token",
+            data={
+                "grant_type": "authorization_code",
+                "code": code,
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "redirect_uri": redirect_uri,
+                "code_verifier": pkce_verifier,
+            },
+            timeout=15.0,
+        )
+        if token_resp.status_code != 200:
+            msg = f"Token exchange failed: {token_resp.status_code}"
+            raise MastodonOAuthTokenError(msg)
+        token_data = token_resp.json()
+
+    access_token = token_data["access_token"]
+
+    async with httpx.AsyncClient() as http_client:
+        verify_resp = await http_client.get(
+            f"{validated_url}/api/v1/accounts/verify_credentials",
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=15.0,
+        )
+        if verify_resp.status_code != 200:
+            msg = "Failed to verify Mastodon credentials"
+            raise MastodonOAuthTokenError(msg)
+        verify_data = verify_resp.json()
+
+    hostname = urlparse(validated_url).hostname or ""
+    acct = verify_data.get("acct", "")
+    return {
+        "access_token": access_token,
+        "instance_url": validated_url,
+        "acct": acct,
+        "hostname": hostname,
+    }
+
+
 def _build_status_text(content: CrossPostContent) -> str:
     """Build the status text, truncated to fit within Mastodon's character limit.
 
     Format: excerpt + hashtags + link.
     """
+    if content.custom_text is not None:
+        return content.custom_text
+
     link = content.url
     hashtags = " ".join(f"#{label}" for label in content.labels[:10])
 

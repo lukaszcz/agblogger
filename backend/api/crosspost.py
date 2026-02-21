@@ -120,6 +120,7 @@ async def crosspost_endpoint(
             user,
             site_url,
             secret_key=settings.secret_key,
+            custom_text=body.custom_text,
         )
     except ValueError as exc:
         if str(exc).startswith("Post not found"):
@@ -474,69 +475,38 @@ async def mastodon_callback(
             detail="Invalid or expired OAuth state",
         )
 
-    instance_url: str = pending["instance_url"]
     redirect_uri: str = pending["redirect_uri"]
 
-    # Exchange authorization code for access token
+    # Exchange code for token and verify credentials via mastodon module
+    # (moved to module function for SSRF-safe URL validation)
     import httpx
 
+    from backend.crosspost.mastodon import MastodonOAuthTokenError, exchange_mastodon_oauth_token
+
     try:
-        async with httpx.AsyncClient() as http_client:
-            token_resp = await http_client.post(
-                f"{instance_url}/oauth/token",
-                data={
-                    "grant_type": "authorization_code",
-                    "code": code,
-                    "client_id": pending["client_id"],
-                    "client_secret": pending["client_secret"],
-                    "redirect_uri": redirect_uri,
-                    "code_verifier": pending["pkce_verifier"],
-                },
-                timeout=15.0,
-            )
-            if token_resp.status_code != 200:
-                raise HTTPException(
-                    status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail=f"Token exchange failed: {token_resp.status_code}",
-                )
-            token_data = token_resp.json()
+        token_result = await exchange_mastodon_oauth_token(
+            instance_url=pending["instance_url"],
+            code=code,
+            client_id=pending["client_id"],
+            client_secret=pending["client_secret"],
+            redirect_uri=redirect_uri,
+            pkce_verifier=pending["pkce_verifier"],
+        )
+    except MastodonOAuthTokenError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        ) from exc
     except httpx.HTTPError as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Token exchange HTTP error: {exc}",
+            detail=f"Mastodon OAuth HTTP error: {exc}",
         ) from exc
 
-    access_token = token_data["access_token"]
-
-    # Verify credentials and get account info
-    try:
-        async with httpx.AsyncClient() as http_client:
-            verify_resp = await http_client.get(
-                f"{instance_url}/api/v1/accounts/verify_credentials",
-                headers={"Authorization": f"Bearer {access_token}"},
-                timeout=15.0,
-            )
-            if verify_resp.status_code != 200:
-                raise HTTPException(
-                    status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail="Failed to verify Mastodon credentials",
-                )
-            verify_data = verify_resp.json()
-    except httpx.HTTPError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Credential verification HTTP error: {exc}",
-        ) from exc
-
-    from urllib.parse import urlparse
-
-    hostname = urlparse(instance_url).hostname or ""
-    acct = verify_data.get("acct", "")
-    account_name = f"@{acct}@{hostname}"
-
+    account_name = f"@{token_result['acct']}@{token_result['hostname']}"
     credentials = {
-        "access_token": access_token,
-        "instance_url": instance_url,
+        "access_token": token_result["access_token"],
+        "instance_url": token_result["instance_url"],
     }
     account_data = SocialAccountCreate(
         platform="mastodon",

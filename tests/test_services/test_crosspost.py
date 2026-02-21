@@ -11,7 +11,7 @@ from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption,
 from backend.crosspost.atproto_oauth import generate_es256_keypair
 from backend.crosspost.base import CrossPostContent
 from backend.crosspost.bluesky import BlueskyCrossPoster, _build_post_text, _find_facets
-from backend.crosspost.mastodon import MastodonCrossPoster
+from backend.crosspost.mastodon import MastodonCrossPoster, _build_status_text
 from backend.crosspost.registry import list_platforms
 
 
@@ -44,6 +44,16 @@ class TestBlueSkyFormatting:
         text = _build_post_text(content)
         assert len(text) <= 300
         assert "..." in text
+
+    def test_build_post_text_uses_custom_text(self) -> None:
+        content = CrossPostContent(
+            title="Test",
+            excerpt="Excerpt.",
+            url="https://example.com/posts/test",
+            custom_text="My custom post text!",
+        )
+        text = _build_post_text(content)
+        assert text == "My custom post text!"
 
     def test_find_facets_link(self) -> None:
         content = CrossPostContent(
@@ -147,6 +157,18 @@ class TestMastodonUrlValidation:
         )
         assert is_ok is True
         assert requested_urls == ["https://93.184.216.34/api/v1/accounts/verify_credentials"]
+
+
+class TestMastodonFormatting:
+    def test_build_status_text_uses_custom_text(self) -> None:
+        content = CrossPostContent(
+            title="Test",
+            excerpt="Excerpt.",
+            url="https://example.com/posts/test",
+            custom_text="My custom Mastodon text!",
+        )
+        text = _build_status_text(content)
+        assert text == "My custom Mastodon text!"
 
 
 def _make_oauth_credentials() -> dict[str, str]:

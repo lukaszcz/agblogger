@@ -15,6 +15,7 @@ class CrossPostContent:
     url: str
     image_url: str | None = None
     labels: list[str] = field(default_factory=list)
+    custom_text: str | None = None
 
 
 @dataclass

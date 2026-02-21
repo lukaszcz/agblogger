@@ -407,9 +407,11 @@ class CrossPoster(Protocol):
 ### Platforms
 
 - **Bluesky** — AT Protocol OAuth (confidential client / BFF pattern). Uses DPoP-bound access tokens, PKCE, and Pushed Authorization Requests (PAR). Builds rich text facets for URLs and hashtags. 300-character limit.
-- **Mastodon** — HTTP API via httpx.
+- **Mastodon** — OAuth 2.0 with dynamic app registration and PKCE. Posts statuses via httpx. 500-character limit.
 
 A platform registry maps names to poster classes. Each cross-post attempt is recorded in the `cross_posts` table with status, platform ID, timestamp, and error message. When Bluesky tokens are refreshed during a cross-post, the updated credentials are re-encrypted and persisted.
+
+Cross-posting supports an optional `custom_text` field: when provided via the API (`CrossPostRequest.custom_text`), platforms use it verbatim instead of auto-generating text from the post title, excerpt, and URL.
 
 ### Bluesky OAuth Flow
 
@@ -433,6 +435,30 @@ The flow:
 **OAuth state**: Pending authorization flows are stored in an in-memory `OAuthStateStore` (`backend/crosspost/bluesky_oauth_state.py`) with a 10-minute TTL, keyed by the `state` parameter.
 
 **Token lifecycle**: Access tokens are short-lived and DPoP-bound. Refresh tokens last up to 3 months. On 401 responses during cross-posting, the `BlueskyCrossPoster` automatically refreshes tokens and retries. Updated tokens are persisted after each successful cross-post.
+
+### Mastodon OAuth Flow
+
+Mastodon uses standard OAuth 2.0 with dynamic client registration and PKCE:
+
+1. User enters their Mastodon instance URL → `POST /api/crosspost/mastodon/authorize`
+2. Backend validates and normalizes the instance URL (SSRF protection via `_normalize_instance_url()`)
+3. Backend dynamically registers an app on the instance via `POST /api/v1/apps`, generating PKCE challenge
+4. OAuth state (client credentials, PKCE verifier, instance URL) is stored in the in-memory `OAuthStateStore` with 10-minute TTL
+5. Frontend redirects user to the instance's `/oauth/authorize` endpoint
+6. Instance redirects back to `GET /api/crosspost/mastodon/callback`
+7. Backend exchanges authorization code for access token, verifies credentials via `GET /api/v1/accounts/verify_credentials`, stores encrypted credentials in `SocialAccount`
+
+### Cross-Posting UI
+
+The frontend cross-posting interface spans three pages:
+
+**Admin page** (`SocialAccountsPanel`): A "Social Accounts" section lists connected accounts as cards with platform icon, handle, and disconnect button. Connect buttons open inline forms for entering a Bluesky handle or Mastodon instance URL, initiating the respective OAuth flows.
+
+**Post page** (`CrossPostSection`, `CrossPostHistory`): An admin-only section below post content shows cross-post history (platform icon, timestamp, status badge) and a "Share" button (visible only when accounts are connected). The Share button opens the `CrossPostDialog`.
+
+**Editor page**: When social accounts are connected, platform checkboxes appear in the metadata bar ("Share after saving"). On save with platforms selected, the `CrossPostDialog` opens pre-populated — a two-step flow ensuring the user reviews text before posting.
+
+**Cross-post dialog** (`CrossPostDialog`): A modal with a single editable textarea (auto-generated from post title + URL), per-platform character counters (300 for Bluesky, 500 for Mastodon, turning red when over limit), platform checkboxes, and a results view showing per-platform success/failure after posting.
 
 ## Frontend Architecture
 
