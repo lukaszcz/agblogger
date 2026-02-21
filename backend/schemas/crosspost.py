@@ -76,3 +76,28 @@ class MastodonAuthorizeResponse(BaseModel):
     """Response with authorization URL for Mastodon OAuth."""
 
     authorization_url: str
+
+
+class XAuthorizeResponse(BaseModel):
+    """Response with authorization URL for X OAuth."""
+
+    authorization_url: str
+
+
+class FacebookAuthorizeResponse(BaseModel):
+    """Response with authorization URL for Facebook OAuth."""
+
+    authorization_url: str
+
+
+class FacebookSelectPageRequest(BaseModel):
+    """Request to select a Facebook Page after OAuth."""
+
+    state: str = Field(min_length=1, description="OAuth state token from callback")
+    page_id: str = Field(min_length=1, description="Selected Facebook Page ID")
+
+
+class FacebookSelectPageResponse(BaseModel):
+    """Response after selecting a Facebook Page."""
+
+    account_name: str
