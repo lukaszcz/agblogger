@@ -1,0 +1,187 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import {
+  getShareText,
+  getShareUrl,
+  canNativeShare,
+  nativeShare,
+  copyToClipboard,
+  getMastodonInstance,
+  setMastodonInstance,
+} from '../shareUtils'
+
+// Mock localStorage since jsdom doesn't always provide full implementation
+const storage = new Map<string, string>()
+const mockLocalStorage = {
+  getItem: (key: string) => storage.get(key) ?? null,
+  setItem: (key: string, value: string) => storage.set(key, value),
+  removeItem: (key: string) => storage.delete(key),
+  clear: () => storage.clear(),
+  get length() {
+    return storage.size
+  },
+  key: (index: number) => [...storage.keys()][index] ?? null,
+}
+
+Object.defineProperty(window, 'localStorage', {
+  value: mockLocalStorage,
+  writable: true,
+})
+
+describe('getShareText', () => {
+  it('formats text with title, author, and URL', () => {
+    const result = getShareText('My Post', 'Alice', 'https://blog.example.com/post/hello')
+    expect(result).toBe('\u201cMy Post\u201d by Alice https://blog.example.com/post/hello')
+  })
+
+  it('handles title with special characters', () => {
+    const result = getShareText('What\'s "new" in 2026?', 'Bob', 'https://example.com/post/x')
+    expect(result).toContain('What\'s "new" in 2026?')
+    expect(result).toContain('by Bob')
+  })
+
+  it('handles null author', () => {
+    const result = getShareText('My Post', null, 'https://example.com/post/x')
+    expect(result).toBe('\u201cMy Post\u201d https://example.com/post/x')
+  })
+})
+
+describe('getShareUrl', () => {
+  const url = 'https://blog.example.com/post/hello'
+  const text = '\u201cHello World\u201d by Alice https://blog.example.com/post/hello'
+  const title = 'Hello World'
+
+  it('returns Bluesky compose intent URL', () => {
+    const result = getShareUrl('bluesky', text, url, title)
+    expect(result).toBe(`https://bsky.app/intent/compose?text=${encodeURIComponent(text)}`)
+  })
+
+  it('returns X tweet intent URL', () => {
+    const result = getShareUrl('x', text, url, title)
+    expect(result).toBe(`https://x.com/intent/tweet?text=${encodeURIComponent(text)}`)
+  })
+
+  it('returns Facebook sharer URL', () => {
+    const result = getShareUrl('facebook', text, url, title)
+    expect(result).toBe(
+      `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}&quote=${encodeURIComponent(title)}`,
+    )
+  })
+
+  it('returns LinkedIn share URL', () => {
+    const result = getShareUrl('linkedin', text, url, title)
+    expect(result).toBe(
+      `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}`,
+    )
+  })
+
+  it('returns Reddit submit URL', () => {
+    const result = getShareUrl('reddit', text, url, title)
+    expect(result).toBe(
+      `https://www.reddit.com/submit?url=${encodeURIComponent(url)}&title=${encodeURIComponent(title)}`,
+    )
+  })
+
+  it('returns mailto URL for email', () => {
+    const result = getShareUrl('email', text, url, title)
+    expect(result).toBe(
+      `mailto:?subject=${encodeURIComponent(title)}&body=${encodeURIComponent(text)}`,
+    )
+  })
+
+  it('returns Mastodon share URL with instance', () => {
+    const result = getShareUrl('mastodon', text, url, title, 'mastodon.social')
+    expect(result).toBe(
+      `https://mastodon.social/share?text=${encodeURIComponent(text)}`,
+    )
+  })
+
+  it('returns empty string for mastodon without instance', () => {
+    const result = getShareUrl('mastodon', text, url, title)
+    expect(result).toBe('')
+  })
+})
+
+describe('canNativeShare', () => {
+  const originalNavigator = globalThis.navigator
+
+  afterEach(() => {
+    Object.defineProperty(globalThis, 'navigator', {
+      value: originalNavigator,
+      writable: true,
+    })
+  })
+
+  it('returns true when navigator.share is available', () => {
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { ...originalNavigator, share: vi.fn() },
+      writable: true,
+    })
+    expect(canNativeShare()).toBe(true)
+  })
+
+  it('returns false when navigator.share is unavailable', () => {
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { ...originalNavigator, share: undefined },
+      writable: true,
+    })
+    expect(canNativeShare()).toBe(false)
+  })
+})
+
+describe('nativeShare', () => {
+  it('calls navigator.share with correct data', async () => {
+    const mockShare = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { ...globalThis.navigator, share: mockShare },
+      writable: true,
+    })
+
+    await nativeShare('Title', 'Text', 'https://example.com')
+    expect(mockShare).toHaveBeenCalledWith({
+      title: 'Title',
+      text: 'Text',
+      url: 'https://example.com',
+    })
+  })
+})
+
+describe('copyToClipboard', () => {
+  it('returns true on success', async () => {
+    Object.defineProperty(globalThis, 'navigator', {
+      value: {
+        ...globalThis.navigator,
+        clipboard: { writeText: vi.fn().mockResolvedValue(undefined) },
+      },
+      writable: true,
+    })
+    const result = await copyToClipboard('text')
+    expect(result).toBe(true)
+  })
+
+  it('returns false on failure', async () => {
+    Object.defineProperty(globalThis, 'navigator', {
+      value: {
+        ...globalThis.navigator,
+        clipboard: { writeText: vi.fn().mockRejectedValue(new Error('fail')) },
+      },
+      writable: true,
+    })
+    const result = await copyToClipboard('text')
+    expect(result).toBe(false)
+  })
+})
+
+describe('mastodon instance localStorage', () => {
+  beforeEach(() => {
+    localStorage.clear()
+  })
+
+  it('returns null when no instance saved', () => {
+    expect(getMastodonInstance()).toBeNull()
+  })
+
+  it('saves and retrieves instance', () => {
+    setMastodonInstance('mastodon.social')
+    expect(getMastodonInstance()).toBe('mastodon.social')
+  })
+})
