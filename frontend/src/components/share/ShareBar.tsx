@@ -54,7 +54,7 @@ export default function ShareBar({ title, author, url }: ShareBarProps) {
 
   function handleEmailClick() {
     const emailUrl = getShareUrl('email', shareText, url, title)
-    window.location.href = emailUrl
+    window.open(emailUrl, '_self')
   }
 
   async function handleCopy() {
