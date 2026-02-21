@@ -45,6 +45,35 @@ export async function authorizeMastodon(
     .json<{ authorization_url: string }>()
 }
 
+export async function authorizeX(): Promise<{ authorization_url: string }> {
+  return api
+    .post('crosspost/x/authorize')
+    .json<{ authorization_url: string }>()
+}
+
+export async function authorizeFacebook(): Promise<{ authorization_url: string }> {
+  return api
+    .post('crosspost/facebook/authorize')
+    .json<{ authorization_url: string }>()
+}
+
+export interface FacebookPage {
+  id: string
+  name: string
+  access_token: string
+}
+
+export async function selectFacebookPage(
+  state: string,
+  pageId: string,
+): Promise<{ account_name: string }> {
+  return api
+    .post('crosspost/facebook/select-page', {
+      json: { state, page_id: pageId },
+    })
+    .json<{ account_name: string }>()
+}
+
 export async function crossPost(
   postPath: string,
   platforms: string[],
