@@ -362,7 +362,7 @@ export default function EditorPage() {
           <LabelInput value={labels} onChange={setLabels} disabled={saving} />
         </div>
 
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-1">
           <div className="flex items-center gap-6">
             <label className="flex items-center gap-2 cursor-pointer">
               <input
