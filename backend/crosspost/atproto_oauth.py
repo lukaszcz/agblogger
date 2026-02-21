@@ -8,12 +8,13 @@ import hashlib
 import ipaddress
 import json
 import logging
+import os
 import secrets
 import socket
 import time
 import urllib.parse
 import uuid
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import httpx
 import jwt
@@ -85,14 +86,48 @@ def serialize_keypair(
 def load_or_create_keypair(
     path: Path,
 ) -> tuple[EllipticCurvePrivateKey, dict[str, str]]:
-    """Load keypair from file, or create and save a new one."""
-    if path.exists():
+    """Load keypair from file, or create and save a new one.
+
+    Uses a lock file to avoid check-then-create races across concurrent callers.
+    """
+
+    def _load_existing() -> tuple[EllipticCurvePrivateKey, dict[str, str]]:
         data = json.loads(path.read_text())
         private_key = load_pem_private_key(data["private_key_pem"].encode("ascii"), password=None)
-        return private_key, data["jwk"]  # type: ignore[return-value]
-    private_key, jwk = generate_es256_keypair()
-    serialize_keypair(private_key, jwk, path)
-    return private_key, jwk
+        if not isinstance(private_key, EllipticCurvePrivateKey):
+            raise TypeError("Stored key is not an elliptic curve private key")
+        jwk = cast(dict[str, str], data["jwk"])
+        return private_key, jwk
+
+    if path.exists():
+        return _load_existing()
+
+    lock_path = path.with_name(f".{path.name}.lock")
+    lock_fd: int | None = None
+    for _attempt in range(500):
+        try:
+            lock_fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            break
+        except FileExistsError:
+            if path.exists():
+                return _load_existing()
+            time.sleep(0.01)
+    else:
+        raise RuntimeError(f"Failed to acquire keypair lock for {path}")
+
+    try:
+        if path.exists():
+            return _load_existing()
+        private_key, jwk = generate_es256_keypair()
+        serialize_keypair(private_key, jwk, path)
+        return private_key, jwk
+    finally:
+        if lock_fd is not None:
+            os.close(lock_fd)
+        try:
+            os.unlink(lock_path)
+        except FileNotFoundError:
+            pass
 
 
 def create_dpop_proof(

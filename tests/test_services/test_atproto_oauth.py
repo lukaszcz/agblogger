@@ -7,6 +7,9 @@ import hashlib
 import inspect
 import json
 import socket
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import patch
 
 import httpx
@@ -413,6 +416,28 @@ class TestKeypairAtomicWrite:
         _key2, jwk2 = load_or_create_keypair(path)
         assert jwk1["kid"] == jwk2["kid"]
 
+    def test_concurrent_creation_returns_single_keypair(self, monkeypatch, tmp_path) -> None:
+        """Concurrent creators should all observe the same keypair identity."""
+        path = tmp_path / "key.json"
+        original_serialize = serialize_keypair
+
+        def slow_serialize(private_key, jwk, target_path):
+            time.sleep(0.05)
+            original_serialize(private_key, jwk, target_path)
+
+        monkeypatch.setattr("backend.crosspost.atproto_oauth.serialize_keypair", slow_serialize)
+        barrier = threading.Barrier(8)
+
+        def create_keypair_kid() -> str:
+            barrier.wait()
+            _key, jwk = load_or_create_keypair(path)
+            return str(jwk["kid"])
+
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            kids = list(executor.map(lambda _i: create_keypair_kid(), range(8)))
+
+        assert len(set(kids)) == 1
+
 
 class TestIsSafeUrlAsync:
     async def test_is_safe_url_is_async(self) -> None:
@@ -453,3 +478,31 @@ class TestIsSafeUrlAsync:
             mock_gai.side_effect = socket.gaierror("DNS failure")
             result = await _is_safe_url("https://nonexistent.invalid")
         assert result is False
+
+    async def test_domain_resolution_uses_executor(self, monkeypatch) -> None:
+        """DNS resolution for hostnames should run through run_in_executor."""
+
+        class LoopStub:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            async def run_in_executor(self, _executor, fn):
+                self.calls += 1
+                return fn()
+
+        loop_stub = LoopStub()
+        monkeypatch.setattr(
+            "backend.crosspost.atproto_oauth.socket.getaddrinfo",
+            lambda *_args, **_kwargs: [
+                (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))
+            ],
+        )
+        monkeypatch.setattr(
+            "backend.crosspost.atproto_oauth.asyncio.get_running_loop",
+            lambda: loop_stub,
+        )
+
+        result = await _is_safe_url("https://example.com")
+
+        assert result is True
+        assert loop_stub.calls == 1

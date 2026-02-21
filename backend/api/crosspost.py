@@ -338,8 +338,16 @@ async def bluesky_callback(
         await create_social_account(session, pending["user_id"], account_data, settings.secret_key)
     except DuplicateAccountError:
         existing = await get_social_accounts(session, pending["user_id"])
+        replaced = False
         for acct in existing:
-            if acct.platform == "bluesky":
+            if acct.platform == "bluesky" and acct.account_name == pending["handle"]:
                 await delete_social_account(session, acct.id, pending["user_id"])
+                replaced = True
+                break
+        if not replaced:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Bluesky account already exists",
+            ) from None
         await create_social_account(session, pending["user_id"], account_data, settings.secret_key)
     return RedirectResponse(url=f"{base_url}/admin", status_code=303)
