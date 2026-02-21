@@ -122,7 +122,7 @@ def test_check_prerequisites_checks_docker_and_compose(
 
 
 def test_deploy_writes_env_file_and_runs_docker_compose_without_caddy(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     (tmp_path / "docker-compose.yml").write_text("services: {}\n", encoding="utf-8")
     commands: list[tuple[list[str], Path, bool]] = []
@@ -132,6 +132,10 @@ def test_deploy_writes_env_file_and_runs_docker_compose_without_caddy(
         return SimpleNamespace(returncode=0)
 
     monkeypatch.setattr("cli.deploy_production.subprocess.run", fake_run)
+    monkeypatch.setattr(
+        "cli.deploy_production.shutil.which",
+        lambda name: None if name == "trivy" else "/usr/bin/docker",
+    )
 
     config = DeployConfig(
         secret_key="x" * 64,
@@ -146,6 +150,11 @@ def test_deploy_writes_env_file_and_runs_docker_compose_without_caddy(
     )
 
     result = deploy(config=config, project_dir=tmp_path)
+    captured = capsys.readouterr()
+    assert (
+        "Warning: Trivy is not installed or not available on PATH; skipping Docker image scan."
+        in captured.err
+    )
 
     assert result.env_path == tmp_path / ".env.production"
     assert (
@@ -186,6 +195,10 @@ def test_deploy_with_public_caddy_writes_override_and_runs_multi_file_compose(
         return SimpleNamespace(returncode=0)
 
     monkeypatch.setattr("cli.deploy_production.subprocess.run", fake_run)
+    monkeypatch.setattr(
+        "cli.deploy_production.shutil.which",
+        lambda name: None if name == "trivy" else "/usr/bin/docker",
+    )
 
     config = DeployConfig(
         secret_key="x" * 64,
@@ -242,6 +255,10 @@ def test_deploy_with_local_caddy_runs_base_compose(
         return SimpleNamespace(returncode=0)
 
     monkeypatch.setattr("cli.deploy_production.subprocess.run", fake_run)
+    monkeypatch.setattr(
+        "cli.deploy_production.shutil.which",
+        lambda name: None if name == "trivy" else "/usr/bin/docker",
+    )
 
     config = DeployConfig(
         secret_key="x" * 64,
@@ -291,6 +308,85 @@ def test_deploy_requires_docker_compose_file(tmp_path: Path) -> None:
 
     with pytest.raises(FileNotFoundError, match=r"docker-compose\.yml"):
         deploy(config=config, project_dir=tmp_path)
+
+
+def test_deploy_runs_trivy_image_scan_when_available(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    (tmp_path / "docker-compose.yml").write_text("services: {}\n", encoding="utf-8")
+    commands: list[tuple[list[str], Path, bool]] = []
+
+    def fake_run(command: list[str], cwd: Path, check: bool) -> SimpleNamespace:
+        commands.append((command, cwd, check))
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr("cli.deploy_production.subprocess.run", fake_run)
+    monkeypatch.setattr(
+        "cli.deploy_production.shutil.which",
+        lambda name: "/usr/bin/trivy" if name == "trivy" else "/usr/bin/docker",
+    )
+
+    config = DeployConfig(
+        secret_key="x" * 64,
+        admin_username="admin",
+        admin_password="very-strong-password",
+        trusted_hosts=["example.com"],
+        trusted_proxy_ips=[],
+        host_port=8000,
+        host_bind_ip=PUBLIC_BIND_IP,
+        caddy_config=None,
+        caddy_public=False,
+    )
+
+    deploy(config=config, project_dir=tmp_path)
+
+    assert commands == [
+        (["/usr/bin/env", "trivy", "--version"], tmp_path, True),
+        (
+            [
+                "/usr/bin/env",
+                "docker",
+                "compose",
+                "--env-file",
+                ".env.production",
+                "-f",
+                "docker-compose.nocaddy.yml",
+                "up",
+                "-d",
+                "--build",
+            ],
+            tmp_path,
+            True,
+        ),
+        (
+            [
+                "/usr/bin/env",
+                "docker",
+                "build",
+                "--tag",
+                "agblogger-deploy-scan:latest",
+                ".",
+            ],
+            tmp_path,
+            True,
+        ),
+        (
+            [
+                "/usr/bin/env",
+                "trivy",
+                "image",
+                "--scanners",
+                "vuln",
+                "--exit-code",
+                "1",
+                "--severity",
+                "MEDIUM,HIGH,CRITICAL",
+                "agblogger-deploy-scan:latest",
+            ],
+            tmp_path,
+            True,
+        ),
+    ]
 
 
 def test_build_lifecycle_commands_for_default_caddy() -> None:

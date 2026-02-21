@@ -6,6 +6,7 @@
 - `check-frontend-static`
 - `check-semgrep`
 - `check-vulture`
+- `check-trivy`
 
 All checks are fail-fast and CI-blocking.
 
@@ -72,6 +73,24 @@ All checks are fail-fast and CI-blocking.
 - `vulture backend cli --exclude "backend/migrations" --min-confidence 80`
 - Purpose: detect likely dead/unused Python code in runtime modules.
 - Scope: backend and CLI runtime code.
+
+## Trivy Security Scan (`check-trivy`)
+
+- `trivy config --exit-code 1 --severity MEDIUM,HIGH,CRITICAL docker-compose.yml`
+  - Purpose: detect medium/high/critical IaC misconfigurations in Compose.
+  - Scope: `docker-compose.yml`.
+- `trivy config --exit-code 1 --severity MEDIUM,HIGH,CRITICAL Dockerfile`
+  - Purpose: detect medium/high/critical container build misconfigurations.
+  - Scope: `Dockerfile`.
+- `trivy fs --scanners secret --detection-priority precise --exit-code 1 --severity MEDIUM,HIGH,CRITICAL backend`
+  - Purpose: detect medium/high/critical secrets with lower false-positive bias.
+  - Scope: backend source directory.
+- `trivy fs --scanners secret --detection-priority precise --exit-code 1 --severity MEDIUM,HIGH,CRITICAL cli`
+  - Purpose: detect medium/high/critical secrets with lower false-positive bias.
+  - Scope: CLI source directory.
+- `trivy fs --scanners secret --detection-priority precise --exit-code 1 --severity MEDIUM,HIGH,CRITICAL frontend/src`
+  - Purpose: detect medium/high/critical secrets with lower false-positive bias.
+  - Scope: frontend source directory.
 
 ## Related Test Gates
 

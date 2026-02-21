@@ -82,7 +82,7 @@ npm test
 # Run full quality gate (static checks, then tests)
 just check
 
-# Run static checks only (backend + frontend + Semgrep + Vulture)
+# Run static checks only (backend + frontend + Semgrep + Vulture + Trivy)
 just check-static
 
 # Run tests only (backend + frontend)

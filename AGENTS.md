@@ -13,7 +13,7 @@ just start            # Start backend (:8000) + frontend (:5173) in the backgrou
 just stop             # Stop the running dev server
 just start backend_port=9000 frontend_port=9173  # Custom ports
 just check            # Full gate: static checks first, then tests
-just check-static     # Static-only gate: backend + frontend + Semgrep + Vulture
+just check-static     # Static-only gate: backend + frontend + Semgrep + Vulture + Trivy
 just test             # Test-only gate: backend + frontend tests
 just check-backend    # Backend static checks + backend tests
 just check-backend-static  # Backend static checks only

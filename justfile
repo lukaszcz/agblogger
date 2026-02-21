@@ -1,7 +1,7 @@
 # ── Quality checks ──────────────────────────────────────────────────
 
 # Run all static analysis checks (no tests)
-check-static: check-backend-static check-frontend-static check-semgrep check-vulture
+check-static: check-backend-static check-frontend-static check-semgrep check-vulture check-trivy
     @echo "\n✓ Static checks passed"
 
 # Run all test suites
@@ -85,6 +85,16 @@ check-semgrep:
 check-vulture:
     @echo "── Runtime dead-code analysis (Vulture) ──"
     uv run vulture backend cli --exclude "backend/migrations" --min-confidence 80
+
+# Trivy security scans: IaC misconfig + scoped source secret scan.
+check-trivy:
+    @echo "── Security scan (Trivy config: MEDIUM/HIGH/CRITICAL) ──"
+    trivy config --exit-code 1 --severity MEDIUM,HIGH,CRITICAL docker-compose.yml
+    trivy config --exit-code 1 --severity MEDIUM,HIGH,CRITICAL Dockerfile
+    @echo "\n── Security scan (Trivy secrets: scoped source dirs) ──"
+    trivy fs --scanners secret --detection-priority precise --exit-code 1 --severity MEDIUM,HIGH,CRITICAL backend
+    trivy fs --scanners secret --detection-priority precise --exit-code 1 --severity MEDIUM,HIGH,CRITICAL cli
+    trivy fs --scanners secret --detection-priority precise --exit-code 1 --severity MEDIUM,HIGH,CRITICAL frontend/src
 
 # ── CodeQL ────────────────────────────────────────────────────────
 

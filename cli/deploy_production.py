@@ -219,12 +219,46 @@ def check_prerequisites(project_dir: Path) -> None:
     subprocess.run(["/usr/bin/env", "docker", "compose", "version"], cwd=project_dir, check=True)
 
 
+def _scan_generated_image_with_trivy(project_dir: Path) -> None:
+    """Build and scan a deploy image with Trivy."""
+    subprocess.run(
+        ["/usr/bin/env", "docker", "build", "--tag", "agblogger-deploy-scan:latest", "."],
+        cwd=project_dir,
+        check=True,
+    )
+    subprocess.run(
+        [
+            "/usr/bin/env",
+            "trivy",
+            "image",
+            "--scanners",
+            "vuln",
+            "--exit-code",
+            "1",
+            "--severity",
+            "MEDIUM,HIGH,CRITICAL",
+            "agblogger-deploy-scan:latest",
+        ],
+        cwd=project_dir,
+        check=True,
+    )
+
+
 def deploy(config: DeployConfig, project_dir: Path) -> DeployResult:
     """Write deployment config and run docker compose deployment."""
     if not (project_dir / "docker-compose.yml").exists():
         raise FileNotFoundError(f"Missing docker-compose.yml in {project_dir}")
 
     _validate_config(config)
+    trivy_available = shutil.which("trivy") is not None
+    if trivy_available:
+        subprocess.run(["/usr/bin/env", "trivy", "--version"], cwd=project_dir, check=True)
+    else:
+        print(
+            "Warning: Trivy is not installed or not available on PATH; skipping Docker image scan.",
+            file=sys.stderr,
+        )
+
     env_path = project_dir / DEFAULT_ENV_FILE
     env_path.write_text(build_env_content(config), encoding="utf-8")
     with suppress(OSError):
@@ -259,6 +293,8 @@ def deploy(config: DeployConfig, project_dir: Path) -> DeployResult:
                 cwd=project_dir,
                 check=True,
             )
+            if trivy_available:
+                _scan_generated_image_with_trivy(project_dir)
         else:
             with suppress(FileNotFoundError):
                 (project_dir / DEFAULT_CADDY_PUBLIC_COMPOSE_FILE).unlink()
@@ -276,6 +312,8 @@ def deploy(config: DeployConfig, project_dir: Path) -> DeployResult:
                 cwd=project_dir,
                 check=True,
             )
+            if trivy_available:
+                _scan_generated_image_with_trivy(project_dir)
     else:
         no_caddy_path = project_dir / DEFAULT_NO_CADDY_COMPOSE_FILE
         no_caddy_path.write_text(build_direct_compose_content(), encoding="utf-8")
@@ -297,6 +335,8 @@ def deploy(config: DeployConfig, project_dir: Path) -> DeployResult:
             cwd=project_dir,
             check=True,
         )
+        if trivy_available:
+            _scan_generated_image_with_trivy(project_dir)
 
     return DeployResult(
         env_path=env_path,
