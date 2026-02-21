@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { crossPost } from '@/api/crosspost'
 import type { SocialAccount, CrossPostResult } from '@/api/crosspost'
@@ -63,6 +63,11 @@ export default function CrossPostDialog({
   const [results, setResults] = useState<CrossPostResult[] | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  const accountPlatforms = useMemo(
+    () => accounts.map((a) => a.platform).join(','),
+    [accounts],
+  )
+
   // Reset state when dialog opens
   useEffect(() => {
     if (open) {
@@ -70,13 +75,13 @@ export default function CrossPostDialog({
       if (initialPlatforms) {
         setSelectedPlatforms(new Set(initialPlatforms))
       } else {
-        setSelectedPlatforms(new Set(accounts.map((a) => a.platform)))
+        setSelectedPlatforms(new Set(accountPlatforms.split(',').filter(Boolean)))
       }
       setResults(null)
       setError(null)
       setPosting(false)
     }
-  }, [open, postTitle, postExcerpt, postLabels, postPath, accounts, initialPlatforms])
+  }, [open, postTitle, postExcerpt, postLabels, postPath, accountPlatforms, initialPlatforms])
 
   if (!open) return null
 

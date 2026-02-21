@@ -11,7 +11,12 @@ from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption,
 from backend.crosspost.atproto_oauth import generate_es256_keypair
 from backend.crosspost.base import CrossPostContent
 from backend.crosspost.bluesky import BlueskyCrossPoster, _build_post_text, _find_facets
-from backend.crosspost.mastodon import MastodonCrossPoster, _build_status_text
+from backend.crosspost.mastodon import (
+    MastodonCrossPoster,
+    MastodonOAuthTokenError,
+    _build_status_text,
+    exchange_mastodon_oauth_token,
+)
 from backend.crosspost.registry import list_platforms
 
 
@@ -54,6 +59,26 @@ class TestBlueSkyFormatting:
         )
         text = _build_post_text(content)
         assert text == "My custom post text!"
+
+    def test_build_post_text_rejects_custom_text_over_limit(self) -> None:
+        content = CrossPostContent(
+            title="Test",
+            excerpt="Excerpt.",
+            url="https://example.com/posts/test",
+            custom_text="A" * 301,
+        )
+        with pytest.raises(ValueError, match="300"):
+            _build_post_text(content)
+
+    def test_build_post_text_accepts_custom_text_at_limit(self) -> None:
+        content = CrossPostContent(
+            title="Test",
+            excerpt="Excerpt.",
+            url="https://example.com/posts/test",
+            custom_text="A" * 300,
+        )
+        text = _build_post_text(content)
+        assert text == "A" * 300
 
     def test_find_facets_link(self) -> None:
         content = CrossPostContent(
@@ -169,6 +194,67 @@ class TestMastodonFormatting:
         )
         text = _build_status_text(content)
         assert text == "My custom Mastodon text!"
+
+    def test_build_status_text_rejects_custom_text_over_limit(self) -> None:
+        content = CrossPostContent(
+            title="Test",
+            excerpt="Excerpt.",
+            url="https://example.com/posts/test",
+            custom_text="A" * 501,
+        )
+        with pytest.raises(ValueError, match="500"):
+            _build_status_text(content)
+
+    def test_build_status_text_accepts_custom_text_at_limit(self) -> None:
+        content = CrossPostContent(
+            title="Test",
+            excerpt="Excerpt.",
+            url="https://example.com/posts/test",
+            custom_text="A" * 500,
+        )
+        text = _build_status_text(content)
+        assert text == "A" * 500
+
+
+class TestMastodonOAuthTokenExchange:
+    async def test_raises_on_missing_access_token_in_response(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Token response with 200 but no access_token should raise MastodonOAuthTokenError."""
+
+        class DummyResponse:
+            status_code = 200
+            text = '{"error": "something"}'
+
+            @staticmethod
+            def json() -> dict[str, str]:
+                return {"error": "something"}
+
+        class DummyAsyncClient:
+            async def __aenter__(self) -> DummyAsyncClient:
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb) -> bool:
+                return False
+
+            async def post(self, url: str, **kwargs) -> DummyResponse:
+                return DummyResponse()
+
+        monkeypatch.setattr("backend.crosspost.mastodon.httpx.AsyncClient", DummyAsyncClient)
+        monkeypatch.setattr(
+            "backend.crosspost.mastodon._normalize_instance_url",
+            lambda u: "https://mastodon.social",
+        )
+
+        with pytest.raises(MastodonOAuthTokenError, match="access_token"):
+            await exchange_mastodon_oauth_token(
+                instance_url="https://mastodon.social",
+                code="test-code",
+                client_id="test-client-id",
+                client_secret="test-client-secret",
+                redirect_uri="https://example.com/callback",
+                pkce_verifier="test-verifier",
+            )
 
 
 def _make_oauth_credentials() -> dict[str, str]:

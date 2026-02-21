@@ -165,4 +165,33 @@ describe('SocialAccountsPanel', () => {
       expect(screen.getByText('Failed to load social accounts.')).toBeInTheDocument()
     })
   })
+
+  it('does not call onBusyChange again when callback reference changes', async () => {
+    mockFetchSocialAccounts.mockResolvedValue([])
+    const onBusyChange1 = vi.fn()
+    const onBusyChange2 = vi.fn()
+
+    const { rerender } = render(
+      <SocialAccountsPanel busy={false} onBusyChange={onBusyChange1} />,
+    )
+    await waitFor(() => {
+      expect(screen.getByText('Connect Bluesky')).toBeInTheDocument()
+    })
+
+    // Record call count after initial render
+    const initialCalls = onBusyChange1.mock.calls.length
+
+    // Re-render with a new callback reference — should NOT trigger extra calls
+    rerender(<SocialAccountsPanel busy={false} onBusyChange={onBusyChange2} />)
+
+    // Wait a tick for effects to settle
+    await waitFor(() => {
+      expect(screen.getByText('Connect Bluesky')).toBeInTheDocument()
+    })
+
+    // onBusyChange2 should not have been called because localBusy didn't change
+    expect(onBusyChange2).not.toHaveBeenCalled()
+    // And onBusyChange1 should not have received extra calls beyond initial
+    expect(onBusyChange1.mock.calls.length).toBe(initialCalls)
+  })
 })

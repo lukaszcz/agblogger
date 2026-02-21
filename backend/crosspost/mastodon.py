@@ -123,7 +123,10 @@ async def exchange_mastodon_oauth_token(
             raise MastodonOAuthTokenError(msg)
         token_data = token_resp.json()
 
-    access_token = token_data["access_token"]
+    access_token = token_data.get("access_token")
+    if not access_token:
+        msg = "Token response missing access_token"
+        raise MastodonOAuthTokenError(msg)
 
     async with httpx.AsyncClient() as http_client:
         verify_resp = await http_client.get(
@@ -152,6 +155,9 @@ def _build_status_text(content: CrossPostContent) -> str:
     Format: excerpt + hashtags + link.
     """
     if content.custom_text is not None:
+        if len(content.custom_text) > MASTODON_CHAR_LIMIT:
+            msg = f"Custom text exceeds {MASTODON_CHAR_LIMIT} character limit"
+            raise ValueError(msg)
         return content.custom_text
 
     link = content.url

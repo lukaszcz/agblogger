@@ -234,6 +234,34 @@ describe('CrossPostDialog', () => {
     expect(onClose).toHaveBeenCalledOnce()
   })
 
+  it('does not reset user-edited text when accounts array reference changes', async () => {
+    const user = userEvent.setup()
+    const accounts = [blueskyAccount]
+    const { rerender } = render(
+      <CrossPostDialog
+        {...defaultProps}
+        accounts={accounts}
+        open={true}
+      />,
+    )
+
+    const textarea = screen.getByLabelText('Cross-post text')
+    await user.clear(textarea)
+    await user.type(textarea, 'My custom text')
+
+    // Re-render with a new accounts array reference (same content)
+    rerender(
+      <CrossPostDialog
+        {...defaultProps}
+        accounts={[{ ...blueskyAccount }]}
+        open={true}
+      />,
+    )
+
+    // User-edited text should be preserved
+    expect(screen.getByLabelText('Cross-post text')).toHaveValue('My custom text')
+  })
+
   it('disables controls while posting', async () => {
     let resolvePost: (value: unknown) => void
     mockCrossPost.mockReturnValue(

@@ -66,6 +66,9 @@ def _build_post_text(content: CrossPostContent) -> str:
     The link is always included at the end.
     """
     if content.custom_text is not None:
+        if grapheme.length(content.custom_text) > BSKY_CHAR_LIMIT:
+            msg = f"Custom text exceeds {BSKY_CHAR_LIMIT} character limit"
+            raise ValueError(msg)
         return content.custom_text
 
     link = content.url

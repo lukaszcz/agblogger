@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Share2, Trash2, Plus, Loader2 } from 'lucide-react'
 
 import {
@@ -42,10 +42,12 @@ export default function SocialAccountsPanel({ busy, onBusyChange }: SocialAccoun
   const [deleting, setDeleting] = useState(false)
 
   const localBusy = submitting || deleting
+  const onBusyChangeRef = useRef(onBusyChange)
+  onBusyChangeRef.current = onBusyChange
 
   useEffect(() => {
-    onBusyChange(localBusy)
-  }, [localBusy, onBusyChange])
+    onBusyChangeRef.current(localBusy)
+  }, [localBusy])
 
   useEffect(() => {
     void loadAccounts()
