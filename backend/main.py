@@ -134,6 +134,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     git_service.init_repo()
     app.state.git_service = git_service
 
+    from backend.crosspost.atproto_oauth import load_or_create_keypair
+    from backend.crosspost.bluesky_oauth_state import OAuthStateStore
+
+    oauth_key_path = settings.content_dir / ".atproto-oauth-key.json"
+    atproto_key, atproto_jwk = load_or_create_keypair(oauth_key_path)
+    app.state.atproto_oauth_key = atproto_key
+    app.state.atproto_oauth_jwk = atproto_jwk
+    app.state.bluesky_oauth_state = OAuthStateStore(ttl_seconds=600)
+
     from backend.services.auth_service import ensure_admin_user
 
     async with session_factory() as session:

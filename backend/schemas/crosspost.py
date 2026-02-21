@@ -47,3 +47,15 @@ class CrossPostHistoryResponse(BaseModel):
     """Response containing cross-post history for a post."""
 
     items: list[CrossPostResponse]
+
+
+class BlueskyAuthorizeRequest(BaseModel):
+    """Request to start Bluesky OAuth flow."""
+
+    handle: str = Field(min_length=1, description="Bluesky handle, e.g. 'alice.bsky.social'")
+
+
+class BlueskyAuthorizeResponse(BaseModel):
+    """Response with authorization URL for Bluesky OAuth."""
+
+    authorization_url: str
