@@ -12,25 +12,28 @@ AgBlogger is a markdown-first blogging platform where markdown files with YAML f
 just start            # Start backend (:8000) + frontend (:5173) in the background
 just stop             # Stop the running dev server
 just start backend_port=9000 frontend_port=9173  # Custom ports
-just check            # Run all type checking, linting, format checks, and tests
-just check-backend    # Backend only: mypy, ruff check, ruff format --check, pytest
-just check-frontend   # Frontend only: tsc, eslint, vitest
+just check            # Full gate: backend + frontend + Semgrep + Vulture
+just check-backend    # mypy, basedpyright, deptry, import-linter, ruff, pip-audit, pytest
+just check-frontend   # tsc, eslint, dependency-cruiser, knip, npm audit, vitest
+just check-semgrep    # Semgrep SAST (p/ci, p/security-audit, p/secrets, p/python, p/typescript + local rules)
+just check-vulture    # Vulture dead-code analysis for backend/ and cli/
 ```
 
-Always start a dev server with `just start`. Remeber to stop a running dev server with `just stop` when finished.
+Always start a dev server with `just start`. Remember to stop a running dev server with `just stop` when finished.
 
 ## Coding Style & Naming Conventions
 
 ### Python (backend/, cli/, tests/)
 
 - Formatting: ruff (line length 100)
-- Linting: avoid `noqa` comments
-- Typing: strict typing discipline; avoid `type: ignore` comments; modern union syntax (`str | None`, `dict[str, Any]`, `list[str]`); `Annotated` for FastAPI dependencies
+- Linting: ruff + import-linter; avoid `noqa` comments
+- Typing: strict discipline (`mypy` strict + `basedpyright`); avoid `type: ignore` comments; modern union syntax (`str | None`, `dict[str, Any]`, `list[str]`); `Annotated` for FastAPI dependencies
 - Naming & style: `snake_case` files/functions/variables, `PascalCase` classes; `from __future__ import annotations` everywhere; `async def` for all I/O; follow existing Pydantic/SQLAlchemy/FastAPI patterns in the codebase
 
 ### TypeScript (frontend/src/)
 
 - Formatting: ESLint with typescript-eslint (type-checked rules); avoid `eslint-disable-line`
+- Static hygiene: keep dependency-cruiser and knip checks passing
 - Naming & style: `PascalCase.tsx` components, `camelCase.ts` utilities/stores; `PascalCase` types/interfaces, `fetch` prefix for API functions, `handle` prefix for event handlers; Tailwind with semantic color tokens; follow existing patterns in the codebase
 
 ## Testing Guidelines
@@ -38,6 +41,7 @@ Always start a dev server with `just start`. Remeber to stop a running dev serve
 - **IMPORTANT**: Every new feature should include tests that verify its correctness at the appropriate levels (unit, integration, and possibly system level).
 - **IMPORTANT**: Follow Test Driven Development (TDD). Write failing tests first, implement changes later to make the tests pass.
 - **IMPORTANT**: For every bug found, add a regression test that fails because of the bug, then fix the bug and ensure the test passes.
+- Test warnings are treated as errors (`filterwarnings = ["error"]`), so tests must run warning-free.
 - Avoid brittle tests. Test user workflows, not implementation details.
 - Don't leak expected error output into test run output.
 
