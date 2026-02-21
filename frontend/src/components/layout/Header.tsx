@@ -1,6 +1,6 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Search, LogIn, LogOut, PenLine, Settings, Menu, X } from 'lucide-react'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useSiteStore } from '@/stores/siteStore'
 import { useAuthStore } from '@/stores/authStore'
 
@@ -14,6 +14,7 @@ export default function Header() {
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const closeSearchRef = useRef<HTMLButtonElement>(null)
 
   function closeMobileMenu() {
     setMobileMenuOpen(false)
@@ -49,7 +50,7 @@ export default function Header() {
 
           <div className="flex items-center gap-3">
             {searchOpen ? (
-              <form onSubmit={handleSearch} className="flex items-center">
+              <form onSubmit={handleSearch} className="flex items-center gap-1">
                 <input
                   type="text"
                   value={searchQuery}
@@ -59,10 +60,23 @@ export default function Header() {
                   className="w-48 px-3 py-1.5 text-sm bg-paper-warm border border-border rounded-lg
                            focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20
                            font-body placeholder:text-muted"
-                  onBlur={() => {
-                    if (!searchQuery) setSearchOpen(false)
+                  onBlur={(e) => {
+                    if (!searchQuery && e.relatedTarget !== closeSearchRef.current)
+                      setSearchOpen(false)
                   }}
                 />
+                <button
+                  ref={closeSearchRef}
+                  type="button"
+                  onClick={() => {
+                    setSearchOpen(false)
+                    setSearchQuery('')
+                  }}
+                  className="p-1.5 text-muted hover:text-ink transition-colors rounded-lg hover:bg-paper-warm"
+                  aria-label="Close search"
+                >
+                  <X size={16} />
+                </button>
               </form>
             ) : (
               <button

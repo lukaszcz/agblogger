@@ -40,7 +40,15 @@ function Layout() {
       <footer className="border-t border-border mt-16">
         <div className="max-w-3xl mx-auto px-6 py-8">
           <p className="text-xs text-muted text-center font-mono tracking-wide">
-            Powered by AgBlogger
+            Powered by{' '}
+            <a
+              href="https://github.com/agblogger/agblogger"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline decoration-border hover:text-accent hover:decoration-accent transition-colors"
+            >
+              AgBlogger
+            </a>
           </p>
         </div>
       </footer>

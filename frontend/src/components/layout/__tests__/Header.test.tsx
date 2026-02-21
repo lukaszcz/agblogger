@@ -117,4 +117,13 @@ describe('Header', () => {
     await userEvent.click(screen.getByLabelText('Search'))
     expect(screen.getByPlaceholderText('Search posts...')).toBeInTheDocument()
   })
+
+  it('closes search when close button is clicked', async () => {
+    renderHeader()
+    await userEvent.click(screen.getByLabelText('Search'))
+    expect(screen.getByPlaceholderText('Search posts...')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByLabelText('Close search'))
+    expect(screen.queryByPlaceholderText('Search posts...')).not.toBeInTheDocument()
+  })
 })

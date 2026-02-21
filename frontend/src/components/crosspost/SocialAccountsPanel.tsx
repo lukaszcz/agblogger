@@ -347,21 +347,28 @@ export default function SocialAccountsPanel({ busy, onBusyChange }: SocialAccoun
                 </div>
               </div>
             ) : (
-              <button
-                onClick={() => {
-                  setConnectingPlatform('bluesky')
-                  setInstanceUrl('')
-                  setError(null)
-                  setSuccess(null)
-                }}
-                disabled={allBusy}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium
-                         border border-border rounded-lg hover:bg-paper-warm
-                         disabled:opacity-50 transition-colors"
-              >
-                <PlatformIcon platform="bluesky" size={14} />
-                Connect Bluesky
-              </button>
+              <div className="flex items-center gap-3 px-4 py-3 border border-dashed border-border rounded-lg">
+                <PlatformIcon platform="bluesky" size={20} className="text-muted" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-ink">Bluesky</p>
+                  <p className="text-xs text-muted">Post to your Bluesky account</p>
+                </div>
+                <button
+                  onClick={() => {
+                    setConnectingPlatform('bluesky')
+                    setInstanceUrl('')
+                    setError(null)
+                    setSuccess(null)
+                  }}
+                  disabled={allBusy}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium
+                           border border-border rounded-lg hover:bg-paper-warm
+                           disabled:opacity-50 transition-colors"
+                >
+                  <Plus size={12} />
+                  Connect Bluesky
+                </button>
+              </div>
             )}
 
             {/* Mastodon connect */}
@@ -409,21 +416,28 @@ export default function SocialAccountsPanel({ busy, onBusyChange }: SocialAccoun
                 </div>
               </div>
             ) : (
-              <button
-                onClick={() => {
-                  setConnectingPlatform('mastodon')
-                  setHandle('')
-                  setError(null)
-                  setSuccess(null)
-                }}
-                disabled={allBusy}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium
-                         border border-border rounded-lg hover:bg-paper-warm
-                         disabled:opacity-50 transition-colors"
-              >
-                <PlatformIcon platform="mastodon" size={14} />
-                Connect Mastodon
-              </button>
+              <div className="flex items-center gap-3 px-4 py-3 border border-dashed border-border rounded-lg">
+                <PlatformIcon platform="mastodon" size={20} className="text-muted" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-ink">Mastodon</p>
+                  <p className="text-xs text-muted">Post to your Mastodon instance</p>
+                </div>
+                <button
+                  onClick={() => {
+                    setConnectingPlatform('mastodon')
+                    setHandle('')
+                    setError(null)
+                    setSuccess(null)
+                  }}
+                  disabled={allBusy}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium
+                           border border-border rounded-lg hover:bg-paper-warm
+                           disabled:opacity-50 transition-colors"
+                >
+                  <Plus size={12} />
+                  Connect Mastodon
+                </button>
+              </div>
             )}
 
             {/* X connect */}
@@ -453,20 +467,27 @@ export default function SocialAccountsPanel({ busy, onBusyChange }: SocialAccoun
                 </div>
               </div>
             ) : (
-              <button
-                onClick={() => {
-                  setConnectingPlatform('x')
-                  setError(null)
-                  setSuccess(null)
-                }}
-                disabled={allBusy}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium
-                         border border-border rounded-lg hover:bg-paper-warm
-                         disabled:opacity-50 transition-colors"
-              >
-                <PlatformIcon platform="x" size={14} />
-                Connect X
-              </button>
+              <div className="flex items-center gap-3 px-4 py-3 border border-dashed border-border rounded-lg">
+                <PlatformIcon platform="x" size={20} className="text-muted" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-ink">X</p>
+                  <p className="text-xs text-muted">Post tweets to your X account</p>
+                </div>
+                <button
+                  onClick={() => {
+                    setConnectingPlatform('x')
+                    setError(null)
+                    setSuccess(null)
+                  }}
+                  disabled={allBusy}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium
+                           border border-border rounded-lg hover:bg-paper-warm
+                           disabled:opacity-50 transition-colors"
+                >
+                  <Plus size={12} />
+                  Connect X
+                </button>
+              </div>
             )}
 
             {/* Facebook connect */}
@@ -496,20 +517,27 @@ export default function SocialAccountsPanel({ busy, onBusyChange }: SocialAccoun
                 </div>
               </div>
             ) : (
-              <button
-                onClick={() => {
-                  setConnectingPlatform('facebook')
-                  setError(null)
-                  setSuccess(null)
-                }}
-                disabled={allBusy}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium
-                         border border-border rounded-lg hover:bg-paper-warm
-                         disabled:opacity-50 transition-colors"
-              >
-                <PlatformIcon platform="facebook" size={14} />
-                Connect Facebook
-              </button>
+              <div className="flex items-center gap-3 px-4 py-3 border border-dashed border-border rounded-lg">
+                <PlatformIcon platform="facebook" size={20} className="text-muted" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-ink">Facebook</p>
+                  <p className="text-xs text-muted">Post to your Facebook Page</p>
+                </div>
+                <button
+                  onClick={() => {
+                    setConnectingPlatform('facebook')
+                    setError(null)
+                    setSuccess(null)
+                  }}
+                  disabled={allBusy}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium
+                           border border-border rounded-lg hover:bg-paper-warm
+                           disabled:opacity-50 transition-colors"
+                >
+                  <Plus size={12} />
+                  Connect Facebook
+                </button>
+              </div>
             )}
           </div>
 

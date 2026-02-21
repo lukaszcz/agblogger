@@ -4,6 +4,7 @@ import {
   ReactFlow,
   Background,
   Controls,
+  MiniMap,
   type Node,
   type Edge,
   type Connection,
@@ -437,6 +438,11 @@ export default function LabelGraphPage({ viewToggle }: { viewToggle: React.React
           <Background color="#e0dbd4" gap={20} size={1} />
           <Controls
             className="!bg-paper !border-border !shadow-sm [&>button]:!bg-paper [&>button]:!border-border [&>button]:!text-muted [&>button:hover]:!bg-paper-warm"
+          />
+          <MiniMap
+            nodeColor="#c8c1b8"
+            maskColor="rgba(245, 243, 239, 0.7)"
+            className="!bg-paper !border-border !shadow-sm !rounded-lg"
           />
         </ReactFlow>
       </div>
