@@ -102,27 +102,29 @@ describe('getShareUrl', () => {
 })
 
 describe('canNativeShare', () => {
-  const originalNavigator = globalThis.navigator
-
   afterEach(() => {
-    Object.defineProperty(globalThis, 'navigator', {
-      value: originalNavigator,
+    // Restore navigator.share to undefined (jsdom default)
+    Object.defineProperty(navigator, 'share', {
+      value: undefined,
       writable: true,
+      configurable: true,
     })
   })
 
   it('returns true when navigator.share is available', () => {
-    Object.defineProperty(globalThis, 'navigator', {
-      value: { ...originalNavigator, share: vi.fn() },
+    Object.defineProperty(navigator, 'share', {
+      value: vi.fn(),
       writable: true,
+      configurable: true,
     })
     expect(canNativeShare()).toBe(true)
   })
 
   it('returns false when navigator.share is unavailable', () => {
-    Object.defineProperty(globalThis, 'navigator', {
-      value: { ...originalNavigator, share: undefined },
+    Object.defineProperty(navigator, 'share', {
+      value: undefined,
       writable: true,
+      configurable: true,
     })
     expect(canNativeShare()).toBe(false)
   })
@@ -131,9 +133,10 @@ describe('canNativeShare', () => {
 describe('nativeShare', () => {
   it('calls navigator.share with correct data', async () => {
     const mockShare = vi.fn().mockResolvedValue(undefined)
-    Object.defineProperty(globalThis, 'navigator', {
-      value: { ...globalThis.navigator, share: mockShare },
+    Object.defineProperty(navigator, 'share', {
+      value: mockShare,
       writable: true,
+      configurable: true,
     })
 
     await nativeShare('Title', 'Text', 'https://example.com')
@@ -147,24 +150,20 @@ describe('nativeShare', () => {
 
 describe('copyToClipboard', () => {
   it('returns true on success', async () => {
-    Object.defineProperty(globalThis, 'navigator', {
-      value: {
-        ...globalThis.navigator,
-        clipboard: { writeText: vi.fn().mockResolvedValue(undefined) },
-      },
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
       writable: true,
+      configurable: true,
     })
     const result = await copyToClipboard('text')
     expect(result).toBe(true)
   })
 
   it('returns false on failure', async () => {
-    Object.defineProperty(globalThis, 'navigator', {
-      value: {
-        ...globalThis.navigator,
-        clipboard: { writeText: vi.fn().mockRejectedValue(new Error('fail')) },
-      },
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: vi.fn().mockRejectedValue(new Error('fail')) },
       writable: true,
+      configurable: true,
     })
     const result = await copyToClipboard('text')
     expect(result).toBe(false)

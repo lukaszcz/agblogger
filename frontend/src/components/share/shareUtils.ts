@@ -1,7 +1,7 @@
 const MASTODON_INSTANCE_KEY = 'agblogger:mastodon-instance'
 
 export function getShareText(title: string, author: string | null, url: string): string {
-  if (author) {
+  if (author !== null) {
     return `\u201c${title}\u201d by ${author} ${url}`
   }
   return `\u201c${title}\u201d ${url}`
@@ -18,7 +18,7 @@ export function getShareUrl(
     case 'bluesky':
       return `https://bsky.app/intent/compose?text=${encodeURIComponent(text)}`
     case 'mastodon':
-      if (!mastodonInstance) return ''
+      if (mastodonInstance === undefined || mastodonInstance === '') return ''
       return `https://${mastodonInstance}/share?text=${encodeURIComponent(text)}`
     case 'x':
       return `https://x.com/intent/tweet?text=${encodeURIComponent(text)}`
