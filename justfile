@@ -47,11 +47,15 @@ check-semgrep:
         --config p/secrets \
         --config p/python \
         --config p/typescript \
+        --config p/dockerfile \
+        --config p/docker-compose \
+        --config p/supply-chain \
+        --config p/trailofbits \
         --config .semgrep.yml \
         --exclude-rule typescript.react.security.audit.react-dangerouslysetinnerhtml.react-dangerouslysetinnerhtml \
         --error \
         --quiet \
-        backend/ cli/ frontend/src/ \
+        backend/ cli/ frontend/src/ Dockerfile docker-compose.yml \
         --exclude tests \
         --exclude "frontend/src/**/__tests__" \
         --exclude "frontend/src/**/*.test.ts" \

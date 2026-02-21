@@ -59,9 +59,13 @@ All checks are fail-fast and CI-blocking.
   - `p/secrets`
   - `p/python`
   - `p/typescript`
+  - `p/dockerfile`
+  - `p/docker-compose`
+  - `p/supply-chain`
+  - `p/trailofbits`
   - `.semgrep.yml` (local project rules)
 - Purpose: SAST and security-pattern detection.
-- Scope: `backend/`, `cli/`, `frontend/src/` (tests excluded).
+- Scope: `backend/`, `cli/`, `frontend/src/`, `Dockerfile`, `docker-compose.yml` (tests excluded).
 
 ## Dead-Code Analysis (`check-vulture`)
 
