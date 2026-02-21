@@ -7,6 +7,8 @@ import { useAuthStore } from '@/stores/authStore'
 import { HTTPError } from '@/api/client'
 import LabelChip from '@/components/labels/LabelChip'
 import CrossPostSection from '@/components/crosspost/CrossPostSection'
+import ShareButton from '@/components/share/ShareButton'
+import ShareBar from '@/components/share/ShareBar'
 import { useRenderedHtml } from '@/hooks/useKatex'
 import TableOfContents from '@/components/posts/TableOfContents'
 import type { PostDetail } from '@/api/client'
@@ -132,6 +134,8 @@ export default function PostPage() {
                 ))}
               </div>
             )}
+
+            <ShareButton title={post.title} author={post.author} url={window.location.href} />
           </div>
 
           {user && (
@@ -171,6 +175,8 @@ export default function PostPage() {
           __html: renderedHtml,
         }}
       />
+
+      <ShareBar title={post.title} author={post.author} url={window.location.href} />
 
       {user?.is_admin === true && filePath !== undefined && filePath !== '' && (
         <CrossPostSection filePath={filePath} post={post} />

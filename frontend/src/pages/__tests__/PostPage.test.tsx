@@ -240,4 +240,41 @@ describe('PostPage', () => {
     // Dialog should be closed after error
     expect(screen.queryByText('Delete post?')).not.toBeInTheDocument()
   })
+
+  it('renders share button for unauthenticated users', async () => {
+    mockFetchPost.mockResolvedValue(postDetail)
+    renderPostPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Hello World')).toBeInTheDocument()
+    })
+    expect(screen.getByRole('button', { name: 'Share this post' })).toBeInTheDocument()
+  })
+
+  it('renders share bar for unauthenticated users', async () => {
+    mockFetchPost.mockResolvedValue(postDetail)
+    renderPostPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Hello World')).toBeInTheDocument()
+    })
+    // ShareBar renders platform share buttons (e.g. Share on Bluesky, etc.)
+    expect(screen.getByRole('button', { name: 'Share on Bluesky' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Share via email' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Copy link' })).toBeInTheDocument()
+  })
+
+  it('renders share UI and cross-posting section for admin users', async () => {
+    mockUser = { id: 1, username: 'admin', email: 'a@b.com', display_name: null, is_admin: true }
+    mockFetchPost.mockResolvedValue(postDetail)
+    renderPostPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Hello World')).toBeInTheDocument()
+    })
+    // Share button in header
+    expect(screen.getByRole('button', { name: 'Share this post' })).toBeInTheDocument()
+    // Share bar platform buttons exist
+    expect(screen.getByRole('button', { name: 'Share on Bluesky' })).toBeInTheDocument()
+  })
 })
