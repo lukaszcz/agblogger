@@ -11,6 +11,7 @@ from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption,
 from backend.crosspost.atproto_oauth import generate_es256_keypair
 from backend.crosspost.base import CrossPostContent
 from backend.crosspost.bluesky import BlueskyCrossPoster, _build_post_text, _find_facets
+from backend.crosspost.facebook import FacebookCrossPoster, _build_facebook_text
 from backend.crosspost.mastodon import (
     MastodonCrossPoster,
     MastodonOAuthTokenError,
@@ -550,3 +551,97 @@ class TestXCrossPoster:
         updated = poster.get_updated_credentials()
         assert updated is not None
         assert updated["access_token"] == "new_at"
+
+
+class TestFacebookFormatting:
+    def test_build_facebook_text_includes_parts(self) -> None:
+        content = CrossPostContent(
+            title="Test Post",
+            excerpt="Short excerpt.",
+            url="https://blog.example.com/posts/test",
+            labels=["swe", "ai"],
+        )
+        text = _build_facebook_text(content)
+        assert "Short excerpt." in text
+        assert "#swe" in text
+        assert "#ai" in text
+
+    def test_build_facebook_text_uses_custom_text(self) -> None:
+        content = CrossPostContent(
+            title="Test",
+            excerpt="Excerpt.",
+            url="https://example.com/posts/test",
+            custom_text="My custom Facebook post!",
+        )
+        text = _build_facebook_text(content)
+        assert text == "My custom Facebook post!"
+
+
+class TestFacebookCrossPoster:
+    async def test_authenticate_with_valid_credentials(self) -> None:
+        poster = FacebookCrossPoster()
+        result = await poster.authenticate(
+            {
+                "page_access_token": "test_token",
+                "page_id": "12345",
+                "page_name": "My Page",
+            }
+        )
+        assert result is True
+
+    async def test_authenticate_rejects_missing_token(self) -> None:
+        poster = FacebookCrossPoster()
+        result = await poster.authenticate({"page_id": "12345"})
+        assert result is False
+
+    async def test_authenticate_rejects_missing_page_id(self) -> None:
+        poster = FacebookCrossPoster()
+        result = await poster.authenticate({"page_access_token": "test"})
+        assert result is False
+
+    async def test_post_to_page(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        captured: dict[str, object] = {}
+
+        class DummyResponse:
+            status_code = 200
+            text = ""
+
+            @staticmethod
+            def json() -> dict[str, str]:
+                return {"id": "12345_67890"}
+
+        class DummyAsyncClient:
+            async def __aenter__(self) -> DummyAsyncClient:
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb) -> bool:
+                return False
+
+            async def post(self, url: str, **kwargs) -> DummyResponse:
+                captured["url"] = url
+                captured["json"] = kwargs.get("json")
+                return DummyResponse()
+
+        monkeypatch.setattr(
+            "backend.crosspost.facebook.httpx.AsyncClient", DummyAsyncClient
+        )
+
+        poster = FacebookCrossPoster()
+        await poster.authenticate(
+            {
+                "page_access_token": "test_token",
+                "page_id": "12345",
+                "page_name": "My Page",
+            }
+        )
+        content = CrossPostContent(
+            title="Test",
+            excerpt="Hello world",
+            url="https://blog.example.com/post",
+            labels=["swe"],
+        )
+        result = await poster.post(content)
+        assert result.success
+        assert result.platform_id == "12345_67890"
+        assert "12345" in str(captured["url"])
+        assert captured["json"]["link"] == "https://blog.example.com/post"
