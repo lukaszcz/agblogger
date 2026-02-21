@@ -327,7 +327,7 @@ async def _auth_server_post(
                     continue
             return resp
 
-    return resp  # pragma: no cover
+    raise ATProtoOAuthError("Auth server DPoP nonce rotation exhausted")  # pragma: no cover
 
 
 async def send_par_request(

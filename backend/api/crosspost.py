@@ -234,9 +234,7 @@ async def bluesky_authorize(
             jwk=request.app.state.atproto_oauth_jwk,
         )
     except ATProtoOAuthError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)
-        ) from exc
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
     state_store = request.app.state.bluesky_oauth_state
     state_store.set(
         par_result["state"],
@@ -268,6 +266,12 @@ async def bluesky_callback(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid or expired OAuth state",
+        )
+    expected_issuer = pending["auth_server_meta"]["issuer"]
+    if iss and iss != expected_issuer:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Issuer mismatch in OAuth callback",
         )
     from cryptography.hazmat.primitives.serialization import (
         Encoding,
@@ -310,9 +314,7 @@ async def bluesky_callback(
             detail="DID mismatch in token response",
         )
     dpop_key, dpop_jwk = generate_es256_keypair()
-    dpop_pem = dpop_key.private_bytes(
-        Encoding.PEM, PrivateFormat.PKCS8, NoEncryption()
-    ).decode()
+    dpop_pem = dpop_key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, NoEncryption()).decode()
     credentials = {
         "access_token": token_data["access_token"],
         "refresh_token": token_data.get("refresh_token", ""),
@@ -332,15 +334,11 @@ async def bluesky_callback(
         credentials=credentials,
     )
     try:
-        await create_social_account(
-            session, pending["user_id"], account_data, settings.secret_key
-        )
+        await create_social_account(session, pending["user_id"], account_data, settings.secret_key)
     except ValueError:
         existing = await get_social_accounts(session, pending["user_id"])
         for acct in existing:
             if acct.platform == "bluesky":
                 await delete_social_account(session, acct.id, pending["user_id"])
-        await create_social_account(
-            session, pending["user_id"], account_data, settings.secret_key
-        )
+        await create_social_account(session, pending["user_id"], account_data, settings.secret_key)
     return RedirectResponse(url=f"{base_url}/admin", status_code=303)

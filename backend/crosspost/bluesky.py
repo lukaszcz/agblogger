@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import grapheme
 import httpx
+from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePrivateKey
 from cryptography.hazmat.primitives.serialization import (
     Encoding,
     NoEncryption,
@@ -19,19 +21,42 @@ from cryptography.hazmat.primitives.serialization import (
 from backend.crosspost.atproto_oauth import create_dpop_proof
 from backend.crosspost.base import CrossPostContent, CrossPostResult
 
-if TYPE_CHECKING:
-    from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePrivateKey
-
 logger = logging.getLogger(__name__)
 
 BSKY_CHAR_LIMIT = 300
 
-REQUIRED_CREDENTIAL_FIELDS = frozenset({
-    "access_token", "did", "handle", "pds_url",
-    "dpop_private_key_pem", "dpop_jwk", "dpop_nonce",
-    "auth_server_issuer", "token_endpoint",
-    "refresh_token", "client_id",
-})
+REQUIRED_CREDENTIAL_FIELDS = frozenset(
+    {
+        "access_token",
+        "did",
+        "handle",
+        "pds_url",
+        "dpop_private_key_pem",
+        "dpop_jwk",
+        "dpop_nonce",
+        "auth_server_issuer",
+        "token_endpoint",
+        "refresh_token",
+        "client_id",
+    }
+)
+
+
+@dataclass
+class _AuthState:
+    """Authenticated state for a Bluesky OAuth session."""
+
+    access_token: str
+    did: str
+    handle: str
+    pds_url: str
+    dpop_private_key: EllipticCurvePrivateKey
+    dpop_jwk: dict[str, str]
+    dpop_nonce: str
+    auth_server_issuer: str
+    token_endpoint: str
+    refresh_token: str
+    client_id: str
 
 
 def _build_post_text(content: CrossPostContent) -> str:
@@ -116,37 +141,32 @@ class BlueskyCrossPoster:
     platform: str = "bluesky"
 
     def __init__(self) -> None:
-        self._access_token: str | None = None
-        self._did: str | None = None
-        self._handle: str | None = None
-        self._pds_url: str | None = None
-        self._dpop_private_key: EllipticCurvePrivateKey | None = None
-        self._dpop_jwk: dict[str, str] | None = None
-        self._dpop_nonce: str = ""
-        self._auth_server_issuer: str | None = None
-        self._token_endpoint: str | None = None
-        self._refresh_token: str | None = None
-        self._client_id: str | None = None
+        self._auth: _AuthState | None = None
         self._updated_credentials: dict[str, str] | None = None
 
     async def authenticate(self, credentials: dict[str, str]) -> bool:
         """Load OAuth credentials. No network call needed."""
         if not REQUIRED_CREDENTIAL_FIELDS.issubset(credentials):
             return False
-        self._access_token = credentials["access_token"]
-        self._did = credentials["did"]
-        self._handle = credentials["handle"]
-        self._pds_url = credentials["pds_url"].rstrip("/")
-        self._dpop_private_key = load_pem_private_key(
+        key = load_pem_private_key(
             credentials["dpop_private_key_pem"].encode(),
             password=None,
         )
-        self._dpop_jwk = json.loads(credentials["dpop_jwk"])
-        self._dpop_nonce = credentials["dpop_nonce"]
-        self._auth_server_issuer = credentials["auth_server_issuer"]
-        self._token_endpoint = credentials["token_endpoint"]
-        self._refresh_token = credentials["refresh_token"]
-        self._client_id = credentials["client_id"]
+        if not isinstance(key, EllipticCurvePrivateKey):
+            return False
+        self._auth = _AuthState(
+            access_token=credentials["access_token"],
+            did=credentials["did"],
+            handle=credentials["handle"],
+            pds_url=credentials["pds_url"].rstrip("/"),
+            dpop_private_key=key,
+            dpop_jwk=json.loads(credentials["dpop_jwk"]),
+            dpop_nonce=credentials["dpop_nonce"],
+            auth_server_issuer=credentials["auth_server_issuer"],
+            token_endpoint=credentials["token_endpoint"],
+            refresh_token=credentials["refresh_token"],
+            client_id=credentials["client_id"],
+        )
         return True
 
     def get_updated_credentials(self) -> dict[str, str] | None:
@@ -157,6 +177,7 @@ class BlueskyCrossPoster:
         self,
         method: str,
         url: str,
+        auth: _AuthState,
         *,
         json_body: dict[str, Any] | None = None,
     ) -> httpx.Response:
@@ -164,13 +185,13 @@ class BlueskyCrossPoster:
         dpop = create_dpop_proof(
             method=method,
             url=url,
-            key=self._dpop_private_key,
-            jwk=self._dpop_jwk,
-            nonce=self._dpop_nonce,
-            access_token=self._access_token,
+            key=auth.dpop_private_key,
+            jwk=auth.dpop_jwk,
+            nonce=auth.dpop_nonce,
+            access_token=auth.access_token,
         )
         headers = {
-            "Authorization": f"DPoP {self._access_token}",
+            "Authorization": f"DPoP {auth.access_token}",
             "DPoP": dpop,
         }
         async with httpx.AsyncClient() as client:
@@ -181,40 +202,40 @@ class BlueskyCrossPoster:
 
         new_nonce = resp.headers.get("DPoP-Nonce")
         if new_nonce:
-            self._dpop_nonce = new_nonce
+            auth.dpop_nonce = new_nonce
         return resp
 
-    async def _try_refresh_tokens(self) -> bool:
+    async def _try_refresh_tokens(self, auth: _AuthState) -> bool:
         """Attempt to refresh the access token."""
         from backend.crosspost.atproto_oauth import ATProtoOAuthError, refresh_access_token
 
         try:
             result = await refresh_access_token(
-                token_endpoint=self._token_endpoint,
-                auth_server_issuer=self._auth_server_issuer,
-                refresh_token=self._refresh_token,
-                client_id=self._client_id,
-                private_key=self._dpop_private_key,
-                jwk=self._dpop_jwk,
-                dpop_nonce=self._dpop_nonce,
+                token_endpoint=auth.token_endpoint,
+                auth_server_issuer=auth.auth_server_issuer,
+                refresh_token=auth.refresh_token,
+                client_id=auth.client_id,
+                private_key=auth.dpop_private_key,
+                jwk=auth.dpop_jwk,
+                dpop_nonce=auth.dpop_nonce,
             )
-            self._access_token = result["access_token"]
-            self._refresh_token = result.get("refresh_token", self._refresh_token)
-            self._dpop_nonce = result.get("dpop_nonce", self._dpop_nonce)
+            auth.access_token = result["access_token"]
+            auth.refresh_token = result.get("refresh_token") or auth.refresh_token
+            auth.dpop_nonce = result.get("dpop_nonce") or auth.dpop_nonce
             self._updated_credentials = {
-                "access_token": self._access_token,
-                "refresh_token": self._refresh_token,
-                "did": self._did,
-                "handle": self._handle,
-                "pds_url": self._pds_url,
-                "dpop_private_key_pem": self._dpop_private_key.private_bytes(
+                "access_token": auth.access_token,
+                "refresh_token": auth.refresh_token,
+                "did": auth.did,
+                "handle": auth.handle,
+                "pds_url": auth.pds_url,
+                "dpop_private_key_pem": auth.dpop_private_key.private_bytes(
                     Encoding.PEM, PrivateFormat.PKCS8, NoEncryption()
                 ).decode(),
-                "dpop_jwk": json.dumps(self._dpop_jwk),
-                "dpop_nonce": self._dpop_nonce,
-                "auth_server_issuer": self._auth_server_issuer,
-                "token_endpoint": self._token_endpoint,
-                "client_id": self._client_id,
+                "dpop_jwk": json.dumps(auth.dpop_jwk),
+                "dpop_nonce": auth.dpop_nonce,
+                "auth_server_issuer": auth.auth_server_issuer,
+                "token_endpoint": auth.token_endpoint,
+                "client_id": auth.client_id,
             }
             return True
         except ATProtoOAuthError:
@@ -223,7 +244,8 @@ class BlueskyCrossPoster:
 
     async def post(self, content: CrossPostContent) -> CrossPostResult:
         """Create a post on Bluesky using DPoP-bound OAuth tokens."""
-        if not self._access_token or not self._did:
+        auth = self._auth
+        if auth is None:
             return CrossPostResult(
                 platform_id="",
                 url="",
@@ -243,19 +265,19 @@ class BlueskyCrossPoster:
             record["facets"] = facets
 
         payload = {
-            "repo": self._did,
+            "repo": auth.did,
             "collection": "app.bsky.feed.post",
             "record": record,
         }
 
-        url = f"{self._pds_url}/xrpc/com.atproto.repo.createRecord"
+        url = f"{auth.pds_url}/xrpc/com.atproto.repo.createRecord"
         try:
-            resp = await self._make_pds_request("POST", url, json_body=payload)
+            resp = await self._make_pds_request("POST", url, auth, json_body=payload)
 
-            if resp.status_code == 401 and self._refresh_token:
-                refreshed = await self._try_refresh_tokens()
+            if resp.status_code == 401 and auth.refresh_token:
+                refreshed = await self._try_refresh_tokens(auth)
                 if refreshed:
-                    resp = await self._make_pds_request("POST", url, json_body=payload)
+                    resp = await self._make_pds_request("POST", url, auth, json_body=payload)
 
             if resp.status_code != 200:
                 return CrossPostResult(
@@ -266,11 +288,7 @@ class BlueskyCrossPoster:
                 )
             data = resp.json()
             rkey = data.get("uri", "").split("/")[-1]
-            post_url = (
-                f"https://bsky.app/profile/{self._handle}/post/{rkey}"
-                if self._handle and rkey
-                else ""
-            )
+            post_url = f"https://bsky.app/profile/{auth.handle}/post/{rkey}" if rkey else ""
             return CrossPostResult(
                 platform_id=data.get("uri", ""),
                 url=post_url,
@@ -287,11 +305,12 @@ class BlueskyCrossPoster:
 
     async def validate_credentials(self) -> bool:
         """Check if current session is still valid via DPoP-bound request."""
-        if not self._access_token or not self._pds_url:
+        auth = self._auth
+        if auth is None:
             return False
         try:
-            url = f"{self._pds_url}/xrpc/com.atproto.server.getSession"
-            resp = await self._make_pds_request("GET", url)
+            url = f"{auth.pds_url}/xrpc/com.atproto.server.getSession"
+            resp = await self._make_pds_request("GET", url, auth)
             return resp.status_code == 200
         except httpx.HTTPError:
             return False

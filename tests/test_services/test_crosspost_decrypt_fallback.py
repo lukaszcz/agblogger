@@ -75,7 +75,9 @@ class TestCrosspostTokenRefreshPersistence:
 
         class MockPoster:
             platform = "bluesky"
-            _updated = {"access_token": "new_at", "refresh_token": "new_rt"}
+
+            def __init__(self) -> None:
+                self._updated = {"access_token": "new_at", "refresh_token": "new_rt"}
 
             async def authenticate(self, creds):
                 return True

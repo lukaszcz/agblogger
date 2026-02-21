@@ -179,9 +179,10 @@ On startup, the lifespan handler:
 4. Ensures the content directory exists (`ensure_content_dir()`), creating the default scaffold if needed.
 5. Initializes the `ContentManager`.
 6. Initializes the `GitService` (creates a git repo in the content directory if one doesn't exist).
-7. Creates the admin user if it doesn't exist.
-8. Applies lightweight schema compatibility updates for `cross_posts.user_id` when needed.
-9. Rebuilds the full database cache from the filesystem.
+7. Loads or creates the AT Protocol OAuth ES256 keypair (`content/.atproto-oauth-key.json`) and initializes the Bluesky OAuth state store on `app.state`.
+8. Creates the admin user if it doesn't exist.
+9. Applies lightweight schema compatibility updates for `cross_posts.user_id` when needed.
+10. Rebuilds the full database cache from the filesystem.
 
 ### Layered Architecture
 
@@ -210,7 +211,7 @@ On startup, the lifespan handler:
 | `labels` | `/api/labels` | Label CRUD (create, update, delete), listing, graph data, posts by label |
 | `pages` | `/api/pages` | Site config, rendered page content |
 | `sync` | `/api/sync` | Bidirectional sync protocol (admin-only) |
-| `crosspost` | `/api/crosspost` | Social account management, cross-posting |
+| `crosspost` | `/api/crosspost` | Social account management, cross-posting, Bluesky OAuth flow |
 | `render` | `/api/render` | Server-side Pandoc preview for the editor |
 | `admin` | `/api/admin` | Site settings, page management, password change (admin-only) |
 | `content` | `/api/content` | Public file serving for post assets and shared assets |
@@ -405,10 +406,33 @@ class CrossPoster(Protocol):
 
 ### Platforms
 
-- **Bluesky** — AT Protocol HTTP API. Builds rich text facets for URLs and hashtags. 300-character limit.
+- **Bluesky** — AT Protocol OAuth (confidential client / BFF pattern). Uses DPoP-bound access tokens, PKCE, and Pushed Authorization Requests (PAR). Builds rich text facets for URLs and hashtags. 300-character limit.
 - **Mastodon** — HTTP API via httpx.
 
-A platform registry maps names to poster classes. Each cross-post attempt is recorded in the `cross_posts` table with status, platform ID, timestamp, and error message.
+A platform registry maps names to poster classes. Each cross-post attempt is recorded in the `cross_posts` table with status, platform ID, timestamp, and error message. When Bluesky tokens are refreshed during a cross-post, the updated credentials are re-encrypted and persisted.
+
+### Bluesky OAuth Flow
+
+AgBlogger authenticates with Bluesky using AT Protocol OAuth with three mandatory extensions:
+
+- **PKCE (S256)**: Prevents authorization code interception.
+- **PAR**: Authorization parameters are pushed server-side, not exposed in the browser URL.
+- **DPoP**: Every token request and API call includes an ES256-signed JWT proof binding the token to the client.
+
+The flow:
+
+1. User enters their Bluesky handle → `POST /api/crosspost/bluesky/authorize`
+2. Backend resolves handle → DID → PDS → authorization server metadata
+3. Backend sends a PAR request with PKCE challenge + client assertion (signed with the app's ES256 key)
+4. Frontend redirects user to Bluesky's authorization page
+5. Bluesky redirects back to `GET /api/crosspost/bluesky/callback`
+6. Backend exchanges authorization code for DPoP-bound tokens, stores encrypted credentials in `SocialAccount`
+
+**Client identity**: An ES256 keypair is generated on first startup and stored at `{content_dir}/.atproto-oauth-key.json`. The public key is served in the client metadata document at `GET /api/crosspost/bluesky/client-metadata.json`. The `BLUESKY_CLIENT_URL` setting provides the public base URL used to construct the `client_id`.
+
+**OAuth state**: Pending authorization flows are stored in an in-memory `OAuthStateStore` (`backend/crosspost/bluesky_oauth_state.py`) with a 10-minute TTL, keyed by the `state` parameter.
+
+**Token lifecycle**: Access tokens are short-lived and DPoP-bound. Refresh tokens last up to 3 months. On 401 responses during cross-posting, the `BlueskyCrossPoster` automatically refreshes tokens and retries. Updated tokens are persisted after each successful cross-post.
 
 ## Frontend Architecture
 

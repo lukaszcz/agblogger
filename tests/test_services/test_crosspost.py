@@ -179,9 +179,7 @@ class TestBlueskyCrossPosterOAuth:
     async def test_post_uses_dpop(self, monkeypatch: pytest.MonkeyPatch) -> None:
         captured_headers: dict[str, str] = {}
 
-        async def mock_post(
-            self: httpx.AsyncClient, url: str, **kwargs: object
-        ) -> httpx.Response:
+        async def mock_post(self: httpx.AsyncClient, url: str, **kwargs: object) -> httpx.Response:
             headers = kwargs.get("headers", {})
             assert isinstance(headers, dict)
             captured_headers.update(headers)
