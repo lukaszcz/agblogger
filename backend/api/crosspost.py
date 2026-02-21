@@ -618,57 +618,30 @@ async def x_callback(
 
     import httpx
 
-    # Exchange code for tokens
-    async with httpx.AsyncClient() as http_client:
-        try:
-            token_resp = await http_client.post(
-                "https://api.x.com/2/oauth2/token",
-                data={
-                    "grant_type": "authorization_code",
-                    "code": code,
-                    "redirect_uri": pending["redirect_uri"],
-                    "client_id": pending["client_id"],
-                    "code_verifier": pending["pkce_verifier"],
-                },
-                auth=(pending["client_id"], pending["client_secret"]),
-                timeout=15.0,
-            )
-        except httpx.HTTPError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"X OAuth HTTP error: {exc}",
-            ) from exc
+    from backend.crosspost.x import XOAuthTokenError, exchange_x_oauth_token
 
-    if token_resp.status_code != 200:
+    try:
+        token_result = await exchange_x_oauth_token(
+            code=code,
+            client_id=pending["client_id"],
+            client_secret=pending["client_secret"],
+            redirect_uri=pending["redirect_uri"],
+            pkce_verifier=pending["pkce_verifier"],
+        )
+    except XOAuthTokenError as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"X token exchange failed: {token_resp.status_code}",
-        )
-    token_data = token_resp.json()
-    access_token = token_data.get("access_token", "")
-    refresh_token = token_data.get("refresh_token", "")
-
-    # Fetch username
-    async with httpx.AsyncClient() as http_client:
-        try:
-            user_resp = await http_client.get(
-                "https://api.x.com/2/users/me",
-                headers={"Authorization": f"Bearer {access_token}"},
-                timeout=15.0,
-            )
-        except httpx.HTTPError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"X user fetch failed: {exc}",
-            ) from exc
-
-    if user_resp.status_code != 200:
+            detail=str(exc),
+        ) from exc
+    except httpx.HTTPError as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"X user fetch failed: {user_resp.status_code}",
-        )
-    user_data = user_resp.json()
-    username = user_data.get("data", {}).get("username", "unknown")
+            detail=f"X OAuth HTTP error: {exc}",
+        ) from exc
+
+    access_token = token_result["access_token"]
+    refresh_token = token_result["refresh_token"]
+    username = token_result["username"]
 
     credentials = {
         "access_token": access_token,

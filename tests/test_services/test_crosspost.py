@@ -624,9 +624,7 @@ class TestFacebookCrossPoster:
                 captured["json"] = kwargs.get("json")
                 return DummyResponse()
 
-        monkeypatch.setattr(
-            "backend.crosspost.facebook.httpx.AsyncClient", DummyAsyncClient
-        )
+        monkeypatch.setattr("backend.crosspost.facebook.httpx.AsyncClient", DummyAsyncClient)
 
         poster = FacebookCrossPoster()
         await poster.authenticate(
@@ -646,4 +644,6 @@ class TestFacebookCrossPoster:
         assert result.success
         assert result.platform_id == "12345_67890"
         assert "12345" in str(captured["url"])
-        assert captured["json"]["link"] == "https://blog.example.com/post"
+        json_body = captured["json"]
+        assert isinstance(json_body, dict)
+        assert json_body["link"] == "https://blog.example.com/post"

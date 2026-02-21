@@ -44,6 +44,63 @@ def _build_tweet_text(content: CrossPostContent) -> str:
     return excerpt + suffix
 
 
+class XOAuthTokenError(Exception):
+    """Raised when X OAuth token exchange fails."""
+
+
+async def exchange_x_oauth_token(
+    code: str,
+    client_id: str,
+    client_secret: str,
+    redirect_uri: str,
+    pkce_verifier: str,
+) -> dict[str, str]:
+    """Exchange authorization code for X OAuth tokens and fetch username.
+
+    Returns dict with keys: access_token, refresh_token, username.
+    Raises XOAuthTokenError on failure.
+    """
+    async with httpx.AsyncClient() as http_client:
+        token_resp = await http_client.post(
+            "https://api.x.com/2/oauth2/token",
+            data={
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": redirect_uri,
+                "client_id": client_id,
+                "code_verifier": pkce_verifier,
+            },
+            auth=(client_id, client_secret),
+            timeout=15.0,
+        )
+        if token_resp.status_code != 200:
+            msg = f"Token exchange failed: {token_resp.status_code}"
+            raise XOAuthTokenError(msg)
+        token_data = token_resp.json()
+        access_token = token_data.get("access_token")
+        if not access_token:
+            msg = "Token response missing access_token"
+            raise XOAuthTokenError(msg)
+        refresh_token = token_data.get("refresh_token", "")
+
+        user_resp = await http_client.get(
+            "https://api.x.com/2/users/me",
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=15.0,
+        )
+        if user_resp.status_code != 200:
+            msg = f"User fetch failed: {user_resp.status_code}"
+            raise XOAuthTokenError(msg)
+        user_data = user_resp.json()
+        username = user_data.get("data", {}).get("username", "unknown")
+
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "username": username,
+    }
+
+
 class XCrossPoster:
     """Cross-poster for X (Twitter) using API v2."""
 
@@ -108,7 +165,7 @@ class XCrossPoster:
                     timeout=15.0,
                 )
                 if resp.status_code != 200:
-                    logger.warning("X token refresh failed: %s", resp.status_code)
+                    logger.warning("X refresh request failed with status %s", resp.status_code)
                     return False
                 token_data = resp.json()
                 self._access_token = token_data["access_token"]
@@ -121,7 +178,10 @@ class XCrossPoster:
                     "client_secret": self._client_secret,
                 }
                 return True
-            except httpx.HTTPError, KeyError:
+            except httpx.HTTPError:
+                logger.exception("X token refresh error")
+                return False
+            except KeyError:
                 logger.exception("X token refresh error")
                 return False
 

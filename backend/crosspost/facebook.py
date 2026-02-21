@@ -129,9 +129,7 @@ class FacebookCrossPoster:
     async def post(self, content: CrossPostContent) -> CrossPostResult:
         """Create a post on a Facebook Page."""
         if not self._page_access_token or not self._page_id:
-            return CrossPostResult(
-                platform_id="", url="", success=False, error="Not authenticated"
-            )
+            return CrossPostResult(platform_id="", url="", success=False, error="Not authenticated")
 
         message = _build_facebook_text(content)
 
@@ -155,12 +153,8 @@ class FacebookCrossPoster:
                     )
                 data = resp.json()
                 post_id = data.get("id", "")
-                post_url = (
-                    f"https://www.facebook.com/{post_id}" if post_id else ""
-                )
-                return CrossPostResult(
-                    platform_id=post_id, url=post_url, success=True
-                )
+                post_url = f"https://www.facebook.com/{post_id}" if post_id else ""
+                return CrossPostResult(platform_id=post_id, url=post_url, success=True)
             except httpx.HTTPError as exc:
                 logger.exception("Facebook post HTTP error")
                 return CrossPostResult(

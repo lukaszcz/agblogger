@@ -66,7 +66,7 @@ export default function SocialAccountsPanel({ busy, onBusyChange }: SocialAccoun
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const fbPagesState = params.get('fb_pages')
-    if (fbPagesState) {
+    if (fbPagesState !== null) {
       setFacebookPageState(fbPagesState)
       const url = new URL(window.location.href)
       url.searchParams.delete('fb_pages')
@@ -164,7 +164,7 @@ export default function SocialAccountsPanel({ busy, onBusyChange }: SocialAccoun
   }
 
   async function handleSelectFacebookPage(pageId: string) {
-    if (!facebookPageState) return
+    if (facebookPageState === null) return
     setSelectingPage(true)
     setError(null)
     try {
