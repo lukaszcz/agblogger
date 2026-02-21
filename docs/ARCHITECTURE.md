@@ -179,7 +179,7 @@ On startup, the lifespan handler:
 4. Ensures the content directory exists (`ensure_content_dir()`), creating the default scaffold if needed.
 5. Initializes the `ContentManager`.
 6. Initializes the `GitService` (creates a git repo in the content directory if one doesn't exist).
-7. Loads or creates the AT Protocol OAuth ES256 keypair (`content/.atproto-oauth-key.json`) and initializes the Bluesky OAuth state store on `app.state`.
+7. Loads or creates the AT Protocol OAuth ES256 keypair (`content/.atproto-oauth-key.json`) and initializes OAuth state stores for Bluesky, Mastodon, X, and Facebook on `app.state`.
 8. Creates the admin user if it doesn't exist.
 9. Applies lightweight schema compatibility updates for `cross_posts.user_id` when needed.
 10. Rebuilds the full database cache from the filesystem.
@@ -211,7 +211,7 @@ On startup, the lifespan handler:
 | `labels` | `/api/labels` | Label CRUD (create, update, delete), listing, graph data, posts by label |
 | `pages` | `/api/pages` | Site config, rendered page content |
 | `sync` | `/api/sync` | Bidirectional sync protocol (admin-only) |
-| `crosspost` | `/api/crosspost` | Social account management, cross-posting, Bluesky OAuth flow |
+| `crosspost` | `/api/crosspost` | Social account management, cross-posting, Bluesky/Mastodon/X/Facebook OAuth flows |
 | `render` | `/api/render` | Server-side Pandoc preview for the editor |
 | `admin` | `/api/admin` | Site settings, page management, password change (admin-only) |
 | `content` | `/api/content` | Public file serving for post assets and shared assets |
@@ -408,8 +408,10 @@ class CrossPoster(Protocol):
 
 - **Bluesky** — AT Protocol OAuth (confidential client / BFF pattern). Uses DPoP-bound access tokens, PKCE, and Pushed Authorization Requests (PAR). Builds rich text facets for URLs and hashtags. 300-character limit.
 - **Mastodon** — OAuth 2.0 with dynamic app registration and PKCE. Posts statuses via httpx. 500-character limit.
+- **X (Twitter)** — OAuth 2.0 with PKCE. Posts text tweets via X API v2 (`POST /2/tweets`). 280-character limit. Token refresh on 401.
+- **Facebook** — OAuth 2.0 for Facebook Pages. Posts to Pages via Graph API v22.0 (`POST /{page-id}/feed`). Page Access Tokens are non-expiring. Multi-page selection supported.
 
-A platform registry maps names to poster classes. Each cross-post attempt is recorded in the `cross_posts` table with status, platform ID, timestamp, and error message. When Bluesky tokens are refreshed during a cross-post, the updated credentials are re-encrypted and persisted.
+A platform registry maps names to poster classes. Each cross-post attempt is recorded in the `cross_posts` table with status, platform ID, timestamp, and error message. When tokens are refreshed during a cross-post (Bluesky or X), the updated credentials are re-encrypted and persisted.
 
 Cross-posting supports an optional `custom_text` field: when provided via the API (`CrossPostRequest.custom_text`), platforms use it verbatim instead of auto-generating text from the post title, excerpt, and URL.
 
@@ -448,17 +450,43 @@ Mastodon uses standard OAuth 2.0 with dynamic client registration and PKCE:
 6. Instance redirects back to `GET /api/crosspost/mastodon/callback`
 7. Backend exchanges authorization code for access token, verifies credentials via `GET /api/v1/accounts/verify_credentials`, stores encrypted credentials in `SocialAccount`
 
+### X OAuth Flow
+
+X uses OAuth 2.0 with PKCE:
+
+1. User clicks "Connect X" on the admin page → `POST /api/crosspost/x/authorize`
+2. Backend builds the authorization URL with PKCE challenge using `X_CLIENT_ID` and `X_CLIENT_SECRET` settings
+3. OAuth state (PKCE verifier, client credentials) is stored in the in-memory `OAuthStateStore` with 10-minute TTL
+4. Frontend redirects user to X's authorization page
+5. X redirects back to `GET /api/crosspost/x/callback`
+6. Backend exchanges authorization code for access and refresh tokens, fetches user profile via `GET /2/users/me`, stores encrypted credentials in `SocialAccount`
+
+**Token lifecycle**: Access tokens are short-lived. Refresh tokens are used to obtain new access tokens. On 401 responses during cross-posting, `XCrossPoster` automatically refreshes tokens and retries. Updated tokens are persisted after refresh.
+
+### Facebook OAuth Flow
+
+Facebook uses OAuth 2.0 for Pages:
+
+1. User clicks "Connect Facebook" on the admin page → `POST /api/crosspost/facebook/authorize`
+2. Backend builds the authorization URL using `FACEBOOK_APP_ID` and `FACEBOOK_APP_SECRET` settings, requesting `pages_manage_posts` and `pages_read_engagement` scopes
+3. OAuth state is stored in the in-memory `OAuthStateStore` with 10-minute TTL
+4. Frontend redirects user to Facebook's authorization page
+5. Facebook redirects back to `GET /api/crosspost/facebook/callback`
+6. Backend exchanges the authorization code for a short-lived user token, then exchanges it for a long-lived token
+7. Backend fetches managed Pages via `GET /me/accounts`, presenting a page selection step if multiple pages are available
+8. Page Access Tokens (non-expiring for long-lived user tokens) and selected page info are stored encrypted in `SocialAccount`
+
 ### Cross-Posting UI
 
 The frontend cross-posting interface spans three pages:
 
-**Admin page** (`SocialAccountsPanel`): A "Social Accounts" section lists connected accounts as cards with platform icon, handle, and disconnect button. Connect buttons open inline forms for entering a Bluesky handle or Mastodon instance URL, initiating the respective OAuth flows.
+**Admin page** (`SocialAccountsPanel`): A "Social Accounts" section lists connected accounts as cards with platform icon, handle, and disconnect button. Connect buttons open inline forms for entering a Bluesky handle, Mastodon instance URL, or initiating X/Facebook OAuth flows.
 
 **Post page** (`CrossPostSection`, `CrossPostHistory`): An admin-only section below post content shows cross-post history (platform icon, timestamp, status badge) and a "Share" button (visible only when accounts are connected). The Share button opens the `CrossPostDialog`.
 
 **Editor page**: When social accounts are connected, platform checkboxes appear in the metadata bar ("Share after saving"). On save with platforms selected, the `CrossPostDialog` opens pre-populated — a two-step flow ensuring the user reviews text before posting.
 
-**Cross-post dialog** (`CrossPostDialog`): A modal with a single editable textarea (auto-generated from post title + URL), per-platform character counters (300 for Bluesky, 500 for Mastodon, turning red when over limit), platform checkboxes, and a results view showing per-platform success/failure after posting.
+**Cross-post dialog** (`CrossPostDialog`): A modal with a single editable textarea (auto-generated from post title + URL), per-platform character counters (300 for Bluesky, 280 for X, 500 for Mastodon; Facebook has no limit), platform checkboxes, and a results view showing per-platform success/failure after posting.
 
 ## Frontend Architecture
 
