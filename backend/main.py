@@ -101,15 +101,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     async with engine.begin() as conn:
         # Drop cache tables so create_all always matches current schema.
         # These are regenerated from the filesystem on every startup.
-        for table in [
-            "post_labels_cache",
-            "label_parents_cache",
-            "posts_fts",
-            "posts_cache",
-            "labels_cache",
-            "sync_manifest",
-        ]:
-            await conn.execute(text(f"DROP TABLE IF EXISTS {table}"))
+        drop_cache_tables_sql = (
+            "DROP TABLE IF EXISTS post_labels_cache",
+            "DROP TABLE IF EXISTS label_parents_cache",
+            "DROP TABLE IF EXISTS posts_fts",
+            "DROP TABLE IF EXISTS posts_cache",
+            "DROP TABLE IF EXISTS labels_cache",
+            "DROP TABLE IF EXISTS sync_manifest",
+        )
+        for statement in drop_cache_tables_sql:
+            await conn.execute(text(statement))
         await conn.run_sync(Base.metadata.create_all)
     await _ensure_crosspost_user_id_column(app)
 

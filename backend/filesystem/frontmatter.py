@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from typing import Any
+from typing import NotRequired, TypedDict
 
 import frontmatter
 
@@ -36,6 +36,15 @@ class PostData:
     labels: list[str] = field(default_factory=list)
     is_draft: bool = False
     file_path: str = ""
+
+
+class FrontmatterMetadata(TypedDict):
+    title: str
+    created_at: str
+    modified_at: str
+    author: NotRequired[str]
+    labels: NotRequired[list[str]]
+    draft: NotRequired[bool]
 
 
 def extract_title(content: str, file_path: str = "") -> str:
@@ -76,12 +85,14 @@ def strip_leading_heading(content: str, title: str) -> str:
     return content
 
 
-def parse_labels(raw_labels: list[Any] | None) -> list[str]:
+def parse_labels(raw_labels: object | None) -> list[str]:
     """Parse label references from front matter.
 
     Labels are stored as '#label-id' strings.
     """
-    if not raw_labels:
+    if raw_labels is None:
+        return []
+    if not isinstance(raw_labels, list):
         return []
     result: list[str] = []
     for label in raw_labels:
@@ -107,7 +118,10 @@ def parse_post(
     if raw_created is not None:
         if isinstance(raw_created, date) and not isinstance(raw_created, datetime):
             raw_created = datetime(raw_created.year, raw_created.month, raw_created.day)
-        created_at = parse_datetime(raw_created, default_tz=default_tz)
+        if isinstance(raw_created, datetime):
+            created_at = parse_datetime(raw_created, default_tz=default_tz)
+        else:
+            created_at = parse_datetime(str(raw_created), default_tz=default_tz)
     else:
         from backend.services.datetime_service import now_utc
 
@@ -118,7 +132,10 @@ def parse_post(
     if raw_modified is not None:
         if isinstance(raw_modified, date) and not isinstance(raw_modified, datetime):
             raw_modified = datetime(raw_modified.year, raw_modified.month, raw_modified.day)
-        modified_at = parse_datetime(raw_modified, default_tz=default_tz)
+        if isinstance(raw_modified, datetime):
+            modified_at = parse_datetime(raw_modified, default_tz=default_tz)
+        else:
+            modified_at = parse_datetime(str(raw_modified), default_tz=default_tz)
     else:
         modified_at = created_at
 
@@ -136,7 +153,14 @@ def parse_post(
     content = strip_leading_heading(post.content, title)
 
     labels = parse_labels(post.get("labels"))
-    author = post.get("author") or default_author or None
+    raw_author = post.get("author")
+    author: str | None
+    if isinstance(raw_author, str):
+        author = raw_author or default_author or None
+    elif raw_author is not None:
+        author = str(raw_author) or default_author or None
+    else:
+        author = default_author or None
     is_draft = bool(post.get("draft", False))
 
     return PostData(
@@ -154,7 +178,7 @@ def parse_post(
 
 def serialize_post(post_data: PostData) -> str:
     """Serialize PostData back to markdown with YAML front matter."""
-    metadata: dict[str, Any] = {
+    metadata: FrontmatterMetadata = {
         "title": post_data.title,
         "created_at": format_datetime(post_data.created_at),
         "modified_at": format_datetime(post_data.modified_at),

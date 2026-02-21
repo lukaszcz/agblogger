@@ -9,7 +9,8 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 import bcrypt
-from jose import JWTError, jwt
+import jwt
+from jwt import InvalidTokenError
 from sqlalchemy import select
 
 from backend.models.user import InviteCode, PersonalAccessToken, RefreshToken, User
@@ -61,7 +62,7 @@ def decode_access_token(token: str, secret_key: str) -> dict[str, Any] | None:
         if payload.get("type") != "access":
             return None
         return payload
-    except JWTError:
+    except InvalidTokenError:
         logger.debug("Failed to decode access token", exc_info=True)
         return None
 

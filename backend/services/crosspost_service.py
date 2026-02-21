@@ -160,14 +160,16 @@ async def crosspost(
             credentials = json.loads(decrypt_value(account.credentials, secret_key))
         except ValueError:
             logger.warning(
-                "Failed to decrypt credentials for %s account %s; "
-                "re-enter credentials if SECRET_KEY was changed",
+                "Failed to decrypt account data for %s account %s; "
+                "re-enter account data after key rotation",
                 platform_name,
                 account.account_name,
             )
+            # fmt: off
             try:
                 credentials = json.loads(account.credentials)
-            except json.JSONDecodeError, TypeError:
+            except (json.JSONDecodeError, TypeError):
+            # fmt: on
                 error_msg = (
                     f"Credentials for {platform_name} are corrupted or unreadable. "
                     "Please reconnect the account."

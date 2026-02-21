@@ -25,7 +25,7 @@ def app_settings(tmp_content_dir: Path, tmp_path: Path) -> Settings:
 
     db_path = tmp_path / "test.db"
     return Settings(
-        secret_key="test-secret",
+        secret_key="test-secret-key-with-at-least-32-characters",
         debug=True,
         database_url=f"sqlite+aiosqlite:///{db_path}",
         content_dir=tmp_content_dir,

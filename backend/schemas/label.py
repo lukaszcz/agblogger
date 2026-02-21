@@ -56,6 +56,7 @@ class LabelCreate(BaseModel):
     @classmethod
     def names_must_be_nonempty_strings(cls, v: list[str]) -> list[str]:
         """Reject empty or whitespace-only name strings."""
+        _ = cls
         for name in v:
             if not name.strip():
                 raise ValueError("Display names must not be empty or whitespace-only")
@@ -72,6 +73,7 @@ class LabelUpdate(BaseModel):
     @classmethod
     def names_must_be_nonempty_strings(cls, v: list[str]) -> list[str]:
         """Reject empty or whitespace-only name strings."""
+        _ = cls
         for name in v:
             if not name.strip():
                 raise ValueError("Display names must not be empty or whitespace-only")

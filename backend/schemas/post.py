@@ -64,6 +64,7 @@ class PostCreate(BaseModel):
     @field_validator("title", mode="before")
     @classmethod
     def strip_title(cls, v: str) -> str:
+        _ = cls
         return v.strip()
 
 
@@ -86,6 +87,7 @@ class PostUpdate(BaseModel):
     @field_validator("title", mode="before")
     @classmethod
     def strip_title(cls, v: str) -> str:
+        _ = cls
         return v.strip()
 
 
