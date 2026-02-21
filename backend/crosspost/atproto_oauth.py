@@ -4,12 +4,17 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import ipaddress
 import json
+import logging
 import secrets
+import socket
 import time
+import urllib.parse
 import uuid
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
+import httpx
 import jwt
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.asymmetric.ec import (
@@ -25,6 +30,10 @@ from cryptography.hazmat.primitives.serialization import (
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+ATPROTO_TIMEOUT = 15.0
 
 
 def _b64url(data: bytes) -> str:
@@ -64,9 +73,7 @@ def load_or_create_keypair(
     """Load keypair from file, or create and save a new one."""
     if path.exists():
         data = json.loads(path.read_text())
-        private_key = load_pem_private_key(
-            data["private_key_pem"].encode("ascii"), password=None
-        )
+        private_key = load_pem_private_key(data["private_key_pem"].encode("ascii"), password=None)
         return private_key, data["jwk"]  # type: ignore[return-value]
     private_key, jwk = generate_es256_keypair()
     serialize_keypair(private_key, jwk, path)
@@ -125,3 +132,348 @@ def create_client_assertion(
         "exp": now + 60,
     }
     return jwt.encode(payload, key, algorithm="ES256", headers=headers)
+
+
+class ATProtoOAuthError(Exception):
+    """Error during AT Protocol OAuth operations."""
+
+
+def _is_safe_url(url: str) -> bool:
+    """Check that a URL is safe (HTTPS, non-private IP, not localhost).
+
+    Returns True if the URL is safe to fetch, False otherwise.
+    """
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme != "https":
+        return False
+    hostname = parsed.hostname
+    if not hostname:
+        return False
+    if hostname in ("localhost", "127.0.0.1", "::1", "[::1]"):
+        return False
+    try:
+        addr = ipaddress.ip_address(hostname)
+        if addr.is_private or addr.is_loopback or addr.is_reserved or addr.is_link_local:
+            return False
+    except ValueError:
+        # Not an IP literal — resolve to check for private IPs
+        try:
+            results = socket.getaddrinfo(hostname, None, proto=socket.IPPROTO_TCP)
+            for _family, _type, _proto, _canonname, sockaddr in results:
+                ip = ipaddress.ip_address(sockaddr[0])
+                if ip.is_private or ip.is_loopback or ip.is_reserved or ip.is_link_local:
+                    return False
+        except socket.gaierror:
+            return False
+    return True
+
+
+async def _resolve_handle_dns(handle: str) -> str | None:
+    """Resolve an AT Protocol handle via DNS TXT lookup.
+
+    Returns the DID string if found, or None as a simplified fallback.
+    DNS resolution is not performed here for simplicity — returns None to
+    fall through to the HTTP method.
+    """
+    return None
+
+
+async def _resolve_handle_http(handle: str) -> str | None:
+    """Resolve an AT Protocol handle via HTTP well-known endpoint."""
+    url = f"https://{handle}/.well-known/atproto-did"
+    if not _is_safe_url(url):
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=ATPROTO_TIMEOUT) as client:
+            resp = await client.get(url)
+        if resp.status_code == 200:
+            did = resp.text.strip()
+            if did.startswith("did:"):
+                return did
+    except httpx.HTTPError:
+        logger.debug("HTTP handle resolution failed for %s", handle)
+    return None
+
+
+async def resolve_handle_to_did(handle: str) -> str:
+    """Resolve an AT Protocol handle to a DID.
+
+    Tries DNS TXT first, then HTTP well-known. Raises ATProtoOAuthError if both fail.
+    """
+    did = await _resolve_handle_dns(handle)
+    if did:
+        return did
+    did = await _resolve_handle_http(handle)
+    if did:
+        return did
+    msg = f"Could not resolve handle '{handle}' to a DID"
+    raise ATProtoOAuthError(msg)
+
+
+async def discover_auth_server(did: str) -> dict[str, Any]:
+    """Discover the authorization server for a DID.
+
+    Resolves DID document -> PDS URL -> OAuth protected resource ->
+    authorization server metadata.
+
+    Returns the authorization server metadata dict with 'pds_url' added.
+    """
+    # Step 1: Resolve DID document
+    if did.startswith("did:plc:"):
+        did_doc_url = f"https://plc.directory/{did}"
+    elif did.startswith("did:web:"):
+        domain = did.removeprefix("did:web:")
+        did_doc_url = f"https://{domain}/.well-known/did.json"
+    else:
+        msg = f"Unsupported DID method: {did}"
+        raise ATProtoOAuthError(msg)
+
+    if not _is_safe_url(did_doc_url):
+        msg = f"Unsafe URL for DID resolution: {did_doc_url}"
+        raise ATProtoOAuthError(msg)
+
+    async with httpx.AsyncClient(timeout=ATPROTO_TIMEOUT) as client:
+        # Fetch DID document
+        resp = await client.get(did_doc_url)
+        if resp.status_code != 200:
+            msg = f"Failed to fetch DID document for {did}: HTTP {resp.status_code}"
+            raise ATProtoOAuthError(msg)
+        did_doc = resp.json()
+
+        # Step 2: Extract PDS URL from service array
+        pds_url: str | None = None
+        for service in did_doc.get("service", []):
+            if service.get("id") == "#atproto_pds":
+                pds_url = service.get("serviceEndpoint")
+                break
+        if not pds_url:
+            msg = f"No PDS service found in DID document for {did}"
+            raise ATProtoOAuthError(msg)
+
+        # Step 3: Fetch OAuth protected resource metadata from PDS
+        resource_url = f"{pds_url}/.well-known/oauth-protected-resource"
+        if not _is_safe_url(resource_url):
+            msg = f"Unsafe PDS URL: {resource_url}"
+            raise ATProtoOAuthError(msg)
+        resp = await client.get(resource_url)
+        if resp.status_code != 200:
+            msg = f"Failed to fetch OAuth resource metadata from {pds_url}"
+            raise ATProtoOAuthError(msg)
+        resource_meta = resp.json()
+
+        auth_servers = resource_meta.get("authorization_servers", [])
+        if not auth_servers:
+            msg = f"No authorization servers listed in resource metadata from {pds_url}"
+            raise ATProtoOAuthError(msg)
+        auth_server_url = auth_servers[0]
+
+        # Step 4: Fetch authorization server metadata
+        as_meta_url = f"{auth_server_url}/.well-known/oauth-authorization-server"
+        if not _is_safe_url(as_meta_url):
+            msg = f"Unsafe auth server URL: {as_meta_url}"
+            raise ATProtoOAuthError(msg)
+        resp = await client.get(as_meta_url)
+        if resp.status_code != 200:
+            msg = f"Failed to fetch auth server metadata from {auth_server_url}"
+            raise ATProtoOAuthError(msg)
+
+        auth_meta: dict[str, Any] = resp.json()
+        auth_meta["pds_url"] = pds_url
+        return auth_meta
+
+
+async def _auth_server_post(
+    url: str,
+    data: dict[str, str],
+    *,
+    client_id: str,
+    auth_server_issuer: str,
+    private_key: EllipticCurvePrivateKey,
+    jwk: dict[str, str],
+    dpop_nonce: str = "",
+) -> httpx.Response:
+    """POST to an auth server with client assertion and DPoP proof.
+
+    Handles automatic DPoP nonce rotation on 400 responses with use_dpop_nonce error.
+    """
+    if not _is_safe_url(url):
+        msg = f"Unsafe auth server URL: {url}"
+        raise ATProtoOAuthError(msg)
+
+    current_nonce = dpop_nonce
+
+    async with httpx.AsyncClient(timeout=ATPROTO_TIMEOUT) as client:
+        for _attempt in range(2):
+            assertion = create_client_assertion(
+                client_id, auth_server_issuer, private_key, jwk["kid"]
+            )
+            dpop_proof = create_dpop_proof(
+                method="POST", url=url, key=private_key, jwk=jwk, nonce=current_nonce
+            )
+            data_with_auth = {
+                **data,
+                "client_assertion": assertion,
+                "client_assertion_type": ("urn:ietf:params:oauth:client-assertion-type:jwt-bearer"),
+            }
+            headers = {"DPoP": dpop_proof}
+            resp = await client.post(url, data=data_with_auth, headers=headers)
+
+            # Handle DPoP nonce rotation
+            new_nonce = resp.headers.get("DPoP-Nonce", "")
+            if resp.status_code == 400 and new_nonce:
+                body = resp.json()
+                if body.get("error") == "use_dpop_nonce":
+                    current_nonce = new_nonce
+                    continue
+            return resp
+
+    return resp  # pragma: no cover
+
+
+async def send_par_request(
+    *,
+    auth_server_meta: dict[str, Any],
+    client_id: str,
+    redirect_uri: str,
+    did: str,
+    scope: str,
+    private_key: EllipticCurvePrivateKey,
+    jwk: dict[str, str],
+    dpop_nonce: str = "",
+) -> dict[str, str]:
+    """Send a Pushed Authorization Request (PAR).
+
+    Returns dict with authorization_url, state, pkce_verifier, and dpop_nonce.
+    """
+    par_endpoint = auth_server_meta["pushed_authorization_request_endpoint"]
+    auth_endpoint = auth_server_meta["authorization_endpoint"]
+    issuer = auth_server_meta["issuer"]
+
+    verifier, challenge = create_pkce_challenge()
+    state = secrets.token_urlsafe(32)
+
+    data = {
+        "response_type": "code",
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "scope": scope,
+        "state": state,
+        "code_challenge": challenge,
+        "code_challenge_method": "S256",
+        "login_hint": did,
+    }
+
+    resp = await _auth_server_post(
+        par_endpoint,
+        data,
+        client_id=client_id,
+        auth_server_issuer=issuer,
+        private_key=private_key,
+        jwk=jwk,
+        dpop_nonce=dpop_nonce,
+    )
+
+    if resp.status_code not in (200, 201):
+        msg = f"PAR request failed: HTTP {resp.status_code} — {resp.text}"
+        raise ATProtoOAuthError(msg)
+
+    par_resp = resp.json()
+    request_uri = par_resp["request_uri"]
+    new_nonce = resp.headers.get("DPoP-Nonce", dpop_nonce)
+
+    auth_url_params = urllib.parse.urlencode(
+        {
+            "client_id": client_id,
+            "request_uri": request_uri,
+        }
+    )
+    authorization_url = f"{auth_endpoint}?{auth_url_params}"
+
+    return {
+        "authorization_url": authorization_url,
+        "state": state,
+        "pkce_verifier": verifier,
+        "dpop_nonce": new_nonce,
+    }
+
+
+async def exchange_code_for_tokens(
+    *,
+    token_endpoint: str,
+    auth_server_issuer: str,
+    code: str,
+    redirect_uri: str,
+    pkce_verifier: str,
+    client_id: str,
+    private_key: EllipticCurvePrivateKey,
+    jwk: dict[str, str],
+    dpop_nonce: str = "",
+) -> dict[str, Any]:
+    """Exchange an authorization code for access and refresh tokens.
+
+    Returns dict with access_token, refresh_token, sub, dpop_nonce, and other fields.
+    """
+    data = {
+        "grant_type": "authorization_code",
+        "code": code,
+        "redirect_uri": redirect_uri,
+        "code_verifier": pkce_verifier,
+        "client_id": client_id,
+    }
+
+    resp = await _auth_server_post(
+        token_endpoint,
+        data,
+        client_id=client_id,
+        auth_server_issuer=auth_server_issuer,
+        private_key=private_key,
+        jwk=jwk,
+        dpop_nonce=dpop_nonce,
+    )
+
+    if resp.status_code != 200:
+        msg = f"Token exchange failed: HTTP {resp.status_code} — {resp.text}"
+        raise ATProtoOAuthError(msg)
+
+    token_data: dict[str, Any] = resp.json()
+    token_data["dpop_nonce"] = resp.headers.get("DPoP-Nonce", dpop_nonce)
+    return token_data
+
+
+async def refresh_access_token(
+    *,
+    token_endpoint: str,
+    auth_server_issuer: str,
+    refresh_token: str,
+    client_id: str,
+    private_key: EllipticCurvePrivateKey,
+    jwk: dict[str, str],
+    dpop_nonce: str = "",
+) -> dict[str, Any]:
+    """Refresh an access token using a refresh token.
+
+    Returns dict with new access_token, refresh_token, dpop_nonce, and other fields.
+    """
+    data = {
+        "grant_type": "refresh_token",
+        "refresh_token": refresh_token,
+        "client_id": client_id,
+    }
+
+    resp = await _auth_server_post(
+        token_endpoint,
+        data,
+        client_id=client_id,
+        auth_server_issuer=auth_server_issuer,
+        private_key=private_key,
+        jwk=jwk,
+        dpop_nonce=dpop_nonce,
+    )
+
+    if resp.status_code != 200:
+        msg = f"Token refresh failed: HTTP {resp.status_code} — {resp.text}"
+        raise ATProtoOAuthError(msg)
+
+    token_data: dict[str, Any] = resp.json()
+    token_data["dpop_nonce"] = resp.headers.get("DPoP-Nonce", dpop_nonce)
+    return token_data
