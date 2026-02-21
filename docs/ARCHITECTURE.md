@@ -24,7 +24,7 @@ agblogger/
 │       ├── stores/     Zustand state management
 │       ├── pages/      Route-level page components
 │       └── components/ Reusable UI components
-├── cli/                Sync client CLI
+├── cli/                Sync and deployment CLIs
 ├── tests/              pytest test suite
 ├── content/            Sample blog content
 ├── docs/               Project documentation
@@ -376,6 +376,16 @@ CLI authentication supports either:
 
 For transport security, the CLI requires `https://` for non-localhost servers by default. Plain `http://` is only allowed for localhost, or when explicitly opted in with `--allow-insecure-http`.
 
+### CLI Deployment Helper (`cli/deploy_production.py`)
+
+An interactive deployment script (`agblogger-deploy`) that:
+
+1. Validates Docker/Docker Compose availability.
+2. Prompts for required production settings (`SECRET_KEY`, `ADMIN_*`, `TRUSTED_HOSTS`, optional `TRUSTED_PROXY_IPS`, `HOST_PORT`).
+3. Writes `.env.production` with hardened defaults (`DEBUG=false`, `EXPOSE_DOCS=false`, `AUTH_ENFORCE_LOGIN_ORIGIN=true`).
+4. Deploys with `docker compose --env-file .env.production up -d --build`.
+5. Prints operational commands for start/stop/status.
+
 ## Cross-Posting
 
 ### Plugin Architecture
@@ -493,6 +503,14 @@ Multi-stage build:
 Volumes: `/data/content` (blog content) and `/data/db` (SQLite database).
 
 Health check: `curl -f http://localhost:8000/api/health`.
+
+`docker-compose.yml` maps `${HOST_PORT:-8000}:8000` and passes `TRUSTED_HOSTS` / `TRUSTED_PROXY_IPS` into the container so production security validation can succeed.
+
+Recommended deployment path is the interactive helper:
+
+```bash
+uv run agblogger-deploy
+```
 
 ### Production HTTPS
 
