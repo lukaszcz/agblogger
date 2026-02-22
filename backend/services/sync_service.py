@@ -24,6 +24,8 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
+    from backend.services.git_service import GitService
+
 
 class ChangeType(StrEnum):
     """Type of change detected between client, server, and manifest."""
@@ -355,6 +357,76 @@ def merge_frontmatter(
                     field_conflicts.append(key)
 
     return FrontmatterMergeResult(merged=merged, field_conflicts=field_conflicts)
+
+
+@dataclass
+class PostMergeResult:
+    """Result of merging a complete post file (front matter + body)."""
+
+    merged_content: str
+    body_conflicted: bool
+    field_conflicts: list[str]
+
+
+def merge_post_file(
+    base: str | None,
+    server: str,
+    client: str,
+    git_service: GitService,
+) -> PostMergeResult:
+    """Merge a markdown post file using hybrid strategy.
+
+    Front matter is merged semantically (set-based labels, server-wins scalars).
+    Body is merged via git merge-file. modified_at is stripped before merge.
+    """
+    server_post = fm.loads(server)
+    client_post = fm.loads(client)
+
+    if base is None:
+        fm_result = merge_frontmatter(None, dict(server_post.metadata), dict(client_post.metadata))
+        return PostMergeResult(
+            merged_content=server,
+            body_conflicted=True,
+            field_conflicts=fm_result.field_conflicts,
+        )
+
+    base_post = fm.loads(base)
+
+    # Merge front matter semantically
+    fm_result = merge_frontmatter(
+        dict(base_post.metadata), dict(server_post.metadata), dict(client_post.metadata)
+    )
+
+    # Merge body via git merge-file
+    base_body = base_post.content
+    server_body = server_post.content
+    client_body = client_post.content
+
+    if server_body == client_body:
+        merged_body = server_body
+        body_conflicted = False
+    elif server_body == base_body:
+        merged_body = client_body
+        body_conflicted = False
+    elif client_body == base_body:
+        merged_body = server_body
+        body_conflicted = False
+    else:
+        merged_body, body_conflicted = git_service.merge_file_content(
+            base_body, server_body, client_body
+        )
+        if body_conflicted:
+            merged_body = server_body
+
+    # Reassemble
+    merged_post = fm.Post(merged_body, **fm_result.merged)
+    merged_content = fm.dumps(merged_post) + "\n"
+
+    return PostMergeResult(
+        merged_content=merged_content,
+        body_conflicted=body_conflicted,
+        field_conflicts=fm_result.field_conflicts,
+    )
 
 
 def normalize_post_frontmatter(
