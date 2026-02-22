@@ -287,11 +287,18 @@ syncrun:
     cd frontend && npm run dev -- --port {{ frontend_port }} &
     wait
 
-# ── Developer commands (don't use unless you're human) ──────────────────────────────────────────
+# ── Developer commands (do not use unless you're human) ──────────────────────────────────────────
 
 cloc:
-    @echo "Source LOC count"
-    @cloc backend/ frontend/src/ cli/
-    @echo ""
-    @echo "Tests LOC count"
-    @cloc tests/
+    @echo "********************************************************************************"
+    @echo "                              Source LOC count"
+    @echo "********************************************************************************"
+    @echo
+    cloc --exclude-dir=__tests__ backend/ frontend/src/ cli/
+    @echo
+    @echo
+    @echo "********************************************************************************"
+    @echo "                              Tests LOC count"
+    @echo "********************************************************************************"
+    @echo
+    cloc tests/ $(find frontend/src -type d -name __tests__)

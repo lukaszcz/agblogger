@@ -4,7 +4,7 @@ AgBlogger is a markdown-first blogging platform where markdown files with YAML f
 
 ## Architecture
 
-**IMPORTANT** Read @docs/arch/index.md for architecture overview. Read other files in docs/arch/ when you need deeper understanding of application architecture. ALWAYS read files under docs/arch/ relevant to your current task. Update docs/arch/*.md (all relevant files) whenever architecture changes – always keep these files up-to-date with the codebase.
+**IMPORTANT** Read @docs/arch/index.md for architecture overview. **ALWAYS** read ALL files under docs/arch/ that are relevant to your current task. Read other files in docs/arch/ when you need deeper understanding of application architecture. Update docs/arch/*.md (all relevant files) whenever architecture changes – always keep these files up-to-date with the codebase.
 
 ## Build, Test, and Development Commands
 
@@ -31,8 +31,10 @@ Always start a dev server with `just start`. Remember to stop a running dev serv
 ### Python (backend/, cli/, tests/)
 
 - Formatting: ruff (line length 100)
-- Linting: ruff + import-linter; avoid `noqa` comments
-- Typing: strict discipline (`mypy` strict + `basedpyright`); avoid `type: ignore` comments; modern union syntax (`str | None`, `dict[str, Any]`, `list[str]`); `Annotated` for FastAPI dependencies
+- Linting: ruff + import-linter
+- Typing: strict discipline (`mypy` strict + `basedpyright`); modern union syntax (`str | None`, `dict[str, Any]`, `list[str]`)
+- Do NOT use `type: ignore` comments. If ignoring a type rule is necessary, ALWAYS ask the user for permission and explain why it is necessary.
+- Do NOT use `noqa` comment. If ignoring a lint rule is necessary, ALWAYS ask the user for permission and explain why it is necessary.
 - Naming & style: `snake_case` files/functions/variables, `PascalCase` classes; `from __future__ import annotations` everywhere; `async def` for all I/O; follow existing Pydantic/SQLAlchemy/FastAPI patterns in the codebase
 
 ### TypeScript (frontend/src/)
@@ -48,8 +50,7 @@ Always start a dev server with `just start`. Remember to stop a running dev serv
 - **IMPORTANT**: For every bug found, add a regression test that fails because of the bug, then fix the bug and ensure the test passes.
 - Use property-based testing (Hypothesis, fast-check) for deterministic logic. Abstract high-invariant logic into independent pure functions to enable property-based testing.
 - Avoid brittle tests. Test user workflows, not implementation details.
-- Coverage target 80%, branches 70%.
-- Don't leak expected error output into test run output.
+- Coverage targets 80%, branches 70%.
 
 ### Backend (pytest)
 
