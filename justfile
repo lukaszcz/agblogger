@@ -15,7 +15,7 @@ setup:
 # ── Quality checks ──────────────────────────────────────────────────
 
 # Run all static analysis checks (no tests)
-check-static: check-backend-static check-frontend-static check-semgrep check-vulture check-trivy
+check-static: check-backend-static check-frontend-static check-vulture check-semgrep check-trivy
     @echo "\n✓ Static checks passed"
 
 # Run all test suites (pass coverage=true for coverage reports)
@@ -97,6 +97,11 @@ test-frontend coverage="false":
 # Frontend full gate (static + tests)
 check-frontend: check-frontend-static test-frontend
 
+# Dead-code analysis (Vulture), scoped to runtime Python code only.
+check-vulture:
+    @echo "── Runtime dead-code analysis (Vulture) ──"
+    uv run vulture backend cli --exclude "backend/migrations" --min-confidence 80
+
 # Runtime security-focused static analysis (Semgrep)
 check-semgrep:
     @echo "── Runtime static security analysis (Semgrep) ──"
@@ -119,11 +124,6 @@ check-semgrep:
         --exclude "frontend/src/**/__tests__" \
         --exclude "frontend/src/**/*.test.ts" \
         --exclude "frontend/src/**/*.test.tsx"
-
-# Dead-code analysis (Vulture), scoped to runtime Python code only.
-check-vulture:
-    @echo "── Runtime dead-code analysis (Vulture) ──"
-    uv run vulture backend cli --exclude "backend/migrations" --min-confidence 80
 
 # Trivy security scans.
 check-trivy:

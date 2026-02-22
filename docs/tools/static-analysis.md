@@ -5,8 +5,8 @@
 - `check-backend-static`
 - `check-frontend-static`
 - `check-semgrep`
-- `check-vulture`
 - `check-trivy`
+- `check-vulture`
 
 All checks are fail-fast and CI-blocking.
 
@@ -52,6 +52,12 @@ All checks are fail-fast and CI-blocking.
   - Purpose: known-vulnerability scan of production npm dependencies.
   - Scope: frontend production dependency tree.
 
+## Dead-Code Analysis (`check-vulture`)
+
+- `vulture backend cli --exclude "backend/migrations" --min-confidence 80`
+- Purpose: detect likely dead/unused Python code in runtime modules.
+- Scope: backend and CLI runtime code.
+
 ## Runtime Security Static Analysis (`check-semgrep`)
 
 - `semgrep scan` with:
@@ -67,12 +73,6 @@ All checks are fail-fast and CI-blocking.
   - `.semgrep.yml` (local project rules)
 - Purpose: SAST and security-pattern detection.
 - Scope: `backend/`, `cli/`, `frontend/src/`, `Dockerfile`, `docker-compose.yml` (tests excluded).
-
-## Dead-Code Analysis (`check-vulture`)
-
-- `vulture backend cli --exclude "backend/migrations" --min-confidence 80`
-- Purpose: detect likely dead/unused Python code in runtime modules.
-- Scope: backend and CLI runtime code.
 
 ## Trivy Security Scan (`check-trivy`)
 
