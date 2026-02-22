@@ -27,7 +27,7 @@ tests/
 └── test_rendering/              Pandoc rendering tests
 ```
 
-Configuration in `pyproject.toml`: `asyncio_mode = "auto"`, markers for `slow` and `integration`, coverage via `pytest-cov`.
+Configuration in `pyproject.toml`: `asyncio_mode = "auto"`, coverage via `pytest-cov`.
 
 Property-based testing is implemented with Hypothesis for high-invariant backend logic:
 - sync plan classification and symmetry invariants
