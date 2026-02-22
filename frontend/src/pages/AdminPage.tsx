@@ -895,7 +895,13 @@ export default function AdminPage() {
           </div>
         )}
 
-        <div className="space-y-4 max-w-md">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            void handleChangePassword()
+          }}
+          className="space-y-4 max-w-md"
+        >
           <div>
             <label
               htmlFor="current-password"
@@ -905,7 +911,9 @@ export default function AdminPage() {
             </label>
             <input
               id="current-password"
+              name="current-password"
               type="password"
+              autoComplete="current-password"
               value={currentPassword}
               onChange={(e) => {
                 setCurrentPassword(e.target.value)
@@ -925,7 +933,9 @@ export default function AdminPage() {
             </label>
             <input
               id="new-password"
+              name="new-password"
               type="password"
+              autoComplete="new-password"
               value={newPassword}
               onChange={(e) => {
                 setNewPassword(e.target.value)
@@ -948,7 +958,9 @@ export default function AdminPage() {
             </label>
             <input
               id="confirm-password"
+              name="confirm-password"
               type="password"
+              autoComplete="new-password"
               value={confirmPassword}
               onChange={(e) => {
                 setConfirmPassword(e.target.value)
@@ -961,19 +973,19 @@ export default function AdminPage() {
                        disabled:opacity-50"
             />
           </div>
-        </div>
 
-        <div className="mt-4">
-          <button
-            onClick={() => void handleChangePassword()}
-            disabled={busy}
-            className="flex items-center gap-1.5 px-5 py-2 text-sm font-medium bg-accent text-white rounded-lg
-                     hover:bg-accent-light disabled:opacity-50 transition-colors"
-          >
-            <Lock size={14} />
-            {savingPassword ? 'Changing...' : 'Change Password'}
-          </button>
-        </div>
+          <div className="mt-4">
+            <button
+              type="submit"
+              disabled={busy}
+              className="flex items-center gap-1.5 px-5 py-2 text-sm font-medium bg-accent text-white rounded-lg
+                       hover:bg-accent-light disabled:opacity-50 transition-colors"
+            >
+              <Lock size={14} />
+              {savingPassword ? 'Changing...' : 'Change Password'}
+            </button>
+          </div>
+        </form>
       </section>
 
       {/* === Section 4: Social Accounts === */}
