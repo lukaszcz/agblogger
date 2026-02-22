@@ -31,14 +31,16 @@ The `useEditorAutoSave` hook (`hooks/useEditorAutoSave.ts`) provides crash recov
 
 Two Zustand stores:
 
-- **`authStore`** — User state, login/logout, token persistence in localStorage.
+- **`authStore`** — User state (`user`, `isLoading`, `isLoggingOut`, `isInitialized`, `error`), login/logout, session check via `checkAuth()`.
 - **`siteStore`** — Site configuration fetched on app load.
 
-The `ky` HTTP client injects `Authorization: Bearer <token>` from localStorage and clears tokens on 401 responses.
+The `ky` HTTP client uses cookie-based authentication (`credentials: 'include'`). CSRF tokens are persisted in localStorage and injected as `X-CSRF-Token` headers on unsafe methods (POST/PUT/PATCH/DELETE). On 401 responses, the client auto-attempts a token refresh via `POST /api/auth/refresh` and retries the original request.
 
-## SEO
+## Custom Hooks
 
-`SEOMiddleware` intercepts HTML responses for `/post/*` routes and injects Open Graph and Twitter Card meta tags by looking up post metadata from the database cache.
+- **`useEditorAutoSave`** — Crash recovery and unsaved-changes protection (described above).
+- **`useActiveHeading`** — Monitors H2/H3 headings via `IntersectionObserver` for table-of-contents tracking, returning the currently active heading ID.
+- **`useRenderedHtml`** (exported from `useKatex.ts`) — Processes KaTeX math spans (`math inline`, `math display`) in rendered HTML strings, replacing them with KaTeX-rendered output.
 
 ## Frontend Logic Utilities
 

@@ -8,15 +8,16 @@ AgBlogger is a self-hosted, markdown-first blogging platform. Markdown files wit
 agblogger/
 ├── backend/            Python FastAPI backend
 │   ├── api/            Route handlers + dependency injection
+│   ├── crosspost/      Cross-posting platform plugins
 │   ├── filesystem/     Markdown/TOML parsing, content management
-│   ├── middleware/      SEO meta tag injection
+│   ├── migrations/     Alembic migration templates
 │   ├── models/         SQLAlchemy ORM models
 │   ├── pandoc/         Pandoc rendering
+│   ├── schemas/        Pydantic request/response schemas
 │   ├── services/       Business logic layer
-│   ├── crosspost/      Cross-posting platform plugins
 │   ├── config.py       Pydantic settings (from .env)
 │   ├── database.py     Async SQLAlchemy engine
-│   └── main.py         Application factory + lifespan
+│   └── main.py         Application factory, middleware, lifespan
 ├── frontend/           React 19 + TypeScript SPA
 │   └── src/
 │       ├── api/        HTTP client (ky) + API functions

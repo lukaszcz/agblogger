@@ -6,7 +6,8 @@ The `create_app()` factory:
 
 1. Creates a FastAPI app with a lifespan context manager.
 2. Configures docs/OpenAPI exposure based on environment (`DEBUG` or `EXPOSE_DOCS`).
-3. Adds middleware:
+3. Adds middleware (all defined inline in `main.py`):
+   - `GZipMiddleware` for response compression (minimum 500 bytes).
    - `TrustedHostMiddleware` for host header allowlisting.
    - CORS middleware for browser origin control.
    - Cookie CSRF middleware for unsafe methods.
@@ -16,16 +17,18 @@ The `create_app()` factory:
 
 On startup, the lifespan handler:
 
-1. Creates the async SQLAlchemy engine and session factory.
-2. Creates all database tables (including the FTS5 virtual table).
-3. Validates production security settings (`validate_runtime_security()`), failing fast for insecure defaults.
-4. Ensures required scaffold entries in the content directory via `ensure_content_dir()`: creates `content/`, `content/posts/`, `content/index.toml`, and `content/labels.toml` when any of them are missing (without overwriting existing files).
-5. Initializes the `ContentManager`.
-6. Initializes the `GitService` (creates a git repo in the content directory if one doesn't exist).
-7. Loads or creates the AT Protocol OAuth ES256 keypair (`content/.atproto-oauth-key.json`) and initializes OAuth state stores for Bluesky, Mastodon, X, and Facebook on `app.state`.
-8. Creates the admin user if it doesn't exist.
-9. Applies lightweight schema compatibility updates for `cross_posts.user_id` when needed.
-10. Rebuilds the full database cache from the filesystem.
+1. Validates production security settings (`validate_runtime_security()`), failing fast for insecure defaults.
+2. Creates the async SQLAlchemy engine and session factory.
+3. Drops all regenerable cache tables (`post_labels_cache`, `label_parents_cache`, `posts_fts`, `posts_cache`, `labels_cache`, `sync_manifest`) so `create_all` always matches the current schema.
+4. Creates all database tables via `Base.metadata.create_all()`.
+5. Applies lightweight schema compatibility updates for `cross_posts.user_id` when needed.
+6. Creates the FTS5 virtual table (`posts_fts`).
+7. Ensures required scaffold entries in the content directory via `ensure_content_dir()`: creates `content/`, `content/posts/`, `content/index.toml`, and `content/labels.toml` when any of them are missing (without overwriting existing files).
+8. Initializes the `ContentManager`.
+9. Initializes the `GitService` (creates a git repo in the content directory if one doesn't exist).
+10. Loads or creates the AT Protocol OAuth ES256 keypair (`content/.atproto-oauth-key.json`) and initializes OAuth state stores for Bluesky, Mastodon, X, and Facebook on `app.state`.
+11. Creates the admin user if it doesn't exist.
+12. Rebuilds the full database cache from the filesystem.
 
 ## Layered Architecture
 
