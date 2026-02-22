@@ -21,7 +21,7 @@ just test-backend     # Backend tests only
 just check-frontend   # Frontend static checks + frontend tests
 just check-frontend-static # Frontend static checks only
 just test-frontend    # Frontend tests only
-just check-semgrep    # Semgrep SAST (p/ci, p/security-audit, p/secrets, p/python, p/typescript + local rules)
+just check-semgrep    # Semgrep SAST
 ```
 
 Always start a dev server with `just start`. Remember to stop a running dev server with `just stop` when finished.
