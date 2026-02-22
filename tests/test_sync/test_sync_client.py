@@ -151,7 +151,7 @@ class TestSyncClientSync:
             }
         )
         download_resp = _DummyResponse(content=b"# Remote\n\nContent.\n")
-        client, http_client = _build_sync_client(
+        client, _http_client = _build_sync_client(
             content_dir,
             responses={
                 "/api/sync/commit": commit_resp,
