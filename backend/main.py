@@ -40,6 +40,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+_DEFAULT_INDEX_TOML = (
+    '[site]\ntitle = "My Blog"\ntimezone = "UTC"\n\n[[pages]]\nid = "timeline"\ntitle = "Posts"\n'
+)
+_DEFAULT_LABELS_TOML = "[labels]\n"
+
 
 def _configure_logging(debug: bool) -> None:
     """Configure application logging."""
@@ -57,19 +62,29 @@ def _configure_logging(debug: bool) -> None:
 
 
 def ensure_content_dir(content_dir: Path) -> None:
-    """Create the default content directory structure if it doesn't exist."""
-    if content_dir.exists():
-        return
+    """Ensure required content scaffold entries exist without overwriting existing files."""
+    if content_dir.exists() and not content_dir.is_dir():
+        msg = f"Content path exists but is not a directory: {content_dir}"
+        raise NotADirectoryError(msg)
 
-    logger.info("Creating default content directory at %s", content_dir)
-    content_dir.mkdir(parents=True)
-    (content_dir / "posts").mkdir()
+    if not content_dir.exists():
+        logger.info("Creating default content directory at %s", content_dir)
+        content_dir.mkdir(parents=True)
 
-    (content_dir / "index.toml").write_text(
-        '[site]\ntitle = "My Blog"\ntimezone = "UTC"\n\n'
-        '[[pages]]\nid = "timeline"\ntitle = "Posts"\n'
-    )
-    (content_dir / "labels.toml").write_text("[labels]\n")
+    posts_dir = content_dir / "posts"
+    if not posts_dir.exists():
+        posts_dir.mkdir()
+        logger.info("Created missing content scaffold directory: %s", posts_dir)
+
+    index_toml = content_dir / "index.toml"
+    if not index_toml.exists():
+        index_toml.write_text(_DEFAULT_INDEX_TOML, encoding="utf-8")
+        logger.info("Created missing content scaffold file: %s", index_toml)
+
+    labels_toml = content_dir / "labels.toml"
+    if not labels_toml.exists():
+        labels_toml.write_text(_DEFAULT_LABELS_TOML, encoding="utf-8")
+        logger.info("Created missing content scaffold file: %s", labels_toml)
 
 
 async def _ensure_crosspost_user_id_column(app: FastAPI) -> None:

@@ -19,7 +19,7 @@ On startup, the lifespan handler:
 1. Creates the async SQLAlchemy engine and session factory.
 2. Creates all database tables (including the FTS5 virtual table).
 3. Validates production security settings (`validate_runtime_security()`), failing fast for insecure defaults.
-4. Ensures the content directory exists (`ensure_content_dir()`), creating the default scaffold if needed.
+4. Ensures required scaffold entries in the content directory via `ensure_content_dir()`: creates `content/`, `content/posts/`, `content/index.toml`, and `content/labels.toml` when any of them are missing (without overwriting existing files).
 5. Initializes the `ContentManager`.
 6. Initializes the `GitService` (creates a git repo in the content directory if one doesn't exist).
 7. Loads or creates the AT Protocol OAuth ES256 keypair (`content/.atproto-oauth-key.json`) and initializes OAuth state stores for Bluesky, Mastodon, X, and Facebook on `app.state`.

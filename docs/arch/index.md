@@ -45,7 +45,7 @@ agblogger/
 
 The filesystem is the canonical store for all content. The database is entirely regenerable from the files on disk — it is rebuilt on every server startup via `rebuild_cache()`. Post CRUD endpoints also perform incremental cache maintenance for `posts_cache`, `posts_fts`, and `post_labels_cache` so search/filter data stays fresh between full rebuilds.
 
-The `content/` directory is **not version-controlled** (it is in `.gitignore`). On first startup, `ensure_content_dir()` in `backend/main.py` creates a minimal scaffold (`index.toml`, `labels.toml`, `posts/`) if the directory doesn't exist.
+The `content/` directory is **not version-controlled** (it is in `.gitignore`). On startup, `ensure_content_dir()` in `backend/main.py` backfills a minimal scaffold (`index.toml`, `labels.toml`, `posts/`) whenever entries are missing, even if `content/` already exists.
 
 Content lives in the `content/` directory:
 
