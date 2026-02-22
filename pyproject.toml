@@ -32,8 +32,6 @@ dependencies = [
     "pydantic-settings>=2.7",
     # Date/time
     "pendulum>=3.0",
-    # File hashing & diffing
-    "merge3>=0.0.15",
     # HTTP client (for cross-posting, sync client)
     "httpx>=0.28",
     # Multipart file uploads
@@ -178,7 +176,6 @@ module = [
     "tweepy.*",
     "atproto.*",
     "mastodon.*",
-    "merge3.*",
 ]
 ignore_missing_imports = true
 

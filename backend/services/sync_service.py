@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import frontmatter as fm
-from merge3 import Merge3
 from sqlalchemy import delete, select
 
 from backend.filesystem.frontmatter import RECOGNIZED_FIELDS, extract_title, strip_leading_heading
@@ -243,37 +242,6 @@ async def update_server_manifest(
             )
         )
     await session.commit()
-
-
-def merge_file(
-    base: str | None,
-    server: str,
-    client: str,
-) -> tuple[str, bool]:
-    """Three-way merge of file content.
-
-    Returns (merged_content, has_conflicts). When base is None, falls back to
-    keeping the server version with has_conflicts=True.
-    """
-    if base is None:
-        return server, True
-
-    base_lines = base.splitlines(True)
-    server_lines = server.splitlines(True)
-    client_lines = client.splitlines(True)
-
-    m = Merge3(base_lines, server_lines, client_lines)
-    merged_lines = list(
-        m.merge_lines(
-            name_a="SERVER",
-            name_b="CLIENT",
-            name_base="BASE",
-            base_marker="|||||||",
-        )
-    )
-    merged_text = "".join(merged_lines)
-    has_conflicts = "<<<<<<< SERVER" in merged_text
-    return merged_text, has_conflicts
 
 
 @dataclass
