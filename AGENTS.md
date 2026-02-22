@@ -4,7 +4,7 @@ AgBlogger is a markdown-first blogging platform where markdown files with YAML f
 
 ## Architecture
 
-**IMPORTANT**: Read @docs/ARCHITECTURE.md to understand application architecture. Update docs/ARCHITECTURE.md whenever architecture changes – always keep it up-to-date with the codebase.
+Read docs/ARCHITECTURE.md to understand application architecture. Update docs/ARCHITECTURE.md whenever architecture changes – always keep it up-to-date with the codebase.
 
 ## Build, Test, and Development Commands
 
