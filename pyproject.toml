@@ -193,11 +193,12 @@ filterwarnings = ["error"]
 [tool.coverage.run]
 source = ["backend", "cli"]
 omit = ["*/migrations/*", "*/tests/*"]
+branch = true
 
 [tool.coverage.report]
 show_missing = true
 skip_empty = true
-fail_under = 0
+fail_under = 80
 
 [tool.hatch.build.targets.wheel]
 packages = ["backend", "cli"]

@@ -4,8 +4,8 @@ import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-import { fetchPostForEdit } from '@/api/posts'
-import type { UserResponse, PostEditResponse } from '@/api/client'
+import { fetchPostForEdit, createPost, updatePost } from '@/api/posts'
+import type { UserResponse, PostEditResponse, PostDetail } from '@/api/client'
 
 // Mock localStorage since jsdom doesn't always provide full implementation
 const storage = new Map<string, string>()
@@ -29,14 +29,20 @@ vi.mock('@/api/posts', () => ({
   fetchPostForEdit: vi.fn(),
   createPost: vi.fn(),
   updatePost: vi.fn(),
+  uploadAssets: vi.fn(),
 }))
 
 vi.mock('@/api/client', () => {
   class HTTPError extends Error {
-    response: { status: number }
-    constructor(status: number) {
+    response: { status: number; text: () => Promise<string>; json: () => Promise<unknown> }
+    constructor(status: number, body?: string) {
       super(`HTTP ${status}`)
-      this.response = { status }
+      const bodyStr = body ?? ''
+      this.response = {
+        status,
+        text: () => Promise.resolve(bodyStr),
+        json: () => Promise.resolve(bodyStr ? JSON.parse(bodyStr) : {}),
+      }
     }
   }
   return {
@@ -48,6 +54,10 @@ vi.mock('@/api/client', () => {
 vi.mock('@/api/labels', () => ({
   fetchLabels: vi.fn().mockResolvedValue([]),
   createLabel: vi.fn(),
+}))
+
+vi.mock('@/api/crosspost', () => ({
+  fetchSocialAccounts: vi.fn().mockResolvedValue([]),
 }))
 
 let mockUser: UserResponse | null = null
@@ -73,6 +83,8 @@ function renderEditor(path = '/editor/new') {
     [
       { path: '/editor/new', element: createElement(EditorPage) },
       { path: '/editor/*', element: createElement(EditorPage) },
+      { path: '/post/*', element: createElement('div', null, 'Post View') },
+      { path: '/login', element: createElement('div', null, 'Login') },
     ],
     { initialEntries: [path] },
   )
@@ -273,5 +285,327 @@ describe('EditorPage', () => {
 
     await user.type(screen.getByLabelText('Title'), 'A Title')
     expect(saveButton).toBeEnabled()
+  })
+
+  // === Save functionality ===
+
+  it('creates new post on save', async () => {
+    const mockCreatePost = vi.mocked(createPost)
+    const savedPost: PostDetail = {
+      id: 1, file_path: 'posts/2026-02-22-my-title/index.md',
+      title: 'My Title', author: 'jane', created_at: '2026-02-22 12:00:00+00:00',
+      modified_at: '2026-02-22 12:00:00+00:00', is_draft: false,
+      rendered_excerpt: '', rendered_html: '<p>Hello</p>', content: 'Hello', labels: [],
+    }
+    mockCreatePost.mockResolvedValue(savedPost)
+    const user = userEvent.setup()
+    renderEditor('/editor/new')
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Title')).toBeInTheDocument()
+    })
+
+    await user.type(screen.getByLabelText('Title'), 'My Title')
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    await waitFor(() => {
+      expect(mockCreatePost).toHaveBeenCalledWith({
+        title: 'My Title',
+        body: '',
+        labels: [],
+        is_draft: false,
+      })
+    })
+  })
+
+  it('updates existing post on save', async () => {
+    const mockUpdatePost = vi.mocked(updatePost)
+    mockFetchPostForEdit.mockResolvedValue(editResponse)
+    const updatedPost: PostDetail = {
+      id: 1, file_path: 'posts/existing.md',
+      title: 'Existing Post', author: 'Admin', created_at: '2026-02-01 12:00:00+00:00',
+      modified_at: '2026-02-22 12:00:00+00:00', is_draft: false,
+      rendered_excerpt: '', rendered_html: '<p>Content</p>', content: 'Content', labels: ['swe'],
+    }
+    mockUpdatePost.mockResolvedValue(updatedPost)
+    const user = userEvent.setup()
+    renderEditor('/editor/posts/existing.md')
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Title')).toHaveValue('Existing Post')
+    })
+
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    await waitFor(() => {
+      expect(mockUpdatePost).toHaveBeenCalledWith('posts/existing.md', {
+        title: 'Existing Post',
+        body: 'Content here.',
+        labels: ['swe'],
+        is_draft: false,
+      })
+    })
+  })
+
+  it('shows 401 save error', async () => {
+    const mockCreatePost = vi.mocked(createPost)
+    mockCreatePost.mockRejectedValue(
+      new (MockHTTPError as unknown as new (s: number) => Error)(401),
+    )
+    const user = userEvent.setup()
+    renderEditor('/editor/new')
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Title')).toBeInTheDocument()
+    })
+
+    await user.type(screen.getByLabelText('Title'), 'Test')
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Session expired. Please log in again.')).toBeInTheDocument()
+    })
+  })
+
+  it('shows 409 conflict error', async () => {
+    const mockCreatePost = vi.mocked(createPost)
+    mockCreatePost.mockRejectedValue(
+      new (MockHTTPError as unknown as new (s: number) => Error)(409),
+    )
+    const user = userEvent.setup()
+    renderEditor('/editor/new')
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Title')).toBeInTheDocument()
+    })
+
+    await user.type(screen.getByLabelText('Title'), 'Test')
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Conflict: this post was modified elsewhere.')).toBeInTheDocument()
+    })
+  })
+
+  it('shows 422 validation error with string detail', async () => {
+    const mockCreatePost = vi.mocked(createPost)
+    mockCreatePost.mockRejectedValue(
+      new (MockHTTPError as unknown as new (s: number, b?: string) => Error)(
+        422,
+        JSON.stringify({ detail: 'Title cannot be empty' }),
+      ),
+    )
+    const user = userEvent.setup()
+    renderEditor('/editor/new')
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Title')).toBeInTheDocument()
+    })
+
+    await user.type(screen.getByLabelText('Title'), 'Test')
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Title cannot be empty')).toBeInTheDocument()
+    })
+  })
+
+  it('shows 422 validation error with array detail', async () => {
+    const mockCreatePost = vi.mocked(createPost)
+    mockCreatePost.mockRejectedValue(
+      new (MockHTTPError as unknown as new (s: number, b?: string) => Error)(
+        422,
+        JSON.stringify({ detail: [{ msg: 'Field required' }, { msg: 'Invalid format' }] }),
+      ),
+    )
+    const user = userEvent.setup()
+    renderEditor('/editor/new')
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Title')).toBeInTheDocument()
+    })
+
+    await user.type(screen.getByLabelText('Title'), 'Test')
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Field required, Invalid format')).toBeInTheDocument()
+    })
+  })
+
+  it('shows generic save error for non-HTTP errors', async () => {
+    const mockCreatePost = vi.mocked(createPost)
+    mockCreatePost.mockRejectedValue(new Error('Network'))
+    const user = userEvent.setup()
+    renderEditor('/editor/new')
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Title')).toBeInTheDocument()
+    })
+
+    await user.type(screen.getByLabelText('Title'), 'Test')
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Failed to save post. The server may be unavailable.')).toBeInTheDocument()
+    })
+  })
+
+  it('draft checkbox toggles isDraft', async () => {
+    const user = userEvent.setup()
+    renderEditor('/editor/new')
+
+    await waitFor(() => {
+      expect(screen.getByText('Draft')).toBeInTheDocument()
+    })
+
+    const checkbox = screen.getByRole('checkbox', { name: /draft/i })
+    expect(checkbox).not.toBeChecked()
+
+    await user.click(checkbox)
+    expect(checkbox).toBeChecked()
+  })
+
+  it('shows 404 save error', async () => {
+    const mockCreatePost = vi.mocked(createPost)
+    mockCreatePost.mockRejectedValue(
+      new (MockHTTPError as unknown as new (s: number) => Error)(404),
+    )
+    const user = userEvent.setup()
+    renderEditor('/editor/new')
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Title')).toBeInTheDocument()
+    })
+
+    await user.type(screen.getByLabelText('Title'), 'Test')
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Post not found. It may have been deleted.')).toBeInTheDocument()
+    })
+  })
+
+  it('shows generic HTTP save error for unknown status', async () => {
+    const mockCreatePost = vi.mocked(createPost)
+    mockCreatePost.mockRejectedValue(
+      new (MockHTTPError as unknown as new (s: number) => Error)(500),
+    )
+    const user = userEvent.setup()
+    renderEditor('/editor/new')
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Title')).toBeInTheDocument()
+    })
+
+    await user.type(screen.getByLabelText('Title'), 'Test')
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Failed to save post. Please try again.')).toBeInTheDocument()
+    })
+  })
+
+  it('shows created and modified dates for existing post', async () => {
+    mockFetchPostForEdit.mockResolvedValue(editResponse)
+    renderEditor('/editor/posts/existing.md')
+
+    await waitFor(() => {
+      expect(screen.getByText(/Created/)).toBeInTheDocument()
+    })
+    expect(screen.getByText(/Modified/)).toBeInTheDocument()
+  })
+
+  it('shows preview placeholder initially', async () => {
+    renderEditor('/editor/new')
+
+    await waitFor(() => {
+      expect(screen.getByText('Preview will appear here...')).toBeInTheDocument()
+    })
+  })
+
+  it('shows back button', async () => {
+    renderEditor('/editor/new')
+
+    await waitFor(() => {
+      expect(screen.getByText('Back')).toBeInTheDocument()
+    })
+  })
+
+  it('shows labels input', async () => {
+    renderEditor('/editor/new')
+
+    await waitFor(() => {
+      expect(screen.getByText('Labels')).toBeInTheDocument()
+    })
+  })
+
+  it('shows 422 with empty detail string as generic validation error', async () => {
+    const mockCreatePost = vi.mocked(createPost)
+    mockCreatePost.mockRejectedValue(
+      new (MockHTTPError as unknown as new (s: number, b?: string) => Error)(
+        422,
+        JSON.stringify({ detail: '' }),
+      ),
+    )
+    const user = userEvent.setup()
+    renderEditor('/editor/new')
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Title')).toBeInTheDocument()
+    })
+
+    await user.type(screen.getByLabelText('Title'), 'Test')
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Validation error. Check your input.')).toBeInTheDocument()
+    })
+  })
+
+  it('shows 422 with non-string/array detail as generic validation error', async () => {
+    const mockCreatePost = vi.mocked(createPost)
+    mockCreatePost.mockRejectedValue(
+      new (MockHTTPError as unknown as new (s: number, b?: string) => Error)(
+        422,
+        JSON.stringify({ detail: 42 }),
+      ),
+    )
+    const user = userEvent.setup()
+    renderEditor('/editor/new')
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Title')).toBeInTheDocument()
+    })
+
+    await user.type(screen.getByLabelText('Title'), 'Test')
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Validation error. Check your input.')).toBeInTheDocument()
+    })
+  })
+
+  it('shows 422 with unparseable body as generic validation error', async () => {
+    const mockCreatePost = vi.mocked(createPost)
+    mockCreatePost.mockRejectedValue(
+      new (MockHTTPError as unknown as new (s: number, b?: string) => Error)(
+        422,
+        'not json',
+      ),
+    )
+    const user = userEvent.setup()
+    renderEditor('/editor/new')
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Title')).toBeInTheDocument()
+    })
+
+    await user.type(screen.getByLabelText('Title'), 'Test')
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Validation error. Check your input.')).toBeInTheDocument()
+    })
   })
 })

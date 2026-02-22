@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
-import { describe, it, expect } from 'vitest'
+import userEvent from '@testing-library/user-event'
+import { describe, it, expect, vi } from 'vitest'
 
 import { wrapSelection } from '../wrapSelection'
 import MarkdownToolbar from '../MarkdownToolbar'
@@ -97,5 +98,42 @@ describe('MarkdownToolbar', () => {
     )
     const buttons = screen.getAllByRole('button')
     buttons.forEach((btn) => expect(btn).toBeDisabled())
+  })
+
+  it('button click calls onChange with wrapped text', async () => {
+    const onChange = vi.fn()
+    const textarea = document.createElement('textarea')
+    textarea.value = 'hello world'
+    textarea.selectionStart = 6
+    textarea.selectionEnd = 11
+    // Create a ref-like object
+    const ref = { current: textarea }
+
+    const user = userEvent.setup()
+    render(
+      <MarkdownToolbar textareaRef={ref} value="hello world" onChange={onChange} />,
+    )
+
+    await user.click(screen.getByLabelText('Bold'))
+
+    expect(onChange).toHaveBeenCalledWith('hello **world**')
+  })
+
+  it('heading button inserts with block mode newline', async () => {
+    const onChange = vi.fn()
+    const textarea = document.createElement('textarea')
+    textarea.value = 'some text'
+    textarea.selectionStart = 9
+    textarea.selectionEnd = 9
+    const ref = { current: textarea }
+
+    const user = userEvent.setup()
+    render(
+      <MarkdownToolbar textareaRef={ref} value="some text" onChange={onChange} />,
+    )
+
+    await user.click(screen.getByLabelText('Heading'))
+
+    expect(onChange).toHaveBeenCalledWith('some text\n## Heading')
   })
 })

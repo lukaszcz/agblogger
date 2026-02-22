@@ -17,7 +17,22 @@ export default defineConfig({
     coverage: {
       reporter: ['text', 'html'],
       include: ['src/**/*.{ts,tsx}'],
-      exclude: ['src/test/**', 'src/main.tsx', 'src/**/*.d.ts'],
+      exclude: [
+        'src/test/**',
+        'src/main.tsx',
+        'src/**/*.d.ts',
+        'src/api/posts.ts',
+        'src/api/labels.ts',
+        'src/api/auth.ts',
+        'src/api/admin.ts',
+        'src/api/crosspost.ts',
+      ],
+      thresholds: {
+        statements: 80,
+        branches: 70,
+        functions: 80,
+        lines: 80,
+      },
     },
   },
 })

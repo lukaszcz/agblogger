@@ -24,8 +24,8 @@ test coverage="false":
     just test-frontend "{{ coverage }}"
     @echo "\n✓ Tests passed"
 
-# Run full quality gate (static checks first, then tests)
-check: check-static test
+# Run full quality gate (static checks first, then tests with coverage enforcement)
+check: check-static (test "true")
     @echo "\n✓ All checks passed"
 
 # Run full frontend vulnerability audit (including dev dependencies)

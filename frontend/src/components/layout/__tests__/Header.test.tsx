@@ -126,4 +126,64 @@ describe('Header', () => {
     await userEvent.click(screen.getByLabelText('Close search'))
     expect(screen.queryByPlaceholderText('Search posts...')).not.toBeInTheDocument()
   })
+
+  it('shows admin link for admin user', () => {
+    mockUser = { id: 1, username: 'admin', email: 'a@b.com', display_name: null, is_admin: true }
+    renderHeader()
+    expect(screen.getAllByLabelText('Admin').length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('hides admin link for non-admin user', () => {
+    mockUser = { id: 1, username: 'user', email: 'u@b.com', display_name: null, is_admin: false }
+    renderHeader()
+    expect(screen.queryByLabelText('Admin')).not.toBeInTheDocument()
+  })
+
+  it('calls logout on logout button click', async () => {
+    mockUser = { id: 1, username: 'admin', email: 'a@b.com', display_name: null, is_admin: true }
+    mockLogout.mockResolvedValue(undefined)
+    renderHeader()
+
+    const logoutButtons = screen.getAllByLabelText('Logout')
+    await userEvent.click(logoutButtons[0]!)
+
+    expect(mockLogout).toHaveBeenCalled()
+  })
+
+  it('Posts active at /', () => {
+    renderHeader('/')
+    const postsLink = screen.getByRole('link', { name: 'Posts' })
+    expect(postsLink.className).toContain('border-accent')
+  })
+
+  it('mobile menu shows login for unauthenticated user', async () => {
+    renderHeader()
+    await userEvent.click(screen.getByLabelText('Menu'))
+    // Mobile menu should have a login link
+    const loginLinks = screen.getAllByLabelText('Login')
+    expect(loginLinks.length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('search form submission clears and closes', async () => {
+    renderHeader()
+    await userEvent.click(screen.getByLabelText('Search'))
+
+    const input = screen.getByPlaceholderText('Search posts...')
+    await userEvent.type(input, 'test query')
+    await userEvent.keyboard('{Enter}')
+
+    // Search input should be closed after submit
+    expect(screen.queryByPlaceholderText('Search posts...')).not.toBeInTheDocument()
+  })
+
+  it('does not submit empty search', async () => {
+    renderHeader()
+    await userEvent.click(screen.getByLabelText('Search'))
+
+    const input = screen.getByPlaceholderText('Search posts...')
+    await userEvent.keyboard('{Enter}')
+
+    // Search should still be open since query was empty
+    expect(input).toBeInTheDocument()
+  })
 })

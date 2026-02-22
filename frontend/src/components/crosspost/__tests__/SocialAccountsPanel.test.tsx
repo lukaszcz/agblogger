@@ -266,4 +266,196 @@ describe('SocialAccountsPanel', () => {
     })
     expect(screen.getByLabelText('Disconnect My Page')).toBeInTheDocument()
   })
+
+  it('shows Bluesky connect form and submits handle', async () => {
+    mockFetchSocialAccounts.mockResolvedValue([])
+    mockAuthorizeBluesky.mockRejectedValue(new Error('Network'))
+    const user = userEvent.setup()
+    renderPanel()
+
+    await waitFor(() => {
+      expect(screen.getByText('Connect Bluesky')).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByText('Connect Bluesky'))
+    await user.type(screen.getByPlaceholderText('alice.bsky.social'), 'test.bsky.social')
+
+    // Click Connect button in the form
+    const connectButtons = screen.getAllByText('Connect')
+    await user.click(connectButtons[0]!)
+
+    await waitFor(() => {
+      expect(mockAuthorizeBluesky).toHaveBeenCalledWith('test.bsky.social')
+    })
+    // Error should be shown since mock rejected
+    await waitFor(() => {
+      expect(screen.getByText('Failed to start Bluesky authorization. Please try again.')).toBeInTheDocument()
+    })
+  })
+
+  it('shows Mastodon connect form and submits instance URL', async () => {
+    mockFetchSocialAccounts.mockResolvedValue([])
+    mockAuthorizeMastodon.mockRejectedValue(new Error('Network'))
+    const user = userEvent.setup()
+    renderPanel()
+
+    await waitFor(() => {
+      expect(screen.getByText('Connect Mastodon')).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByText('Connect Mastodon'))
+    await user.type(screen.getByPlaceholderText('https://mastodon.social'), 'https://infosec.exchange')
+
+    const connectButtons = screen.getAllByText('Connect')
+    await user.click(connectButtons[0]!)
+
+    await waitFor(() => {
+      expect(mockAuthorizeMastodon).toHaveBeenCalledWith('https://infosec.exchange')
+    })
+    await waitFor(() => {
+      expect(screen.getByText('Failed to start Mastodon authorization. Please try again.')).toBeInTheDocument()
+    })
+  })
+
+  it('submits X authorization on Connect click', async () => {
+    mockFetchSocialAccounts.mockResolvedValue([])
+    mockAuthorizeX.mockRejectedValue(new Error('Network'))
+    const user = userEvent.setup()
+    renderPanel()
+
+    await waitFor(() => {
+      expect(screen.getByText('Connect X')).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByText('Connect X'))
+
+    const connectButtons = screen.getAllByText('Connect')
+    await user.click(connectButtons[0]!)
+
+    await waitFor(() => {
+      expect(mockAuthorizeX).toHaveBeenCalled()
+    })
+    await waitFor(() => {
+      expect(screen.getByText('Failed to start X authorization. Please try again.')).toBeInTheDocument()
+    })
+  })
+
+  it('submits Facebook authorization on Connect click', async () => {
+    mockFetchSocialAccounts.mockResolvedValue([])
+    mockAuthorizeFacebook.mockRejectedValue(new Error('Network'))
+    const user = userEvent.setup()
+    renderPanel()
+
+    await waitFor(() => {
+      expect(screen.getByText('Connect Facebook')).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByText('Connect Facebook'))
+
+    const connectButtons = screen.getAllByText('Connect')
+    await user.click(connectButtons[0]!)
+
+    await waitFor(() => {
+      expect(mockAuthorizeFacebook).toHaveBeenCalled()
+    })
+    await waitFor(() => {
+      expect(screen.getByText('Failed to start Facebook authorization. Please try again.')).toBeInTheDocument()
+    })
+  })
+
+  it('cancels Bluesky connect form', async () => {
+    mockFetchSocialAccounts.mockResolvedValue([])
+    const user = userEvent.setup()
+    renderPanel()
+
+    await waitFor(() => {
+      expect(screen.getByText('Connect Bluesky')).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByText('Connect Bluesky'))
+    expect(screen.getByPlaceholderText('alice.bsky.social')).toBeInTheDocument()
+
+    await user.click(screen.getByText('Cancel'))
+    expect(screen.queryByPlaceholderText('alice.bsky.social')).not.toBeInTheDocument()
+  })
+
+  it('cancels disconnect confirmation', async () => {
+    mockFetchSocialAccounts.mockResolvedValue([
+      {
+        id: 1,
+        platform: 'bluesky',
+        account_name: 'alice.bsky.social',
+        created_at: '2026-01-15T10:00:00Z',
+      },
+    ])
+    const user = userEvent.setup()
+    renderPanel()
+
+    await waitFor(() => {
+      expect(screen.getByText('alice.bsky.social')).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByLabelText('Disconnect alice.bsky.social'))
+    expect(screen.getByText('Confirm disconnect?')).toBeInTheDocument()
+
+    await user.click(screen.getByText('Cancel'))
+    expect(screen.queryByText('Confirm disconnect?')).not.toBeInTheDocument()
+  })
+
+  it('shows disconnect error', async () => {
+    mockFetchSocialAccounts.mockResolvedValue([
+      {
+        id: 1,
+        platform: 'bluesky',
+        account_name: 'alice.bsky.social',
+        created_at: '2026-01-15T10:00:00Z',
+      },
+    ])
+    mockDeleteSocialAccount.mockRejectedValue(new Error('Network'))
+    const user = userEvent.setup()
+    renderPanel()
+
+    await waitFor(() => {
+      expect(screen.getByText('alice.bsky.social')).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByLabelText('Disconnect alice.bsky.social'))
+    await user.click(screen.getByText('Confirm'))
+
+    await waitFor(() => {
+      expect(screen.getByText('Failed to disconnect account. Please try again.')).toBeInTheDocument()
+    })
+  })
+
+  it('shows connected date for accounts', async () => {
+    mockFetchSocialAccounts.mockResolvedValue([
+      {
+        id: 1,
+        platform: 'bluesky',
+        account_name: 'alice.bsky.social',
+        created_at: '2026-01-15T10:00:00Z',
+      },
+    ])
+    renderPanel()
+
+    await waitFor(() => {
+      expect(screen.getByText(/Connected/)).toBeInTheDocument()
+    })
+  })
+
+  it('cancels Mastodon connect form', async () => {
+    mockFetchSocialAccounts.mockResolvedValue([])
+    const user = userEvent.setup()
+    renderPanel()
+
+    await waitFor(() => {
+      expect(screen.getByText('Connect Mastodon')).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByText('Connect Mastodon'))
+    expect(screen.getByPlaceholderText('https://mastodon.social')).toBeInTheDocument()
+
+    await user.click(screen.getByText('Cancel'))
+    expect(screen.queryByPlaceholderText('https://mastodon.social')).not.toBeInTheDocument()
+  })
 })
