@@ -39,3 +39,12 @@ The `ky` HTTP client injects `Authorization: Bearer <token>` from localStorage a
 ## SEO
 
 `SEOMiddleware` intercepts HTML responses for `/post/*` routes and injects Open Graph and Twitter Card meta tags by looking up post metadata from the database cache.
+
+## Frontend Logic Utilities
+
+To keep route/components thin and directly testable, pure logic helpers are extracted into utility modules:
+
+- `components/labels/graphUtils.ts` centralizes label graph algorithms used by label pages (`computeDepths`, `wouldCreateCycle`, `computeDescendants`)
+- `components/crosspost/crosspostText.ts` centralizes public post URL and default cross-post text generation (`buildPostUrl`, `buildDefaultText`)
+
+These modules are covered by property-based tests (`fast-check`) in addition to example-based Vitest tests.

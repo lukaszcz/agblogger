@@ -48,6 +48,7 @@ During `sync_commit`, before scanning files and updating the manifest, the serve
 
 - **New posts** (not in old server manifest): missing fields are filled with defaults — `created_at` and `modified_at` set to now, `author` from site config `default_author`.
 - **Edited posts** (in old server manifest): existing fields are preserved, except `modified_at` which is set to the current server time.
+- **Malformed timestamps**: invalid `created_at` / `modified_at` values are treated as missing, replaced with server-time defaults, and reported as warnings in the sync response.
 - **Unrecognized fields** in front matter are preserved in the file but generate warnings in the commit response.
 
 Recognized front matter fields: `title`, `created_at`, `modified_at`, `author`, `labels`, `draft`.

@@ -138,6 +138,27 @@ class TestNormalizeNewPost:
         post = _read_post(content_dir, "posts/hello.md")
         assert "draft" not in post.metadata
 
+    def test_invalid_created_at_is_replaced_with_current_time(self, tmp_path: Path) -> None:
+        """Malformed created_at should not crash normalization for new posts."""
+        content_dir = tmp_path / "content"
+        (content_dir / "posts").mkdir(parents=True)
+        _write_post(content_dir, "posts/hello.md", "---\ncreated_at: ':'\n---\n# Hello\n")
+
+        with patch("backend.services.sync_service.now_utc") as mock_now:
+            from datetime import UTC, datetime
+
+            mock_now.return_value = datetime(2026, 2, 18, 12, 0, 0, tzinfo=UTC)
+            warnings = normalize_post_frontmatter(
+                uploaded_files=["posts/hello.md"],
+                old_manifest={},
+                content_dir=content_dir,
+                default_author="Admin",
+            )
+
+        post = _read_post(content_dir, "posts/hello.md")
+        assert post["created_at"] == FROZEN_NOW
+        assert any("invalid created_at value" in warning for warning in warnings)
+
 
 class TestNormalizeEditedPost:
     """Tests for edited files (in old_manifest)."""
@@ -222,6 +243,34 @@ class TestNormalizeEditedPost:
 
         post = _read_post(content_dir, "posts/hello.md")
         assert post["created_at"] == FROZEN_NOW
+
+    def test_edit_invalid_created_at_is_replaced(self, tmp_path: Path) -> None:
+        """Malformed created_at should not crash normalization for edited posts."""
+        content_dir = tmp_path / "content"
+        (content_dir / "posts").mkdir(parents=True)
+        _write_post(
+            content_dir,
+            "posts/hello.md",
+            "---\ncreated_at: 0\nauthor: Admin\n---\n# Hello\n",
+        )
+
+        old_manifest = {"posts/hello.md": _entry("posts/hello.md")}
+
+        with patch("backend.services.sync_service.now_utc") as mock_now:
+            from datetime import UTC, datetime
+
+            mock_now.return_value = datetime(2026, 2, 18, 12, 0, 0, tzinfo=UTC)
+            warnings = normalize_post_frontmatter(
+                uploaded_files=["posts/hello.md"],
+                old_manifest=old_manifest,
+                content_dir=content_dir,
+                default_author="Admin",
+            )
+
+        post = _read_post(content_dir, "posts/hello.md")
+        assert post["created_at"] == FROZEN_NOW
+        assert post["modified_at"] == FROZEN_NOW
+        assert any("invalid created_at value" in warning for warning in warnings)
 
 
 class TestNormalizeUnrecognizedFields:
