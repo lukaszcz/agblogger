@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import subprocess
 from typing import TYPE_CHECKING, Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,7 +21,7 @@ from backend.services.sync_service import (
     FileEntry,
     compute_sync_plan,
     get_server_manifest,
-    merge_file,
+    merge_post_file,
     normalize_post_frontmatter,
     scan_content_files,
     update_server_manifest,
@@ -36,6 +37,8 @@ router = APIRouter(prefix="/api/sync", tags=["sync"])
 # Serialize sync commits to prevent concurrent modifications to the content
 # directory and server manifest.
 _sync_lock = asyncio.Lock()
+
+_MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10 MB
 
 
 def _resolve_safe_path(content_dir: Path, file_path: str) -> Path:
@@ -59,21 +62,21 @@ class ManifestEntry(BaseModel):
     file_mtime: str
 
 
-class SyncInitRequest(BaseModel):
-    """Request to initialize a sync session with the client manifest."""
+class SyncStatusRequest(BaseModel):
+    """Request to compute sync status with the client manifest."""
 
     client_manifest: list[ManifestEntry]
 
 
 class SyncPlanItem(BaseModel):
-    """Single item in a sync plan describing a conflict."""
+    """Single item in a sync plan. Currently used for conflict items in the status response."""
 
     file_path: str
     action: str
     change_type: str = ""
 
 
-class SyncPlanResponse(BaseModel):
+class SyncStatusResponse(BaseModel):
     """Response containing the computed sync plan."""
 
     to_upload: list[str]
@@ -84,24 +87,12 @@ class SyncPlanResponse(BaseModel):
     server_commit: str | None = None
 
 
-class MergeResult(BaseModel):
-    """Result of a three-way merge for a conflicting file."""
+class SyncConflictInfo(BaseModel):
+    """Information about a conflict encountered during sync commit."""
 
     file_path: str
-    status: str  # "merged" or "conflicted"
-    content: str | None = None  # diff3 markers for "conflicted"
-
-
-class SyncCommitRequest(BaseModel):
-    """Request payload for finalizing a sync.
-
-    Contains uploaded files, deletions, and conflict merge inputs.
-    """
-
-    uploaded_files: list[str] = Field(default_factory=list)
-    deleted_files: list[str] = Field(default_factory=list)
-    conflict_files: list[str] = Field(default_factory=list)
-    last_sync_commit: str | None = None
+    body_conflicted: bool
+    field_conflicts: list[str]
 
 
 class SyncCommitResponse(BaseModel):
@@ -111,20 +102,21 @@ class SyncCommitResponse(BaseModel):
     files_synced: int
     warnings: list[str] = Field(default_factory=list)
     commit_hash: str | None = None
-    merge_results: list[MergeResult] = Field(default_factory=list)
+    conflicts: list[SyncConflictInfo] = Field(default_factory=list)
+    to_download: list[str] = Field(default_factory=list)
 
 
 # ── Endpoints ────────────────────────────────────────
 
 
-@router.post("/init", response_model=SyncPlanResponse)
-async def sync_init(
-    body: SyncInitRequest,
+@router.post("/status", response_model=SyncStatusResponse)
+async def sync_status(
+    body: SyncStatusRequest,
     session: Annotated[AsyncSession, Depends(get_session)],
     content_manager: Annotated[ContentManager, Depends(get_content_manager)],
     git_service: Annotated[GitService, Depends(get_git_service)],
     user: Annotated[User, Depends(require_admin)],
-) -> SyncPlanResponse:
+) -> SyncStatusResponse:
     """Exchange manifests and compute sync plan."""
     client_manifest: dict[str, FileEntry] = {}
     for entry in body.client_manifest:
@@ -148,7 +140,7 @@ async def sync_init(
         for c in plan.conflicts
     ]
 
-    return SyncPlanResponse(
+    return SyncStatusResponse(
         to_upload=plan.to_upload,
         to_download=plan.to_download,
         to_delete_local=plan.to_delete_local,
@@ -156,31 +148,6 @@ async def sync_init(
         conflicts=conflicts,
         server_commit=git_service.head_commit(),
     )
-
-
-@router.post("/upload")
-async def sync_upload(
-    file: UploadFile,
-    file_path: str,
-    session: Annotated[AsyncSession, Depends(get_session)],
-    content_manager: Annotated[ContentManager, Depends(get_content_manager)],
-    user: Annotated[User, Depends(require_admin)],
-) -> dict[str, str]:
-    """Upload a file from client to server."""
-    if file.filename is None and not file_path:
-        raise HTTPException(status_code=400, detail="file_path required")
-
-    full_path = _resolve_safe_path(content_manager.content_dir, file_path)
-
-    # Enforce max upload size (10 MB)
-    max_size = 10 * 1024 * 1024
-    content = await file.read(max_size + 1)
-    if len(content) > max_size:
-        raise HTTPException(status_code=413, detail="File too large (max 10 MB)")
-    full_path.parent.mkdir(parents=True, exist_ok=True)
-    full_path.write_bytes(content)
-
-    return {"status": "ok", "file_path": file_path.lstrip("/")}
 
 
 @router.get("/download/{file_path:path}")
@@ -199,19 +166,34 @@ async def sync_download(
 
 @router.post("/commit", response_model=SyncCommitResponse)
 async def sync_commit(
-    body: SyncCommitRequest,
     session: Annotated[AsyncSession, Depends(get_session)],
     content_manager: Annotated[ContentManager, Depends(get_content_manager)],
     git_service: Annotated[GitService, Depends(get_git_service)],
     user: Annotated[User, Depends(require_admin)],
+    metadata: Annotated[str, Form()] = "{}",
+    files: list[UploadFile] | None = File(default=None),
 ) -> SyncCommitResponse:
-    """Finalize sync: merge conflicts, normalize front matter, update manifest and caches."""
+    """Finalize sync: upload files, merge conflicts, normalize, update manifest and caches.
+
+    Accepts multipart form data with:
+    - ``metadata``: JSON string containing ``deleted_files`` and ``last_sync_commit``
+    - ``files``: uploaded files whose filenames encode the relative path
+    """
     async with _sync_lock:
-        return await _sync_commit_inner(body, session, content_manager, git_service, user)
+        return await _sync_commit_inner(
+            metadata_json=metadata,
+            upload_files=files or [],
+            session=session,
+            content_manager=content_manager,
+            git_service=git_service,
+            user=user,
+        )
 
 
 async def _sync_commit_inner(
-    body: SyncCommitRequest,
+    *,
+    metadata_json: str,
+    upload_files: list[UploadFile],
     session: AsyncSession,
     content_manager: ContentManager,
     git_service: GitService,
@@ -220,101 +202,148 @@ async def _sync_commit_inner(
     """Inner sync commit logic, called under _sync_lock."""
     content_dir = content_manager.content_dir
 
-    # Load old manifest before updating (needed for new-vs-edit detection)
+    # ── Parse metadata ──
+    try:
+        meta = json.loads(metadata_json)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid metadata JSON: {exc}") from exc
+
+    raw_deleted = meta.get("deleted_files", [])
+    if not isinstance(raw_deleted, list) or not all(isinstance(f, str) for f in raw_deleted):
+        raise HTTPException(status_code=400, detail="deleted_files must be a list of strings")
+    deleted_files: list[str] = raw_deleted
+
+    raw_commit = meta.get("last_sync_commit")
+    if raw_commit is not None and not isinstance(raw_commit, str):
+        raise HTTPException(status_code=400, detail="last_sync_commit must be a string or null")
+    last_sync_commit: str | None = raw_commit
+
+    # Load old manifest before any changes (needed for new-vs-edit detection)
     old_manifest = await get_server_manifest(session)
 
-    # Apply remote deletions requested by the client.
-    for file_path in body.deleted_files:
+    # ── Apply deletions ──
+    for file_path in deleted_files:
         full_path = _resolve_safe_path(content_dir, file_path)
         if full_path.exists() and full_path.is_file():
             full_path.unlink()
             logger.info("Sync: deleted file %s", file_path.lstrip("/"))
 
-    # ── Three-way merge for conflict files ──
-    pre_upload_head = git_service.head_commit()
-    can_merge = body.last_sync_commit is not None and git_service.commit_exists(
-        body.last_sync_commit
-    )
+    # ── Process uploaded files ──
+    conflicts: list[SyncConflictInfo] = []
+    to_download: list[str] = []
+    uploaded_paths: list[str] = []
+    sync_warnings: list[str] = []
 
-    merge_results: list[MergeResult] = []
-    merged_uploaded: list[str] = []
+    for upload in upload_files:
+        if upload.filename is None:
+            logger.warning("Sync upload with no filename, skipping")
+            sync_warnings.append("Skipped file upload with no filename")
+            continue
 
-    for conflict_path in body.conflict_files:
-        target_path = conflict_path.lstrip("/")
-        full_path = _resolve_safe_path(content_dir, conflict_path)
+        target_path = upload.filename.lstrip("/")
+        full_path = _resolve_safe_path(content_dir, target_path)
 
-        # Get server version from before uploads
-        try:
-            server_content = (
-                git_service.show_file_at_commit(pre_upload_head, target_path)
-                if pre_upload_head is not None
-                else None
+        # Read upload content (enforce size limit)
+        upload_content = await upload.read(_MAX_UPLOAD_SIZE + 1)
+        if len(upload_content) > _MAX_UPLOAD_SIZE:
+            raise HTTPException(
+                status_code=413, detail=f"File too large (max 10 MB): {target_path}"
             )
-        except subprocess.CalledProcessError as exc:
-            logger.error("Git error retrieving %s at %s: %s", target_path, pre_upload_head, exc)
-            raise HTTPException(
-                status_code=500, detail=f"Git error retrieving {target_path} for merge"
-            ) from exc
 
-        # Handle delete/modify conflicts
+        # Read server's current content BEFORE writing upload
+        server_content: str | None = None
+        if full_path.exists() and full_path.is_file():
+            try:
+                server_content = full_path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                # Binary file on server — skip text-based merge
+                server_content = None
+
+        client_text: str
         try:
-            if not full_path.exists() and server_content is not None:
-                # Client deleted, server modified → keep server version
+            client_text = upload_content.decode("utf-8")
+        except UnicodeDecodeError:
+            # Binary file — just write it, no merge
+            try:
                 full_path.parent.mkdir(parents=True, exist_ok=True)
-                full_path.write_text(server_content, encoding="utf-8")
-                merge_results.append(MergeResult(file_path=target_path, status="merged"))
-                merged_uploaded.append(target_path)
-                continue
-            if not full_path.exists():
-                continue
-            if server_content is None:
-                # Server deleted, client modified → keep client (already on disk)
-                merge_results.append(MergeResult(file_path=target_path, status="merged"))
-                merged_uploaded.append(target_path)
-                continue
+                full_path.write_bytes(upload_content)
+            except OSError as exc:
+                raise HTTPException(
+                    status_code=500, detail=f"File I/O error writing {target_path}"
+                ) from exc
+            uploaded_paths.append(target_path)
+            continue
 
-            client_content = full_path.read_text(encoding="utf-8")
-            base_content: str | None = None
-            if can_merge and body.last_sync_commit is not None:
-                try:
-                    base_content = git_service.show_file_at_commit(
-                        body.last_sync_commit, target_path
-                    )
-                except subprocess.CalledProcessError:
-                    logger.warning(
-                        "Failed to retrieve merge base for %s, merging without base",
-                        target_path,
-                    )
+        # Merge conflict detection: attempt smart merge only for markdown posts
+        # under posts/ where the server has a different version.
+        is_post_md = target_path.startswith("posts/") and target_path.endswith(".md")
 
-            merged_text, has_conflicts = merge_file(base_content, server_content, client_content)
-
-            if has_conflicts:
-                # Restore server version on disk, return conflict markers to client
-                full_path.write_text(server_content, encoding="utf-8")
-                merge_results.append(
-                    MergeResult(file_path=target_path, status="conflicted", content=merged_text)
+        if server_content is not None and server_content != client_text and is_post_md:
+            # Get base version from git for three-way merge
+            base_content = _get_base_content(git_service, last_sync_commit, target_path)
+            try:
+                merge_result = merge_post_file(
+                    base_content, server_content, client_text, git_service
                 )
-            else:
-                # Clean merge — write merged result to disk
-                full_path.write_text(merged_text, encoding="utf-8")
-                merge_results.append(MergeResult(file_path=target_path, status="merged"))
-                merged_uploaded.append(target_path)
-        except OSError as exc:
-            logger.error("File I/O error during merge of %s: %s", target_path, exc)
-            raise HTTPException(
-                status_code=500, detail=f"File I/O error during merge of {target_path}"
-            ) from exc
+            except (subprocess.CalledProcessError, OSError) as exc:
+                logger.error("Merge failed for %s: %s", target_path, exc)
+                conflicts.append(
+                    SyncConflictInfo(
+                        file_path=target_path, body_conflicted=True, field_conflicts=[]
+                    )
+                )
+                uploaded_paths.append(target_path)
+                continue
 
-    # Normalize front matter for uploaded + cleanly merged post files
-    all_uploaded = list(dict.fromkeys(body.uploaded_files + merged_uploaded))
+            if merge_result.body_conflicted or merge_result.field_conflicts:
+                # Conflict detected. Write merged content (which preserves non-conflicting
+                # changes from both sides, e.g. label additions) but report the conflict
+                # so the client knows which fields/body had server-wins resolution.
+                conflicts.append(
+                    SyncConflictInfo(
+                        file_path=target_path,
+                        body_conflicted=merge_result.body_conflicted,
+                        field_conflicts=merge_result.field_conflicts,
+                    )
+                )
+                try:
+                    full_path.write_text(merge_result.merged_content, encoding="utf-8")
+                except OSError as exc:
+                    raise HTTPException(
+                        status_code=500, detail=f"File I/O error writing {target_path}"
+                    ) from exc
+                to_download.append(target_path)
+            else:
+                # Clean merge — write merged result
+                try:
+                    full_path.write_text(merge_result.merged_content, encoding="utf-8")
+                except OSError as exc:
+                    raise HTTPException(
+                        status_code=500, detail=f"File I/O error writing {target_path}"
+                    ) from exc
+                to_download.append(target_path)
+
+            uploaded_paths.append(target_path)
+        else:
+            # Non-conflict or non-post file: write client's version
+            try:
+                full_path.parent.mkdir(parents=True, exist_ok=True)
+                full_path.write_text(client_text, encoding="utf-8")
+            except OSError as exc:
+                raise HTTPException(
+                    status_code=500, detail=f"File I/O error writing {target_path}"
+                ) from exc
+            uploaded_paths.append(target_path)
+
+    # ── Normalize front matter for uploaded + merged post files ──
     fm_warnings = normalize_post_frontmatter(
-        uploaded_files=all_uploaded,
+        uploaded_files=uploaded_paths,
         old_manifest=old_manifest,
         content_dir=content_dir,
         default_author=content_manager.site_config.default_author,
     )
 
-    # Git commit after all file changes
+    # ── Git commit ──
     git_failed = False
     username = user.display_name or user.username
     try:
@@ -326,30 +355,55 @@ async def _sync_commit_inner(
             exc.returncode,
             exc.stderr.strip() if exc.stderr else "no stderr",
         )
-        fm_warnings.append(
+        sync_warnings.append(
             "Git commit failed; sync history may be degraded. "
             "Three-way merge on the next sync may produce incorrect results."
         )
         git_failed = True
 
-    # Scan current server state after uploads/downloads + normalization
+    # ── Update manifest and rebuild caches ──
     current_files = scan_content_files(content_dir)
-
-    # Update manifest to match current state
     await update_server_manifest(session, current_files)
-
-    # Reload config so newly uploaded labels/config are picked up
     content_manager.reload_config()
 
-    # Rebuild caches
     from backend.services.cache_service import rebuild_cache
 
     _post_count, cache_warnings = await rebuild_cache(session, content_manager)
 
+    files_changed = len(uploaded_paths) + len(deleted_files)
+    all_warnings = sync_warnings + fm_warnings + cache_warnings
+
     return SyncCommitResponse(
-        status="warning" if git_failed else "ok",
-        files_synced=len(current_files),
-        warnings=fm_warnings + cache_warnings,
+        status="error" if git_failed else "ok",
+        files_synced=files_changed,
+        warnings=all_warnings,
         commit_hash=None if git_failed else git_service.head_commit(),
-        merge_results=merge_results,
+        conflicts=conflicts,
+        to_download=to_download,
     )
+
+
+def _get_base_content(
+    git_service: GitService,
+    last_sync_commit: str | None,
+    file_path: str,
+) -> str | None:
+    """Retrieve the base version of a file from git history.
+
+    Returns None if no valid commit is available or the file didn't exist at that commit.
+    """
+    if last_sync_commit is None:
+        return None
+    if not git_service.commit_exists(last_sync_commit):
+        return None
+    try:
+        return git_service.show_file_at_commit(last_sync_commit, file_path)
+    except subprocess.CalledProcessError as exc:
+        logger.error(
+            "Git error retrieving base for %s at %s (exit %d): %s",
+            file_path,
+            last_sync_commit,
+            exc.returncode,
+            exc.stderr.strip() if exc.stderr else "no stderr",
+        )
+        return None

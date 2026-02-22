@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import json
 from typing import TYPE_CHECKING
 
 import pytest
@@ -202,8 +203,7 @@ class TestFiltering:
 
 class TestSync:
     @pytest.mark.asyncio
-    async def test_sync_init(self, client: AsyncClient) -> None:
-        # Login first
+    async def test_sync_status(self, client: AsyncClient) -> None:
         login_resp = await client.post(
             "/api/auth/login",
             json={"username": "admin", "password": "admin123"},
@@ -211,7 +211,7 @@ class TestSync:
         token = login_resp.json()["access_token"]
 
         resp = await client.post(
-            "/api/sync/init",
+            "/api/sync/status",
             json={"client_manifest": []},
             headers={"Authorization": f"Bearer {token}"},
         )
@@ -223,9 +223,9 @@ class TestSync:
         assert len(data["to_download"]) >= 1
 
     @pytest.mark.asyncio
-    async def test_sync_init_requires_auth(self, client: AsyncClient) -> None:
+    async def test_sync_status_requires_auth(self, client: AsyncClient) -> None:
         resp = await client.post(
-            "/api/sync/init",
+            "/api/sync/status",
             json={"client_manifest": []},
         )
         assert resp.status_code == 401
@@ -269,16 +269,17 @@ class TestSync:
 
         resp = await client.post(
             "/api/sync/commit",
-            json={"resolutions": {}},
+            data={"metadata": json.dumps({"deleted_files": []})},
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "ok"
-        assert data["files_synced"] >= 1
+        # No files uploaded or deleted, so files_synced is 0
+        assert data["files_synced"] == 0
 
     @pytest.mark.asyncio
-    async def test_sync_upload_normalizes_frontmatter(self, client: AsyncClient) -> None:
+    async def test_sync_commit_normalizes_frontmatter(self, client: AsyncClient) -> None:
         login_resp = await client.post(
             "/api/auth/login",
             json={"username": "admin", "password": "admin123"},
@@ -286,20 +287,15 @@ class TestSync:
         token = login_resp.json()["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
-        # Upload a post with NO front matter
+        # Upload a post with NO front matter via commit
         content = b"# New Synced Post\n\nContent here.\n"
-        resp = await client.post(
-            "/api/sync/upload",
-            params={"file_path": "posts/synced-new.md"},
-            files={"file": ("synced-new.md", io.BytesIO(content), "text/plain")},
-            headers=headers,
-        )
-        assert resp.status_code == 200
-
-        # Commit with uploaded_files so normalization runs
+        metadata = json.dumps({"deleted_files": []})
         resp = await client.post(
             "/api/sync/commit",
-            json={"uploaded_files": ["posts/synced-new.md"]},
+            data={"metadata": metadata},
+            files=[
+                ("files", ("posts/synced-new.md", io.BytesIO(content), "text/plain")),
+            ],
             headers=headers,
         )
         assert resp.status_code == 200
@@ -321,20 +317,15 @@ class TestSync:
         token = login_resp.json()["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
-        # Upload a post with an unrecognized front matter field
+        # Upload a post with an unrecognized front matter field via commit
         content = b"---\ncustom_field: hello\n---\n# Post\n\nContent.\n"
-        resp = await client.post(
-            "/api/sync/upload",
-            params={"file_path": "posts/custom-fields.md"},
-            files={"file": ("custom-fields.md", io.BytesIO(content), "text/plain")},
-            headers=headers,
-        )
-        assert resp.status_code == 200
-
-        # Commit with uploaded_files
+        metadata = json.dumps({"deleted_files": []})
         resp = await client.post(
             "/api/sync/commit",
-            json={"uploaded_files": ["posts/custom-fields.md"]},
+            data={"metadata": metadata},
+            files=[
+                ("files", ("posts/custom-fields.md", io.BytesIO(content), "text/plain")),
+            ],
             headers=headers,
         )
         assert resp.status_code == 200
@@ -342,9 +333,7 @@ class TestSync:
         assert any("custom_field" in w for w in data["warnings"])
 
     @pytest.mark.asyncio
-    async def test_sync_commit_backward_compatible_no_uploaded_files(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_sync_commit_no_files(self, client: AsyncClient) -> None:
         login_resp = await client.post(
             "/api/auth/login",
             json={"username": "admin", "password": "admin123"},
@@ -352,10 +341,10 @@ class TestSync:
         token = login_resp.json()["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
-        # Commit with no uploaded_files field at all (backward compatible)
+        # Commit with no files
         resp = await client.post(
             "/api/sync/commit",
-            json={"resolutions": {}},
+            data={"metadata": json.dumps({"deleted_files": []})},
             headers=headers,
         )
         assert resp.status_code == 200
@@ -372,9 +361,10 @@ class TestSync:
         before_resp = await client.get("/api/sync/download/posts/hello.md", headers=headers)
         assert before_resp.status_code == 200
 
+        metadata = json.dumps({"deleted_files": ["posts/hello.md"]})
         commit_resp = await client.post(
             "/api/sync/commit",
-            json={"deleted_files": ["posts/hello.md"]},
+            data={"metadata": metadata},
             headers=headers,
         )
         assert commit_resp.status_code == 200
@@ -1365,25 +1355,20 @@ class TestSyncCycleWarnings:
         token = login_resp.json()["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
-        # Upload a labels.toml with a cycle
+        # Upload a labels.toml with a cycle via commit
         cyclic_toml = (
             "[labels]\n"
             '[labels.a]\nnames = ["A"]\nparents = ["#b"]\n'
             '[labels.b]\nnames = ["B"]\nparents = ["#a"]\n'
         )
 
-        resp = await client.post(
-            "/api/sync/upload",
-            params={"file_path": "labels.toml"},
-            files={"file": ("labels.toml", io.BytesIO(cyclic_toml.encode()), "text/plain")},
-            headers=headers,
-        )
-        assert resp.status_code == 200
-
-        # Commit sync — should return warnings about dropped edges
+        metadata = json.dumps({"deleted_files": []})
         resp = await client.post(
             "/api/sync/commit",
-            json={"resolutions": {}},
+            data={"metadata": metadata},
+            files=[
+                ("files", ("labels.toml", io.BytesIO(cyclic_toml.encode()), "text/plain")),
+            ],
             headers=headers,
         )
         assert resp.status_code == 200
@@ -1403,7 +1388,7 @@ class TestSyncCycleWarnings:
 
         resp = await client.post(
             "/api/sync/commit",
-            json={"resolutions": {}},
+            data={"metadata": json.dumps({"deleted_files": []})},
             headers=headers,
         )
         assert resp.status_code == 200
@@ -1413,27 +1398,32 @@ class TestSyncCycleWarnings:
 
 class TestSyncSecurity:
     @pytest.mark.asyncio
-    async def test_sync_upload_path_traversal_rejected(self, client: AsyncClient) -> None:
+    async def test_sync_commit_upload_path_traversal_rejected(self, client: AsyncClient) -> None:
         login_resp = await client.post(
             "/api/auth/login",
             json={"username": "admin", "password": "admin123"},
         )
         token = login_resp.json()["access_token"]
 
+        metadata = json.dumps({"deleted_files": []})
         resp = await client.post(
-            "/api/sync/upload",
-            params={"file_path": "../../../etc/passwd"},
-            files={"file": ("passwd", b"malicious content", "text/plain")},
+            "/api/sync/commit",
+            data={"metadata": metadata},
+            files=[
+                (
+                    "files",
+                    ("../../../etc/passwd", b"malicious content", "text/plain"),
+                ),
+            ],
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 400
 
     @pytest.mark.asyncio
-    async def test_sync_upload_requires_auth(self, client: AsyncClient) -> None:
+    async def test_sync_commit_requires_auth(self, client: AsyncClient) -> None:
         resp = await client.post(
-            "/api/sync/upload",
-            params={"file_path": "posts/test.md"},
-            files={"file": ("test.md", b"content", "text/plain")},
+            "/api/sync/commit",
+            data={"metadata": json.dumps({"deleted_files": []})},
         )
         assert resp.status_code == 401
 
@@ -1447,26 +1437,10 @@ class TestSyncSecurity:
         )
         token = login_resp.json()["access_token"]
 
+        metadata = json.dumps({"deleted_files": ["../../../etc/passwd"]})
         resp = await client.post(
             "/api/sync/commit",
-            json={"deleted_files": ["../../../etc/passwd"]},
-            headers={"Authorization": f"Bearer {token}"},
-        )
-        assert resp.status_code == 400
-
-    @pytest.mark.asyncio
-    async def test_sync_commit_conflict_files_path_traversal_rejected(
-        self, client: AsyncClient
-    ) -> None:
-        login_resp = await client.post(
-            "/api/auth/login",
-            json={"username": "admin", "password": "admin123"},
-        )
-        token = login_resp.json()["access_token"]
-
-        resp = await client.post(
-            "/api/sync/commit",
-            json={"conflict_files": ["../../../etc/passwd"]},
+            data={"metadata": metadata},
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 400

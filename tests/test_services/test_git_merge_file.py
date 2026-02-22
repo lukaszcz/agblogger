@@ -1,0 +1,81 @@
+"""Tests for GitService.merge_file_content using git merge-file."""
+
+from __future__ import annotations
+
+import subprocess
+from typing import TYPE_CHECKING
+from unittest.mock import patch
+
+import pytest
+
+from backend.services.git_service import GitService
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+
+class TestMergeFileContent:
+    def test_clean_merge_non_overlapping(self, tmp_path: Path) -> None:
+        git = GitService(tmp_path)
+        git.init_repo()
+        base = "line1\nline2\nline3\n"
+        ours = "line1 changed\nline2\nline3\n"
+        theirs = "line1\nline2\nline3 changed\n"
+        merged, conflicted = git.merge_file_content(base, ours, theirs)
+        assert not conflicted
+        assert "line1 changed" in merged
+        assert "line3 changed" in merged
+
+    def test_conflict_overlapping(self, tmp_path: Path) -> None:
+        git = GitService(tmp_path)
+        git.init_repo()
+        base = "line1\noriginal\nline3\n"
+        ours = "line1\nours-version\nline3\n"
+        theirs = "line1\ntheirs-version\nline3\n"
+        _merged, conflicted = git.merge_file_content(base, ours, theirs)
+        assert conflicted
+
+    def test_identical_changes(self, tmp_path: Path) -> None:
+        git = GitService(tmp_path)
+        git.init_repo()
+        base = "original\n"
+        ours = "same change\n"
+        theirs = "same change\n"
+        merged, conflicted = git.merge_file_content(base, ours, theirs)
+        assert not conflicted
+        assert merged == "same change\n"
+
+    def test_multiple_conflict_regions(self, tmp_path: Path) -> None:
+        git = GitService(tmp_path)
+        git.init_repo()
+        base = "para1\n\nseparator\n\npara2\n"
+        ours = "para1-ours\n\nseparator\n\npara2-ours\n"
+        theirs = "para1-theirs\n\nseparator\n\npara2-theirs\n"
+        _merged, conflicted = git.merge_file_content(base, ours, theirs)
+        assert conflicted
+
+    def test_one_side_unchanged(self, tmp_path: Path) -> None:
+        git = GitService(tmp_path)
+        git.init_repo()
+        base = "original\n"
+        ours = "original\n"
+        theirs = "changed\n"
+        merged, conflicted = git.merge_file_content(base, ours, theirs)
+        assert not conflicted
+        assert merged == "changed\n"
+
+    def test_raises_on_high_exit_code(self, tmp_path: Path) -> None:
+        """Exit codes >= 128 from git merge-file indicate errors, not conflicts."""
+        git = GitService(tmp_path)
+        git.init_repo()
+
+        fake_result = subprocess.CompletedProcess(
+            args=["git", "merge-file"],
+            returncode=128,
+            stdout="",
+            stderr="fatal: some error",
+        )
+        with patch("subprocess.run", return_value=fake_result):
+            with pytest.raises(subprocess.CalledProcessError) as exc_info:
+                git.merge_file_content("base\n", "ours\n", "theirs\n")
+            assert exc_info.value.returncode == 128

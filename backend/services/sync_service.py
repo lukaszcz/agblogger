@@ -9,10 +9,10 @@ from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import frontmatter as fm
-from merge3 import Merge3
+import yaml
 from sqlalchemy import delete, select
 
 from backend.filesystem.frontmatter import RECOGNIZED_FIELDS, extract_title, strip_leading_heading
@@ -23,6 +23,8 @@ logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
+
+    from backend.services.git_service import GitService
 
 
 class ChangeType(StrEnum):
@@ -106,9 +108,9 @@ def compute_sync_plan(
 ) -> SyncPlan:
     """Compute sync plan by comparing client manifest, server manifest, and server current state.
 
-    For a "push" scenario (client -> server), client_manifest is the client's view,
-    server_manifest is the agreed-upon manifest from last sync, and server_current is
-    what the server has right now.
+    client_manifest is the client's current file state, server_manifest is the
+    agreed-upon state from the last sync, and server_current is the server's
+    current file state on disk.
     """
     plan = SyncPlan()
 
@@ -243,35 +245,171 @@ async def update_server_manifest(
     await session.commit()
 
 
-def merge_file(
+@dataclass
+class FrontmatterMergeResult:
+    """Result of merging front matter fields semantically."""
+
+    merged: dict[str, Any]
+    field_conflicts: list[str]
+
+
+def merge_frontmatter(
+    base: dict[str, Any] | None,
+    server: dict[str, Any],
+    client: dict[str, Any],
+) -> FrontmatterMergeResult:
+    """Merge front matter fields semantically.
+
+    Rules:
+    - modified_at: excluded from merge (caller sets server time via normalization)
+    - labels: set-based merge (additions/removals relative to base from both sides)
+    - title, author, created_at, draft: if both changed differently, server wins + reported
+    - unrecognized fields: if one side changed, take that change; if both, server wins
+      (silently, not reported as a conflict)
+    - field deletion: removing a field counts as a change; if both sides changed and
+      server wins with deletion, the field is omitted from the merged result
+    """
+    if base is None:
+        conflicts = [
+            k
+            for k in ("title", "author", "created_at", "draft")
+            if k in server and k in client and server.get(k) != client.get(k)
+        ]
+        return FrontmatterMergeResult(merged=dict(server), field_conflicts=conflicts)
+
+    merged: dict[str, Any] = {}
+    field_conflicts: list[str] = []
+
+    # Collect all keys except modified_at
+    all_keys = (set(base) | set(server) | set(client)) - {"modified_at"}
+
+    for key in all_keys:
+        base_val = base.get(key)
+        server_val = server.get(key)
+        client_val = client.get(key)
+
+        if key == "labels":
+            # Set-based merge
+            base_set = set(base_val) if isinstance(base_val, list) else set()
+            server_set = set(server_val) if isinstance(server_val, list) else set()
+            client_set = set(client_val) if isinstance(client_val, list) else set()
+
+            server_added = server_set - base_set
+            server_removed = base_set - server_set
+            client_added = client_set - base_set
+            client_removed = base_set - client_set
+
+            result_set = (base_set | server_added | client_added) - server_removed - client_removed
+            merged["labels"] = sorted(result_set)
+            continue
+
+        # For all other fields: three-way scalar merge
+        server_changed = server_val != base_val
+        client_changed = client_val != base_val
+
+        if not server_changed and not client_changed:
+            if base_val is not None:
+                merged[key] = base_val
+        elif server_changed and not client_changed:
+            if server_val is not None:
+                merged[key] = server_val
+        elif not server_changed and client_changed:
+            if client_val is not None:
+                merged[key] = client_val
+        else:
+            # Both changed
+            if server_val == client_val:
+                if server_val is not None:
+                    merged[key] = server_val
+            else:
+                # Conflict: server wins
+                if server_val is not None:
+                    merged[key] = server_val
+                if key in ("title", "author", "created_at", "draft"):
+                    field_conflicts.append(key)
+
+    return FrontmatterMergeResult(merged=merged, field_conflicts=field_conflicts)
+
+
+@dataclass
+class PostMergeResult:
+    """Result of merging a complete post file (front matter + body)."""
+
+    merged_content: str
+    body_conflicted: bool
+    field_conflicts: list[str]
+
+
+def merge_post_file(
     base: str | None,
     server: str,
     client: str,
-) -> tuple[str, bool]:
-    """Three-way merge of file content.
+    git_service: GitService,
+) -> PostMergeResult:
+    """Merge a markdown post file using hybrid strategy.
 
-    Returns (merged_content, has_conflicts). When base is None, falls back to
-    keeping the server version with has_conflicts=True.
+    Front matter is merged semantically (set-based labels, server-wins scalars).
+    Body is merged via git merge-file. modified_at is excluded during front matter
+    merge (the caller sets server time after merge via normalization).
     """
+    try:
+        server_post = fm.loads(server)
+        client_post = fm.loads(client)
+    except (yaml.YAMLError, ValueError) as exc:
+        logger.warning("Failed to parse front matter during merge: %s", exc)
+        return PostMergeResult(merged_content=server, body_conflicted=True, field_conflicts=[])
+
     if base is None:
-        return server, True
-
-    base_lines = base.splitlines(True)
-    server_lines = server.splitlines(True)
-    client_lines = client.splitlines(True)
-
-    m = Merge3(base_lines, server_lines, client_lines)
-    merged_lines = list(
-        m.merge_lines(
-            name_a="SERVER",
-            name_b="CLIENT",
-            name_base="BASE",
-            base_marker="|||||||",
+        # Without a merge base, three-way merge is impossible. Conservatively report
+        # body as conflicted and keep the server version.
+        fm_result = merge_frontmatter(None, dict(server_post.metadata), dict(client_post.metadata))
+        return PostMergeResult(
+            merged_content=server,
+            body_conflicted=True,
+            field_conflicts=fm_result.field_conflicts,
         )
+
+    try:
+        base_post = fm.loads(base)
+    except (yaml.YAMLError, ValueError) as exc:
+        logger.warning("Failed to parse base front matter during merge: %s", exc)
+        return PostMergeResult(merged_content=server, body_conflicted=True, field_conflicts=[])
+
+    # Merge front matter semantically
+    fm_result = merge_frontmatter(
+        dict(base_post.metadata), dict(server_post.metadata), dict(client_post.metadata)
     )
-    merged_text = "".join(merged_lines)
-    has_conflicts = "<<<<<<< SERVER" in merged_text
-    return merged_text, has_conflicts
+
+    # Merge body via git merge-file
+    base_body = base_post.content
+    server_body = server_post.content
+    client_body = client_post.content
+
+    if server_body == client_body:
+        merged_body = server_body
+        body_conflicted = False
+    elif server_body == base_body:
+        merged_body = client_body
+        body_conflicted = False
+    elif client_body == base_body:
+        merged_body = server_body
+        body_conflicted = False
+    else:
+        merged_body, body_conflicted = git_service.merge_file_content(
+            base_body, server_body, client_body
+        )
+        if body_conflicted:
+            merged_body = server_body
+
+    # Reassemble
+    merged_post = fm.Post(merged_body, **fm_result.merged)
+    merged_content = fm.dumps(merged_post) + "\n"
+
+    return PostMergeResult(
+        merged_content=merged_content,
+        body_conflicted=body_conflicted,
+        field_conflicts=fm_result.field_conflicts,
+    )
 
 
 def normalize_post_frontmatter(

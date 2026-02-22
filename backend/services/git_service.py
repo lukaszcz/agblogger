@@ -5,10 +5,8 @@ from __future__ import annotations
 import logging
 import re
 import subprocess
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from pathlib import Path
+import tempfile
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -121,3 +119,35 @@ class GitService:
             output=result.stdout,
             stderr=result.stderr,
         )
+
+    def merge_file_content(self, base: str, ours: str, theirs: str) -> tuple[str, bool]:
+        """Three-way merge of text content using git merge-file.
+
+        Writes base/ours/theirs to temp files, runs git merge-file with -p flag
+        (print to stdout), reads back the result.
+
+        Returns (merged_text, has_conflicts).
+        """
+        with tempfile.TemporaryDirectory(dir=self.content_dir) as td:
+            tmp = Path(td)
+            base_f = tmp / "base"
+            ours_f = tmp / "ours"
+            theirs_f = tmp / "theirs"
+            base_f.write_text(base, encoding="utf-8")
+            ours_f.write_text(ours, encoding="utf-8")
+            theirs_f.write_text(theirs, encoding="utf-8")
+
+            result = subprocess.run(
+                ["git", "merge-file", "-p", str(ours_f), str(base_f), str(theirs_f)],
+                cwd=self.content_dir,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            # exit 0 = clean merge, positive exit = number of conflicts (capped at 127),
+            # negative exit = signal, exit >= 128 = git error
+            if result.returncode < 0 or result.returncode >= 128:
+                raise subprocess.CalledProcessError(
+                    result.returncode, "git merge-file", result.stdout, result.stderr
+                )
+            return result.stdout, result.returncode > 0
