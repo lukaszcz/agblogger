@@ -144,9 +144,9 @@ class GitService:
                 text=True,
                 check=False,
             )
-            # exit 0 = clean merge, exit 1 = conflicts, exit >= 2 = error
-            if result.returncode >= 2:
+            # exit 0 = clean merge, exit 1-127 = number of conflict regions, exit < 0 = error
+            if result.returncode < 0:
                 raise subprocess.CalledProcessError(
                     result.returncode, "git merge-file", result.stdout, result.stderr
                 )
-            return result.stdout, result.returncode == 1
+            return result.stdout, result.returncode > 0

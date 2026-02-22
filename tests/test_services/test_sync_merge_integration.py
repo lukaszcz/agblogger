@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import json
 from typing import TYPE_CHECKING
 
 import pytest
@@ -96,8 +97,6 @@ class TestSyncCommit:
             "---\ntitle: Shared Post\ncreated_at: 2026-02-01 00:00:00+00\nauthor: Admin\n"
             "labels:\n- '#a'\n---\n\nParagraph one.\n\nParagraph two (client edit).\n"
         )
-        import json
-
         metadata = json.dumps({"deleted_files": [], "last_sync_commit": server_commit})
         resp = await merge_client.post(
             "/api/sync/commit",
@@ -146,8 +145,6 @@ class TestSyncCommit:
             "---\ntitle: Shared Post\ncreated_at: 2026-02-01 00:00:00+00\nauthor: Admin\n"
             "labels:\n- '#a'\n---\n\nClient version of paragraph one.\n\nParagraph two.\n"
         )
-        import json
-
         metadata = json.dumps({"deleted_files": [], "last_sync_commit": server_commit})
         resp = await merge_client.post(
             "/api/sync/commit",
@@ -170,8 +167,6 @@ class TestSyncCommit:
         headers = {"Authorization": f"Bearer {token}"}
 
         client_content = b"---\ntitle: Different\nauthor: Admin\n---\n\nClient only.\n"
-        import json
-
         metadata = json.dumps({"deleted_files": [], "last_sync_commit": None})
         resp = await merge_client.post(
             "/api/sync/commit",
@@ -189,8 +184,6 @@ class TestSyncCommit:
         token = await _login(merge_client)
         headers = {"Authorization": f"Bearer {token}"}
 
-        import json
-
         metadata = json.dumps({"deleted_files": []})
         resp = await merge_client.post(
             "/api/sync/commit",
@@ -206,8 +199,6 @@ class TestSyncCommit:
         headers = {"Authorization": f"Bearer {token}"}
 
         new_content = b"---\ntitle: New Post\nauthor: Admin\n---\n\nBrand new.\n"
-        import json
-
         metadata = json.dumps({"deleted_files": []})
         resp = await merge_client.post(
             "/api/sync/commit",
@@ -231,8 +222,6 @@ class TestSyncCommit:
         token = await _login(merge_client)
         headers = {"Authorization": f"Bearer {token}"}
 
-        import json
-
         metadata = json.dumps({"deleted_files": ["posts/shared.md"]})
         resp = await merge_client.post(
             "/api/sync/commit",
@@ -243,3 +232,51 @@ class TestSyncCommit:
 
         dl_resp = await merge_client.get("/api/sync/download/posts/shared.md", headers=headers)
         assert dl_resp.status_code == 404
+
+    async def test_labels_merged_as_sets(
+        self, merge_client: AsyncClient, merge_settings: Settings
+    ) -> None:
+        token = await _login(merge_client)
+        headers = {"Authorization": f"Bearer {token}"}
+
+        resp = await merge_client.post(
+            "/api/sync/status",
+            json={"client_manifest": []},
+            headers=headers,
+        )
+        server_commit = resp.json()["server_commit"]
+
+        resp = await merge_client.put(
+            "/api/posts/posts/shared.md",
+            json={
+                "title": "Shared Post",
+                "body": "Paragraph one.\n\nParagraph two.\n",
+                "labels": ["a", "server-label"],
+                "is_draft": False,
+            },
+            headers=headers,
+        )
+        assert resp.status_code == 200
+
+        client_content = (
+            "---\ntitle: Shared Post\ncreated_at: 2026-02-01 00:00:00+00\nauthor: Admin\n"
+            "labels:\n- '#a'\n- '#client-label'\n---\n\nParagraph one.\n\nParagraph two.\n"
+        )
+        metadata = json.dumps({"deleted_files": [], "last_sync_commit": server_commit})
+        resp = await merge_client.post(
+            "/api/sync/commit",
+            data={"metadata": metadata},
+            files=[
+                ("files", ("posts/shared.md", io.BytesIO(client_content.encode()), "text/plain")),
+            ],
+            headers=headers,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["conflicts"]) == 0
+
+        dl_resp = await merge_client.get("/api/sync/download/posts/shared.md", headers=headers)
+        merged = dl_resp.content.decode()
+        assert "#server-label" in merged
+        assert "#client-label" in merged
+        assert "#a" in merged

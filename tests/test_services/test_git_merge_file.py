@@ -41,6 +41,15 @@ class TestMergeFileContent:
         assert not conflicted
         assert merged == "same change\n"
 
+    def test_multiple_conflict_regions(self, tmp_path: Path) -> None:
+        git = GitService(tmp_path)
+        git.init_repo()
+        base = "para1\n\nseparator\n\npara2\n"
+        ours = "para1-ours\n\nseparator\n\npara2-ours\n"
+        theirs = "para1-theirs\n\nseparator\n\npara2-theirs\n"
+        _merged, conflicted = git.merge_file_content(base, ours, theirs)
+        assert conflicted
+
     def test_one_side_unchanged(self, tmp_path: Path) -> None:
         git = GitService(tmp_path)
         git.init_repo()
