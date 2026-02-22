@@ -4,7 +4,7 @@ AgBlogger is a markdown-first blogging platform where markdown files with YAML f
 
 ## Architecture
 
-**IMPORTANT** Read @docs/arch/overview.md for architecture overview. Read other files in docs/arch/ when you need deeper understanding of application architecture. ALWAYS read files under docs/arch/ relevant to your current task. Update docs/arch/*.md (all relevant files) whenever architecture changes – always keep these files up-to-date with the codebase.
+**IMPORTANT** Read @docs/arch/index.md for architecture overview. Read other files in docs/arch/ when you need deeper understanding of application architecture. ALWAYS read files under docs/arch/ relevant to your current task. Update docs/arch/*.md (all relevant files) whenever architecture changes – always keep these files up-to-date with the codebase.
 
 ## Build, Test, and Development Commands
 
