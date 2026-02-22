@@ -110,6 +110,19 @@ def load_or_create_keypair(
             # Fall through to create a new keypair
 
     lock_path = path.with_name(f".{path.name}.lock")
+
+    # Remove stale lock files (older than 30 seconds) — H7
+    if lock_path.exists():
+        try:
+            lock_age = time.time() - lock_path.stat().st_mtime
+            if lock_age > 30:
+                logger.warning(
+                    "Removing stale keypair lock file (age: %.0fs): %s", lock_age, lock_path
+                )
+                lock_path.unlink(missing_ok=True)
+        except OSError:
+            pass  # If we can't check/remove it, the loop will handle it
+
     lock_fd: int | None = None
     for _attempt in range(500):
         try:
@@ -117,14 +130,33 @@ def load_or_create_keypair(
             break
         except FileExistsError:
             if path.exists():
-                return _load_existing()
+                try:
+                    return _load_existing()
+                except (
+                    json.JSONDecodeError,
+                    KeyError,
+                    TypeError,
+                    ValueError,
+                    UnicodeDecodeError,
+                ) as exc:
+                    logger.warning("Corrupted keypair during lock wait: %s", exc)
+                    # Fall through to retry — another process may fix it
             time.sleep(0.01)
     else:
         raise RuntimeError(f"Failed to acquire keypair lock for {path}")
 
     try:
         if path.exists():
-            return _load_existing()
+            try:
+                return _load_existing()
+            except (
+                json.JSONDecodeError,
+                KeyError,
+                TypeError,
+                ValueError,
+                UnicodeDecodeError,
+            ) as exc:
+                logger.warning("Corrupted keypair file after lock acquired, regenerating: %s", exc)
         private_key, jwk = generate_es256_keypair()
         serialize_keypair(private_key, jwk, path)
         return private_key, jwk

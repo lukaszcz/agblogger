@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import secrets
 import sys
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import TYPE_CHECKING
 
+import yaml
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
@@ -34,7 +37,6 @@ from backend.services.rate_limit_service import InMemoryRateLimiter
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Awaitable, Callable
-    from pathlib import Path
 
     from starlette.responses import Response
 
@@ -111,53 +113,93 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     _configure_logging(settings.debug)
     logger.info("Starting AgBlogger (debug=%s)", settings.debug)
 
-    engine, session_factory = create_engine(settings)
-    app.state.engine = engine
-    app.state.session_factory = session_factory
+    # Ensure database directory exists (M16)
+    db_url = settings.database_url
+    if db_url.startswith("sqlite"):
+        db_path = db_url.split("///", 1)[-1] if "///" in db_url else None
+        if db_path:
+            Path(db_path).parent.mkdir(parents=True, exist_ok=True)
 
-    async with engine.begin() as conn:
-        # Drop cache tables so create_all always matches current schema.
-        # These are regenerated from the filesystem on every startup.
-        drop_cache_tables_sql = (
-            "DROP TABLE IF EXISTS post_labels_cache",
-            "DROP TABLE IF EXISTS label_parents_cache",
-            "DROP TABLE IF EXISTS posts_fts",
-            "DROP TABLE IF EXISTS posts_cache",
-            "DROP TABLE IF EXISTS labels_cache",
-            "DROP TABLE IF EXISTS sync_manifest",
+    try:
+        engine, session_factory = create_engine(settings)
+        app.state.engine = engine
+        app.state.session_factory = session_factory
+    except Exception as exc:
+        logger.critical(
+            "Failed to initialize database: %s. Check database path and permissions.", exc
         )
-        for statement in drop_cache_tables_sql:
-            await conn.execute(text(statement))
-        await conn.run_sync(Base.metadata.create_all)
-    await _ensure_crosspost_user_id_column(app)
+        raise
 
-    async with session_factory() as session:
-        await session.execute(
-            text(
-                "CREATE VIRTUAL TABLE IF NOT EXISTS posts_fts USING fts5("
-                "title, content, content='posts_cache', content_rowid='id')"
+    try:
+        async with engine.begin() as conn:
+            # Drop cache tables so create_all always matches current schema.
+            # These are regenerated from the filesystem on every startup.
+            drop_cache_tables_sql = (
+                "DROP TABLE IF EXISTS post_labels_cache",
+                "DROP TABLE IF EXISTS label_parents_cache",
+                "DROP TABLE IF EXISTS posts_fts",
+                "DROP TABLE IF EXISTS posts_cache",
+                "DROP TABLE IF EXISTS labels_cache",
+                "DROP TABLE IF EXISTS sync_manifest",
             )
-        )
-        await session.commit()
+            for statement in drop_cache_tables_sql:
+                await conn.execute(text(statement))
+            await conn.run_sync(Base.metadata.create_all)
+        await _ensure_crosspost_user_id_column(app)
+    except Exception as exc:
+        logger.critical("Failed to create database schema: %s.", exc)
+        raise
 
-    ensure_content_dir(settings.content_dir)
+    try:
+        async with session_factory() as session:
+            await session.execute(
+                text(
+                    "CREATE VIRTUAL TABLE IF NOT EXISTS posts_fts USING fts5("
+                    "title, content, content='posts_cache', content_rowid='id')"
+                )
+            )
+            await session.commit()
+    except Exception as exc:
+        logger.critical("Failed to create FTS5 virtual table: %s.", exc)
+        raise
+
+    try:
+        ensure_content_dir(settings.content_dir)
+    except Exception as exc:
+        logger.critical(
+            "Failed to initialize content directory at %s: %s.", settings.content_dir, exc
+        )
+        raise
 
     content_manager = ContentManager(content_dir=settings.content_dir)
     app.state.content_manager = content_manager
 
     from backend.services.git_service import GitService
 
-    git_service = GitService(content_dir=settings.content_dir)
-    git_service.init_repo()
-    app.state.git_service = git_service
+    try:
+        git_service = GitService(content_dir=settings.content_dir)
+        git_service.init_repo()
+        app.state.git_service = git_service
+    except Exception as exc:
+        logger.critical(
+            "Failed to initialize git repository at %s: %s. Ensure git is installed.",
+            settings.content_dir,
+            exc,
+        )
+        raise
 
     from backend.crosspost.atproto_oauth import load_or_create_keypair
     from backend.crosspost.bluesky_oauth_state import OAuthStateStore
 
     oauth_key_path = settings.content_dir / ".atproto-oauth-key.json"
-    atproto_key, atproto_jwk = load_or_create_keypair(oauth_key_path)
-    app.state.atproto_oauth_key = atproto_key
-    app.state.atproto_oauth_jwk = atproto_jwk
+    try:
+        atproto_key, atproto_jwk = load_or_create_keypair(oauth_key_path)
+        app.state.atproto_oauth_key = atproto_key
+        app.state.atproto_oauth_jwk = atproto_jwk
+    except Exception as exc:
+        logger.critical("Failed to load or create OAuth keypair at %s: %s.", oauth_key_path, exc)
+        raise
+
     app.state.bluesky_oauth_state = OAuthStateStore(ttl_seconds=600)
     app.state.mastodon_oauth_state = OAuthStateStore(ttl_seconds=600)
     app.state.x_oauth_state = OAuthStateStore(ttl_seconds=600)
@@ -165,16 +207,24 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
     from backend.services.auth_service import ensure_admin_user
 
-    async with session_factory() as session:
-        await ensure_admin_user(session, settings)
+    try:
+        async with session_factory() as session:
+            await ensure_admin_user(session, settings)
+    except Exception as exc:
+        logger.critical("Failed to ensure admin user: %s.", exc)
+        raise
 
     from backend.services.cache_service import rebuild_cache
 
-    async with session_factory() as session:
-        post_count, warnings = await rebuild_cache(session, content_manager)
-        logger.info("Indexed %d posts from filesystem", post_count)
-        for warning in warnings:
-            logger.warning("Cache rebuild: %s", warning)
+    try:
+        async with session_factory() as session:
+            post_count, warnings = await rebuild_cache(session, content_manager)
+            logger.info("Indexed %d posts from filesystem", post_count)
+            for warning in warnings:
+                logger.warning("Cache rebuild: %s", warning)
+    except Exception as exc:
+        logger.critical("Failed to rebuild cache from filesystem: %s.", exc)
+        raise
 
     yield
 
@@ -278,6 +328,51 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(render_router)
     app.include_router(sync_router)
     app.include_router(crosspost_router)
+
+    # Global exception handlers — safety net for unhandled exceptions
+    @app.exception_handler(RuntimeError)
+    async def runtime_error_handler(request: Request, exc: RuntimeError) -> JSONResponse:
+        if isinstance(exc, (NotImplementedError, RecursionError)):
+            raise exc
+        logger.error(
+            "RuntimeError in %s %s: %s", request.method, request.url.path, exc, exc_info=exc
+        )
+        return JSONResponse(
+            status_code=502,
+            content={"detail": "Rendering service unavailable"},
+        )
+
+    @app.exception_handler(OSError)
+    async def os_error_handler(request: Request, exc: OSError) -> JSONResponse:
+        if isinstance(exc, (ConnectionError, TimeoutError)):
+            raise exc
+        logger.error(
+            "OSError in %s %s: %s", request.method, request.url.path, exc, exc_info=exc
+        )
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Storage operation failed"},
+        )
+
+    @app.exception_handler(yaml.YAMLError)
+    async def yaml_error_handler(request: Request, exc: yaml.YAMLError) -> JSONResponse:
+        logger.error(
+            "YAMLError in %s %s: %s", request.method, request.url.path, exc, exc_info=exc
+        )
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "Invalid content format"},
+        )
+
+    @app.exception_handler(json.JSONDecodeError)
+    async def json_error_handler(request: Request, exc: json.JSONDecodeError) -> JSONResponse:
+        logger.error(
+            "JSONDecodeError in %s %s: %s", request.method, request.url.path, exc, exc_info=exc
+        )
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Data integrity error"},
+        )
 
     # Serve frontend static files in production
     frontend_dir = settings.frontend_dir
