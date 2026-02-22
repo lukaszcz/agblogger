@@ -403,8 +403,10 @@ async def mastodon_authorize(
     # Dynamically register the app with the Mastodon instance
     import httpx
 
+    from backend.crosspost.ssrf import ssrf_safe_client
+
     try:
-        async with httpx.AsyncClient() as http_client:
+        async with ssrf_safe_client() as http_client:
             reg_resp = await http_client.post(
                 f"{instance_url}/api/v1/apps",
                 data={

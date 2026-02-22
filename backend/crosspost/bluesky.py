@@ -20,6 +20,7 @@ from cryptography.hazmat.primitives.serialization import (
 
 from backend.crosspost.atproto_oauth import create_dpop_proof
 from backend.crosspost.base import CrossPostContent, CrossPostResult
+from backend.crosspost.ssrf import ssrf_safe_client
 
 logger = logging.getLogger(__name__)
 
@@ -154,11 +155,7 @@ class BlueskyCrossPoster:
         """Load OAuth credentials. No network call needed."""
         if not REQUIRED_CREDENTIAL_FIELDS.issubset(credentials):
             return False
-        from backend.crosspost.atproto_oauth import _is_safe_url
-
         pds_url = credentials["pds_url"].rstrip("/")
-        if not await _is_safe_url(pds_url):
-            return False
         key = load_pem_private_key(
             credentials["dpop_private_key_pem"].encode(),
             password=None,
@@ -205,7 +202,7 @@ class BlueskyCrossPoster:
             "Authorization": f"DPoP {auth.access_token}",
             "DPoP": dpop,
         }
-        async with httpx.AsyncClient() as client:
+        async with ssrf_safe_client() as client:
             if method == "POST":
                 resp = await client.post(url, json=json_body, headers=headers, timeout=15.0)
             else:

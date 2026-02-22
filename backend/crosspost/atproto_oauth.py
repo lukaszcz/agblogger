@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import base64
 import contextlib
 import hashlib
@@ -11,7 +10,6 @@ import json
 import logging
 import os
 import secrets
-import socket
 import time
 import urllib.parse
 import uuid
@@ -30,6 +28,8 @@ from cryptography.hazmat.primitives.serialization import (
     PrivateFormat,
     load_pem_private_key,
 )
+
+from backend.crosspost.ssrf import ssrf_safe_client
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -190,8 +190,9 @@ class ATProtoOAuthError(Exception):
 async def _is_safe_url(url: str) -> bool:
     """Check that a URL is safe (HTTPS, non-private IP, not localhost).
 
-    Returns True if the URL is safe to fetch, False otherwise.
-    DNS resolution is run in a thread pool to avoid blocking the event loop.
+    Returns True if the URL passes format checks, False otherwise.
+    Actual DNS resolution and IP validation is handled at the transport level
+    by SSRFSafeBackend, so this function only performs URL format validation.
     """
     parsed = urllib.parse.urlparse(url)
     if parsed.scheme != "https":
@@ -206,18 +207,7 @@ async def _is_safe_url(url: str) -> bool:
         if addr.is_private or addr.is_loopback or addr.is_reserved or addr.is_link_local:
             return False
     except ValueError:
-        # Not an IP literal — resolve to check for private IPs
-        try:
-            loop = asyncio.get_running_loop()
-            results = await loop.run_in_executor(
-                None, lambda: socket.getaddrinfo(hostname, None, proto=socket.IPPROTO_TCP)
-            )
-            for _family, _type, _proto, _canonname, sockaddr in results:
-                ip = ipaddress.ip_address(sockaddr[0])
-                if ip.is_private or ip.is_loopback or ip.is_reserved or ip.is_link_local:
-                    return False
-        except socket.gaierror:
-            return False
+        pass  # Not an IP literal — DNS validation handled by SSRFSafeBackend
     return True
 
 
@@ -237,7 +227,7 @@ async def _resolve_handle_http(handle: str) -> str | None:
     if not await _is_safe_url(url):
         return None
     try:
-        async with httpx.AsyncClient(timeout=ATPROTO_TIMEOUT) as client:
+        async with ssrf_safe_client(timeout=ATPROTO_TIMEOUT) as client:
             resp = await client.get(url)
         if resp.status_code == 200:
             did = resp.text.strip()
@@ -285,7 +275,7 @@ async def discover_auth_server(did: str) -> dict[str, Any]:
         msg = f"Unsafe URL for DID resolution: {did_doc_url}"
         raise ATProtoOAuthError(msg)
 
-    async with httpx.AsyncClient(timeout=ATPROTO_TIMEOUT) as client:
+    async with ssrf_safe_client(timeout=ATPROTO_TIMEOUT) as client:
         # Fetch DID document
         resp = await client.get(did_doc_url)
         if resp.status_code != 200:
@@ -355,7 +345,7 @@ async def _auth_server_post(
 
     current_nonce = dpop_nonce
 
-    async with httpx.AsyncClient(timeout=ATPROTO_TIMEOUT) as client:
+    async with ssrf_safe_client(timeout=ATPROTO_TIMEOUT) as client:
         for _attempt in range(2):
             assertion = create_client_assertion(
                 client_id, auth_server_issuer, private_key, jwk["kid"]

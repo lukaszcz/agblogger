@@ -33,10 +33,6 @@ from backend.crosspost.x import (
 )
 
 
-async def _always_safe(_url: str) -> bool:
-    return True
-
-
 class TestBlueSkyFormatting:
     def test_build_post_text_short(self) -> None:
         content = CrossPostContent(
@@ -134,6 +130,7 @@ class TestMastodonUrlValidation:
     async def test_authenticate_rejects_localhost_instance_url(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """http:// scheme is rejected by _normalize_instance_url, no network call made."""
         requested_urls: list[str] = []
 
         class DummyResponse:
@@ -144,18 +141,21 @@ class TestMastodonUrlValidation:
             def json() -> dict[str, str]:
                 return {"id": "1", "acct": "tester"}
 
-        class DummyAsyncClient:
-            async def __aenter__(self) -> DummyAsyncClient:
-                return self
-
-            async def __aexit__(self, exc_type, exc, tb) -> bool:
-                return False
-
+        class FakeClient:
             async def get(self, url: str, **kwargs) -> DummyResponse:
                 requested_urls.append(url)
                 return DummyResponse()
 
-        monkeypatch.setattr("backend.crosspost.mastodon.httpx.AsyncClient", DummyAsyncClient)
+            async def post(self, url: str, **kwargs) -> DummyResponse:
+                requested_urls.append(url)
+                return DummyResponse()
+
+        from tests.test_services._ssrf_helpers import make_fake_ssrf_safe_client
+
+        monkeypatch.setattr(
+            "backend.crosspost.mastodon.ssrf_safe_client",
+            make_fake_ssrf_safe_client(FakeClient),
+        )
 
         poster = MastodonCrossPoster()
         is_ok = await poster.authenticate(
@@ -178,18 +178,21 @@ class TestMastodonUrlValidation:
             def json() -> dict[str, str]:
                 return {"id": "1", "acct": "tester"}
 
-        class DummyAsyncClient:
-            async def __aenter__(self) -> DummyAsyncClient:
-                return self
-
-            async def __aexit__(self, exc_type, exc, tb) -> bool:
-                return False
-
+        class FakeClient:
             async def get(self, url: str, **kwargs) -> DummyResponse:
                 requested_urls.append(url)
                 return DummyResponse()
 
-        monkeypatch.setattr("backend.crosspost.mastodon.httpx.AsyncClient", DummyAsyncClient)
+            async def post(self, url: str, **kwargs) -> DummyResponse:
+                requested_urls.append(url)
+                return DummyResponse()
+
+        from tests.test_services._ssrf_helpers import make_fake_ssrf_safe_client
+
+        monkeypatch.setattr(
+            "backend.crosspost.mastodon.ssrf_safe_client",
+            make_fake_ssrf_safe_client(FakeClient),
+        )
 
         poster = MastodonCrossPoster()
         is_ok = await poster.authenticate(
@@ -245,17 +248,16 @@ class TestMastodonOAuthTokenExchange:
             def json() -> dict[str, str]:
                 return {"error": "something"}
 
-        class DummyAsyncClient:
-            async def __aenter__(self) -> DummyAsyncClient:
-                return self
-
-            async def __aexit__(self, exc_type, exc, tb) -> bool:
-                return False
-
+        class FakeClient:
             async def post(self, url: str, **kwargs) -> DummyResponse:
                 return DummyResponse()
 
-        monkeypatch.setattr("backend.crosspost.mastodon.httpx.AsyncClient", DummyAsyncClient)
+        from tests.test_services._ssrf_helpers import make_fake_ssrf_safe_client
+
+        monkeypatch.setattr(
+            "backend.crosspost.mastodon.ssrf_safe_client",
+            make_fake_ssrf_safe_client(FakeClient),
+        )
         monkeypatch.setattr(
             "backend.crosspost.mastodon._normalize_instance_url",
             lambda u: "https://mastodon.social",
@@ -292,8 +294,7 @@ def _make_oauth_credentials() -> dict[str, str]:
 
 
 class TestBlueskyCrossPosterOAuth:
-    async def test_authenticate_with_oauth_tokens(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr("backend.crosspost.atproto_oauth._is_safe_url", _always_safe)
+    async def test_authenticate_with_oauth_tokens(self) -> None:
         creds = _make_oauth_credentials()
         poster = BlueskyCrossPoster()
         result = await poster.authenticate(creds)
@@ -305,23 +306,31 @@ class TestBlueskyCrossPosterOAuth:
         assert result is False
 
     async def test_post_uses_dpop(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr("backend.crosspost.atproto_oauth._is_safe_url", _always_safe)
         captured_headers: dict[str, str] = {}
 
-        async def mock_post(self: httpx.AsyncClient, url: str, **kwargs: object) -> httpx.Response:
-            headers = kwargs.get("headers", {})
-            assert isinstance(headers, dict)
-            captured_headers.update(headers)
-            return httpx.Response(
-                200,
-                json={
-                    "uri": "at://did:plc:abc123/app.bsky.feed.post/abc",
-                    "cid": "bafy123",
-                },
-                headers={"DPoP-Nonce": "nonce-updated"},
-            )
+        class FakeClient:
+            async def post(self, url: str, **kwargs: object) -> httpx.Response:
+                headers = kwargs.get("headers", {})
+                assert isinstance(headers, dict)
+                captured_headers.update(headers)
+                return httpx.Response(
+                    200,
+                    json={
+                        "uri": "at://did:plc:abc123/app.bsky.feed.post/abc",
+                        "cid": "bafy123",
+                    },
+                    headers={"DPoP-Nonce": "nonce-updated"},
+                )
 
-        monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
+            async def get(self, url: str, **kwargs: object) -> httpx.Response:
+                return httpx.Response(200, json={})
+
+        from tests.test_services._ssrf_helpers import make_fake_ssrf_safe_client
+
+        monkeypatch.setattr(
+            "backend.crosspost.bluesky.ssrf_safe_client",
+            make_fake_ssrf_safe_client(FakeClient),
+        )
 
         poster = BlueskyCrossPoster()
         await poster.authenticate(_make_oauth_credentials())

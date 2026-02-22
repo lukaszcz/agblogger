@@ -6,13 +6,16 @@ import base64
 import hashlib
 import inspect
 import json
-import socket
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from unittest.mock import patch
+from contextlib import asynccontextmanager
+from typing import TYPE_CHECKING
 
 import httpx
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePublicKey
@@ -36,6 +39,20 @@ from backend.crosspost.atproto_oauth import (
 
 async def _always_safe(_url: str) -> bool:
     return True
+
+
+def _make_fake_ssrf_client_with_mocked_method(method_name: str, mock_fn: object) -> object:
+    """Create a fake ssrf_safe_client where one HTTP method is mocked."""
+
+    @asynccontextmanager
+    async def fake_ssrf_safe_client(
+        timeout: float | httpx.Timeout | None = None,
+    ) -> AsyncIterator[httpx.AsyncClient]:
+        client = httpx.AsyncClient()
+        setattr(client, method_name, lambda *a, **kw: mock_fn(client, *a, **kw))  # type: ignore[operator]
+        yield client
+
+    return fake_ssrf_safe_client
 
 
 class TestES256Keypair:
@@ -217,7 +234,10 @@ class TestAuthServerDiscovery:
                 return responses[url]
             return httpx.Response(404)
 
-        monkeypatch.setattr(httpx.AsyncClient, "get", mock_get)
+        monkeypatch.setattr(
+            "backend.crosspost.atproto_oauth.ssrf_safe_client",
+            _make_fake_ssrf_client_with_mocked_method("get", mock_get),
+        )
         monkeypatch.setattr("backend.crosspost.atproto_oauth._is_safe_url", _always_safe)
         result = await discover_auth_server("did:plc:abc123")
         assert result["issuer"] == "https://auth.example.com"
@@ -240,7 +260,10 @@ class TestPARRequest:
                 headers={"DPoP-Nonce": "new-nonce-from-server"},
             )
 
-        monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
+        monkeypatch.setattr(
+            "backend.crosspost.atproto_oauth.ssrf_safe_client",
+            _make_fake_ssrf_client_with_mocked_method("post", mock_post),
+        )
         monkeypatch.setattr("backend.crosspost.atproto_oauth._is_safe_url", _always_safe)
         result = await send_par_request(
             auth_server_meta={
@@ -279,7 +302,10 @@ class TestTokenExchange:
                 headers={"DPoP-Nonce": "token-nonce"},
             )
 
-        monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
+        monkeypatch.setattr(
+            "backend.crosspost.atproto_oauth.ssrf_safe_client",
+            _make_fake_ssrf_client_with_mocked_method("post", mock_post),
+        )
         monkeypatch.setattr("backend.crosspost.atproto_oauth._is_safe_url", _always_safe)
         result = await exchange_code_for_tokens(
             token_endpoint="https://auth.example.com/oauth/token",
@@ -313,7 +339,10 @@ class TestTokenExchange:
                 headers={"DPoP-Nonce": "refreshed-nonce"},
             )
 
-        monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
+        monkeypatch.setattr(
+            "backend.crosspost.atproto_oauth.ssrf_safe_client",
+            _make_fake_ssrf_client_with_mocked_method("post", mock_post),
+        )
         monkeypatch.setattr("backend.crosspost.atproto_oauth._is_safe_url", _always_safe)
         result = await refresh_access_token(
             token_endpoint="https://auth.example.com/oauth/token",
@@ -351,7 +380,10 @@ class TestTokenExchange:
                 headers={"DPoP-Nonce": "server-nonce"},
             )
 
-        monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
+        monkeypatch.setattr(
+            "backend.crosspost.atproto_oauth.ssrf_safe_client",
+            _make_fake_ssrf_client_with_mocked_method("post", mock_post),
+        )
         monkeypatch.setattr("backend.crosspost.atproto_oauth._is_safe_url", _always_safe)
         result = await exchange_code_for_tokens(
             token_endpoint="https://auth.example.com/oauth/token",
@@ -379,7 +411,10 @@ class TestTokenExchange:
                 headers={"DPoP-Nonce": "new-nonce", "content-type": "text/plain"},
             )
 
-        monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
+        monkeypatch.setattr(
+            "backend.crosspost.atproto_oauth.ssrf_safe_client",
+            _make_fake_ssrf_client_with_mocked_method("post", mock_post),
+        )
         monkeypatch.setattr("backend.crosspost.atproto_oauth._is_safe_url", _always_safe)
         with pytest.raises(ATProtoOAuthError, match="Token exchange failed"):
             await exchange_code_for_tokens(
@@ -444,13 +479,9 @@ class TestIsSafeUrlAsync:
         """_is_safe_url should be a coroutine function (async)."""
         assert inspect.iscoroutinefunction(_is_safe_url)
 
-    async def test_safe_url_returns_true(self) -> None:
-        """A normal HTTPS URL with a public IP should return True."""
-        with patch("backend.crosspost.atproto_oauth.socket.getaddrinfo") as mock_gai:
-            mock_gai.return_value = [
-                (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))
-            ]
-            result = await _is_safe_url("https://example.com/path")
+    async def test_safe_hostname_returns_true(self) -> None:
+        """A normal HTTPS URL with a hostname should return True (DNS checked at transport)."""
+        result = await _is_safe_url("https://example.com/path")
         assert result is True
 
     async def test_localhost_returns_false(self) -> None:
@@ -458,13 +489,9 @@ class TestIsSafeUrlAsync:
         result = await _is_safe_url("https://localhost/path")
         assert result is False
 
-    async def test_private_ip_returns_false(self) -> None:
-        """URLs resolving to private IPs should return False."""
-        with patch("backend.crosspost.atproto_oauth.socket.getaddrinfo") as mock_gai:
-            mock_gai.return_value = [
-                (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("192.168.1.1", 0))
-            ]
-            result = await _is_safe_url("https://internal.example.com")
+    async def test_private_ip_literal_returns_false(self) -> None:
+        """URLs with private IP literals should return False."""
+        result = await _is_safe_url("https://192.168.1.1/path")
         assert result is False
 
     async def test_http_returns_false(self) -> None:
@@ -472,37 +499,12 @@ class TestIsSafeUrlAsync:
         result = await _is_safe_url("http://example.com")
         assert result is False
 
-    async def test_dns_failure_returns_false(self) -> None:
-        """DNS resolution failure should return False."""
-        with patch("backend.crosspost.atproto_oauth.socket.getaddrinfo") as mock_gai:
-            mock_gai.side_effect = socket.gaierror("DNS failure")
-            result = await _is_safe_url("https://nonexistent.invalid")
+    async def test_loopback_ip_returns_false(self) -> None:
+        """URLs with loopback IP should return False."""
+        result = await _is_safe_url("https://127.0.0.1/path")
         assert result is False
 
-    async def test_domain_resolution_uses_executor(self, monkeypatch) -> None:
-        """DNS resolution for hostnames should run through run_in_executor."""
-
-        class LoopStub:
-            def __init__(self) -> None:
-                self.calls = 0
-
-            async def run_in_executor(self, _executor, fn):
-                self.calls += 1
-                return fn()
-
-        loop_stub = LoopStub()
-        monkeypatch.setattr(
-            "backend.crosspost.atproto_oauth.socket.getaddrinfo",
-            lambda *_args, **_kwargs: [
-                (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))
-            ],
-        )
-        monkeypatch.setattr(
-            "backend.crosspost.atproto_oauth.asyncio.get_running_loop",
-            lambda: loop_stub,
-        )
-
-        result = await _is_safe_url("https://example.com")
-
-        assert result is True
-        assert loop_stub.calls == 1
+    async def test_ipv6_localhost_returns_false(self) -> None:
+        """IPv6 localhost should return False."""
+        result = await _is_safe_url("https://[::1]/path")
+        assert result is False
