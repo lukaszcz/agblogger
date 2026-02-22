@@ -46,7 +46,7 @@ Always start a dev server with `just start`. Remember to stop a running dev serv
 - **IMPORTANT**: Every new feature should include tests that verify its correctness at the appropriate levels (unit, integration, and possibly system level).
 - **IMPORTANT**: Follow Test Driven Development (TDD). Write failing tests first, implement changes later to make the tests pass.
 - **IMPORTANT**: For every bug found, add a regression test that fails because of the bug, then fix the bug and ensure the test passes.
-- Test warnings are treated as errors (`filterwarnings = ["error"]`), so tests must run warning-free.
+- Use property-based testing (Hypothesis, fast-check) for deterministic logic. Abstract high-invariant logic into independent pure functions to enable property-based testing.
 - Avoid brittle tests. Test user workflows, not implementation details.
 - Don't leak expected error output into test run output.
 
