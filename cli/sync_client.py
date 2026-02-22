@@ -235,7 +235,7 @@ class SyncClient:
         local_files = scan_local_files(self.content_dir)
         save_manifest(self.content_dir, local_files)
 
-        total = len(file_paths_to_upload) + len(all_downloads) + len(to_delete_local)
+        total = len(files_to_send) + len(all_downloads) + len(to_delete_local)
         print(f"Sync complete. {total} file(s) synced, {len(response_conflicts)} conflict(s).")
 
 
