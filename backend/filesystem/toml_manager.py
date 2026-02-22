@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import tomllib
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -10,6 +11,8 @@ import tomli_w
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -43,26 +46,38 @@ class LabelDef:
 
 
 def parse_site_config(content_dir: Path) -> SiteConfig:
-    """Parse index.toml from the content directory."""
+    """Parse index.toml from the content directory.
+
+    Returns safe defaults if the file is missing, corrupt, or structurally invalid.
+    """
     index_path = content_dir / "index.toml"
     if not index_path.exists():
         return SiteConfig()
 
-    data = tomllib.loads(index_path.read_text(encoding="utf-8"))
+    try:
+        data = tomllib.loads(index_path.read_text(encoding="utf-8"))
+    except (tomllib.TOMLDecodeError, UnicodeDecodeError) as exc:
+        logger.warning("Failed to parse %s, using defaults: %s", index_path, exc)
+        return SiteConfig()
+
     site_data = data.get("site", {})
 
     pages: list[PageConfig] = []
-    for page_data in data.get("pages", []):
-        if "id" not in page_data:
-            msg = f"Page entry missing required 'id' field: {page_data}"
-            raise ValueError(msg)
-        pages.append(
-            PageConfig(
-                id=page_data["id"],
-                title=page_data.get("title", page_data["id"].title()),
-                file=page_data.get("file"),
+    try:
+        for page_data in data.get("pages", []):
+            if "id" not in page_data:
+                msg = f"Page entry missing required 'id' field: {page_data}"
+                raise ValueError(msg)
+            pages.append(
+                PageConfig(
+                    id=page_data["id"],
+                    title=page_data.get("title", page_data["id"].title()),
+                    file=page_data.get("file"),
+                )
             )
-        )
+    except (ValueError, TypeError) as exc:
+        logger.warning("Invalid page config in %s, using defaults: %s", index_path, exc)
+        return SiteConfig()
 
     return SiteConfig(
         title=site_data.get("title", "My Blog"),
@@ -76,13 +91,18 @@ def parse_site_config(content_dir: Path) -> SiteConfig:
 def parse_labels_config(content_dir: Path) -> dict[str, LabelDef]:
     """Parse labels.toml from the content directory.
 
-    Returns a dict of label_id -> LabelDef.
+    Returns a dict of label_id -> LabelDef. Returns empty dict if the file
+    is missing or corrupt.
     """
     labels_path = content_dir / "labels.toml"
     if not labels_path.exists():
         return {}
 
-    data = tomllib.loads(labels_path.read_text(encoding="utf-8"))
+    try:
+        data = tomllib.loads(labels_path.read_text(encoding="utf-8"))
+    except (tomllib.TOMLDecodeError, UnicodeDecodeError) as exc:
+        logger.warning("Failed to parse %s, using empty labels: %s", labels_path, exc)
+        return {}
     labels_data: dict[str, Any] = data.get("labels", {})
 
     result: dict[str, LabelDef] = {}

@@ -58,13 +58,15 @@ async def rebuild_cache(
 
     # Collect all edges and run cycle detection
     all_edges: list[tuple[str, str]] = []
+    implicit_created: set[str] = set()
     for label_id, label_def in labels_config.items():
         for parent_id in label_def.parents:
             # Ensure parent label exists in DB
-            if parent_id not in labels_config:
+            if parent_id not in labels_config and parent_id not in implicit_created:
                 parent_label = LabelCache(id=parent_id, names="[]", is_implicit=True)
                 session.add(parent_label)
                 await session.flush()
+                implicit_created.add(parent_id)
             all_edges.append((label_id, parent_id))
 
     accepted_edges, dropped_edges = break_cycles(all_edges)
@@ -87,9 +89,17 @@ async def rebuild_cache(
     for post_data in posts:
         content_h = hash_content(post_data.raw_content)
 
-        # Render HTML
-        rendered_html = await render_markdown(post_data.content)
-        rendered_excerpt = await render_markdown(content_manager.get_markdown_excerpt(post_data))
+        # Render HTML — skip this post if rendering fails
+        try:
+            rendered_html = await render_markdown(post_data.content)
+            rendered_excerpt = await render_markdown(
+                content_manager.get_markdown_excerpt(post_data)
+            )
+        except RuntimeError as exc:
+            msg = f"Skipping post {post_data.file_path!r} ({post_data.title}): {exc}"
+            logger.warning(msg)
+            warnings.append(msg)
+            continue
         rendered_html = rewrite_relative_urls(rendered_html, post_data.file_path)
         rendered_excerpt = rewrite_relative_urls(rendered_excerpt, post_data.file_path)
 

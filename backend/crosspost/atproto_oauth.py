@@ -90,6 +90,7 @@ def load_or_create_keypair(
     """Load keypair from file, or create and save a new one.
 
     Uses a lock file to avoid check-then-create races across concurrent callers.
+    If the existing file is corrupted, it is replaced with a freshly generated keypair.
     """
 
     def _load_existing() -> tuple[EllipticCurvePrivateKey, dict[str, str]]:
@@ -101,7 +102,12 @@ def load_or_create_keypair(
         return private_key, jwk
 
     if path.exists():
-        return _load_existing()
+        try:
+            return _load_existing()
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError, UnicodeDecodeError) as exc:
+            logger.warning("Corrupted keypair file %s, regenerating: %s", path, exc)
+            path.unlink()
+            # Fall through to create a new keypair
 
     lock_path = path.with_name(f".{path.name}.lock")
     lock_fd: int | None = None

@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import pytest
-
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -13,15 +11,16 @@ from backend.filesystem.toml_manager import parse_labels_config, parse_site_conf
 
 
 class TestSiteConfigValidation:
-    def test_page_missing_id_raises(self, tmp_path: Path) -> None:
-        """Issue 34: Page entries without 'id' should raise ValueError."""
+    def test_page_missing_id_returns_defaults(self, tmp_path: Path) -> None:
+        """Issue 34: Page entries without 'id' should fall back to defaults."""
         content_dir = tmp_path / "content"
         content_dir.mkdir()
         (content_dir / "index.toml").write_text(
             '[site]\ntitle = "Test"\n\n[[pages]]\ntitle = "No ID Page"\n'
         )
-        with pytest.raises(ValueError, match="missing required 'id' field"):
-            parse_site_config(content_dir)
+        config = parse_site_config(content_dir)
+        assert config.title == "My Blog"
+        assert config.pages == []
 
     def test_valid_page_config(self, tmp_path: Path) -> None:
         content_dir = tmp_path / "content"

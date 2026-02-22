@@ -84,6 +84,35 @@ class TestES256Keypair:
         assert path.exists()
         assert jwk["kty"] == "EC"
 
+    def test_corrupted_json_regenerates_keypair(self, tmp_path) -> None:
+        """A corrupted keypair file must not crash; it should be regenerated."""
+        path = tmp_path / "key.json"
+        path.write_text("this is not json {{{", encoding="utf-8")
+        _private_key, jwk = load_or_create_keypair(path)
+        assert jwk["kty"] == "EC"
+        assert jwk["crv"] == "P-256"
+        # File should now contain valid keypair
+        data = json.loads(path.read_text())
+        assert "private_key_pem" in data
+
+    def test_invalid_key_type_regenerates_keypair(self, tmp_path) -> None:
+        """A file with valid JSON but an invalid key should be regenerated."""
+        path = tmp_path / "key.json"
+        path.write_text(
+            json.dumps({"private_key_pem": "not-a-pem", "jwk": {"kty": "bad"}}),
+            encoding="utf-8",
+        )
+        _private_key, jwk = load_or_create_keypair(path)
+        assert jwk["kty"] == "EC"
+        assert jwk["crv"] == "P-256"
+
+    def test_missing_jwk_key_regenerates_keypair(self, tmp_path) -> None:
+        """A file missing the 'jwk' key should be regenerated."""
+        path = tmp_path / "key.json"
+        path.write_text(json.dumps({"private_key_pem": "stuff"}), encoding="utf-8")
+        _private_key, jwk = load_or_create_keypair(path)
+        assert jwk["kty"] == "EC"
+
 
 class TestDPoPProof:
     def test_create_dpop_proof_for_auth_server(self) -> None:
