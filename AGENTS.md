@@ -74,6 +74,7 @@ Always start a dev server with `just start`. Remember to stop a running dev serv
 
 ## Security Guidelines
 
+- All exceptions need to be handled gracefully, especially errors originating from interaction with external services (network, database, pandoc, git, filesystem). Never silently ignore exceptions.
 - Treat authentication as a coupled system. If you touch login/refresh/logout or cookies, update backend token logic, CSRF middleware, and frontend CSRF header persistence together; do not change one side in isolation.
 - Preserve production fail-fast guards in `Settings.validate_runtime_security()` (`SECRET_KEY`, `ADMIN_PASSWORD`, `TRUSTED_HOSTS`). Do not bypass them outside explicit debug/test scenarios.
 - Keep auth abuse protections intact: login origin enforcement, failed-attempt rate limiting, hashed refresh token storage, and refresh-token rotation with old-token revocation.
