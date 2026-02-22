@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 _SAFE_ID_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9:_-]*$")
 _SAFE_STYLE_RE = re.compile(r"^text-align:\s*(left|center|right|justify)\s*;?\s*$")
-_BOOLEAN_ATTRS: frozenset[str] = frozenset({"checked", "disabled"})
+_BOOLEAN_ATTRS: frozenset[str] = frozenset({"checked", "disabled", "open"})
 _VOID_TAGS: frozenset[str] = frozenset({"br", "hr", "img", "input"})
 _ALLOWED_TAGS: frozenset[str] = frozenset(
     {
@@ -25,6 +25,7 @@ _ALLOWED_TAGS: frozenset[str] = frozenset(
         "code",
         "dd",
         "del",
+        "details",
         "div",
         "dl",
         "dt",
@@ -65,6 +66,7 @@ _ALLOWED_TAGS: frozenset[str] = frozenset(
 _GLOBAL_ALLOWED_ATTRS: frozenset[str] = frozenset({"class", "id"})
 _TAG_ALLOWED_ATTRS: dict[str, frozenset[str]] = {
     "a": frozenset({"href", "title"}),
+    "details": frozenset({"open"}),
     "img": frozenset({"alt", "src", "title"}),
     "input": frozenset({"type", "checked", "disabled"}),
     "td": frozenset({"colspan", "rowspan", "style"}),

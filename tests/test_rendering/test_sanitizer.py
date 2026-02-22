@@ -130,6 +130,30 @@ class TestIdAttribute:
         assert "id=" not in result
 
 
+class TestDetailsTag:
+    """Tests for details/summary tag support."""
+
+    def test_details_tag_preserved(self) -> None:
+        html = "<details><summary>Click me</summary><p>Hidden content</p></details>"
+        result = _sanitize_html(html)
+        assert "<details>" in result
+        assert "<summary>" in result
+        assert "</details>" in result
+        assert "</summary>" in result
+        assert "Hidden content" in result
+
+    def test_details_open_attribute_preserved(self) -> None:
+        html = "<details open><summary>Open</summary><p>Visible</p></details>"
+        result = _sanitize_html(html)
+        assert 'open="open"' in result
+
+    def test_details_disallowed_attribute_stripped(self) -> None:
+        html = '<details onclick="alert(1)"><summary>Click</summary></details>'
+        result = _sanitize_html(html)
+        assert "onclick" not in result
+        assert "<details>" in result
+
+
 class TestEntityHandling:
     """Tests for HTML entity handling."""
 

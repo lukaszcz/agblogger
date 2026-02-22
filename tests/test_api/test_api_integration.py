@@ -452,6 +452,46 @@ class TestRender:
         assert "Hello" in data["html"]
 
     @pytest.mark.asyncio
+    async def test_render_preview_with_file_path(self, client: AsyncClient) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+
+        resp = await client.post(
+            "/api/render/preview",
+            json={
+                "markdown": "![photo](photo.png)",
+                "file_path": "posts/2026-02-20-my-post/index.md",
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "/api/content/posts/2026-02-20-my-post/photo.png" in data["html"]
+
+    @pytest.mark.asyncio
+    async def test_render_preview_without_file_path_keeps_relative(
+        self, client: AsyncClient
+    ) -> None:
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        token = login_resp.json()["access_token"]
+
+        resp = await client.post(
+            "/api/render/preview",
+            json={"markdown": "![photo](photo.png)"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "/api/content/" not in data["html"]
+        assert "photo.png" in data["html"]
+
+    @pytest.mark.asyncio
     async def test_render_preview_unauthenticated(self, client: AsyncClient) -> None:
         resp = await client.post(
             "/api/render/preview",
