@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import frontmatter as fm
 from merge3 import Merge3
@@ -272,6 +272,89 @@ def merge_file(
     merged_text = "".join(merged_lines)
     has_conflicts = "<<<<<<< SERVER" in merged_text
     return merged_text, has_conflicts
+
+
+@dataclass
+class FrontmatterMergeResult:
+    """Result of merging front matter fields semantically."""
+
+    merged: dict[str, Any]
+    field_conflicts: list[str]
+
+
+def merge_frontmatter(
+    base: dict[str, Any] | None,
+    server: dict[str, Any],
+    client: dict[str, Any],
+) -> FrontmatterMergeResult:
+    """Merge front matter fields semantically.
+
+    Rules:
+    - modified_at: always stripped (caller sets server time after merge)
+    - labels: set-based merge (additions/removals relative to base from both sides)
+    - title, author, created_at, draft: if both changed differently, server wins + reported
+    - unrecognized fields: if one side changed, take that change; if both, server wins
+    """
+    if base is None:
+        conflicts = [
+            k
+            for k in ("title", "author", "created_at", "draft")
+            if k in server and k in client and server.get(k) != client.get(k)
+        ]
+        return FrontmatterMergeResult(merged=dict(server), field_conflicts=conflicts)
+
+    merged: dict[str, Any] = {}
+    field_conflicts: list[str] = []
+
+    # Collect all keys except modified_at
+    all_keys = (set(base) | set(server) | set(client)) - {"modified_at"}
+
+    for key in all_keys:
+        base_val = base.get(key)
+        server_val = server.get(key)
+        client_val = client.get(key)
+
+        if key == "labels":
+            # Set-based merge
+            base_set = set(base_val) if isinstance(base_val, list) else set()
+            server_set = set(server_val) if isinstance(server_val, list) else set()
+            client_set = set(client_val) if isinstance(client_val, list) else set()
+
+            server_added = server_set - base_set
+            server_removed = base_set - server_set
+            client_added = client_set - base_set
+            client_removed = base_set - client_set
+
+            result_set = (base_set | server_added | client_added) - server_removed - client_removed
+            merged["labels"] = sorted(result_set)
+            continue
+
+        # For all other fields: three-way scalar merge
+        server_changed = server_val != base_val
+        client_changed = client_val != base_val
+
+        if not server_changed and not client_changed:
+            if base_val is not None:
+                merged[key] = base_val
+        elif server_changed and not client_changed:
+            if server_val is not None:
+                merged[key] = server_val
+        elif not server_changed and client_changed:
+            if client_val is not None:
+                merged[key] = client_val
+        else:
+            # Both changed
+            if server_val == client_val:
+                if server_val is not None:
+                    merged[key] = server_val
+            else:
+                # Conflict: server wins
+                if server_val is not None:
+                    merged[key] = server_val
+                if key in ("title", "author", "created_at", "draft"):
+                    field_conflicts.append(key)
+
+    return FrontmatterMergeResult(merged=merged, field_conflicts=field_conflicts)
 
 
 def normalize_post_frontmatter(
