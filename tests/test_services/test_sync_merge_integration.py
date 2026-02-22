@@ -233,6 +233,123 @@ class TestSyncCommit:
         dl_resp = await merge_client.get("/api/sync/download/posts/shared.md", headers=headers)
         assert dl_resp.status_code == 404
 
+    async def test_invalid_metadata_json_returns_400(self, merge_client: AsyncClient) -> None:
+        token = await _login(merge_client)
+        headers = {"Authorization": f"Bearer {token}"}
+
+        resp = await merge_client.post(
+            "/api/sync/commit",
+            data={"metadata": "not valid json{{{"},
+            headers=headers,
+        )
+        assert resp.status_code == 400
+        assert "Invalid metadata JSON" in resp.json()["detail"]
+
+    async def test_invalid_metadata_types_returns_400(self, merge_client: AsyncClient) -> None:
+        token = await _login(merge_client)
+        headers = {"Authorization": f"Bearer {token}"}
+
+        metadata = json.dumps({"deleted_files": "not-a-list"})
+        resp = await merge_client.post(
+            "/api/sync/commit",
+            data={"metadata": metadata},
+            headers=headers,
+        )
+        assert resp.status_code == 400
+
+    async def test_upload_too_large_returns_413(
+        self, merge_client: AsyncClient, merge_settings: Settings
+    ) -> None:
+        token = await _login(merge_client)
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # 10 MB + 1 byte
+        big_content = b"x" * (10 * 1024 * 1024 + 1)
+        metadata = json.dumps({"deleted_files": []})
+        resp = await merge_client.post(
+            "/api/sync/commit",
+            data={"metadata": metadata},
+            files=[("files", ("posts/big.md", io.BytesIO(big_content), "text/plain"))],
+            headers=headers,
+        )
+        assert resp.status_code == 413
+
+    async def test_binary_file_upload(self, merge_client: AsyncClient) -> None:
+        token = await _login(merge_client)
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # Upload a binary file (PNG header)
+        binary_content = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
+        metadata = json.dumps({"deleted_files": []})
+        resp = await merge_client.post(
+            "/api/sync/commit",
+            data={"metadata": metadata},
+            files=[
+                (
+                    "files",
+                    ("posts/2026-02-22-img/photo.png", io.BytesIO(binary_content), "image/png"),
+                )
+            ],
+            headers=headers,
+        )
+        assert resp.status_code == 200
+
+        dl_resp = await merge_client.get(
+            "/api/sync/download/posts/2026-02-22-img/photo.png", headers=headers
+        )
+        assert dl_resp.status_code == 200
+        assert dl_resp.content == binary_content
+
+    async def test_non_post_md_conflict_last_writer_wins(
+        self, merge_client: AsyncClient, merge_settings: Settings
+    ) -> None:
+        token = await _login(merge_client)
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # Write a non-post file on server
+        content_dir = merge_settings.content_dir
+        (content_dir / "labels.toml").write_text("[labels.server]\nnames = ['server']\n")
+
+        # Upload a different version via sync
+        client_content = b"[labels.client]\nnames = ['client']\n"
+        metadata = json.dumps({"deleted_files": []})
+        resp = await merge_client.post(
+            "/api/sync/commit",
+            data={"metadata": metadata},
+            files=[("files", ("labels.toml", io.BytesIO(client_content), "text/plain"))],
+            headers=headers,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        # Non-post files use last-writer-wins (client wins), no conflict reported
+        assert len(data["conflicts"]) == 0
+
+        dl_resp = await merge_client.get("/api/sync/download/labels.toml", headers=headers)
+        assert b"client" in dl_resp.content
+
+    async def test_files_synced_reflects_actual_changes(self, merge_client: AsyncClient) -> None:
+        token = await _login(merge_client)
+        headers = {"Authorization": f"Bearer {token}"}
+
+        new_content = b"---\ntitle: Synced\nauthor: Admin\n---\n\nBody.\n"
+        metadata = json.dumps({"deleted_files": []})
+        resp = await merge_client.post(
+            "/api/sync/commit",
+            data={"metadata": metadata},
+            files=[
+                (
+                    "files",
+                    ("posts/2026-02-22-synced/index.md", io.BytesIO(new_content), "text/plain"),
+                ),
+            ],
+            headers=headers,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        # files_synced should reflect actual changes, not total content dir files
+        # We uploaded 1 file, so files_synced should include that count
+        assert data["files_synced"] >= 1
+
     async def test_labels_merged_as_sets(
         self, merge_client: AsyncClient, merge_settings: Settings
     ) -> None:

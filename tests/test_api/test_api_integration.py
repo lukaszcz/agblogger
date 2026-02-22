@@ -275,7 +275,8 @@ class TestSync:
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "ok"
-        assert data["files_synced"] >= 1
+        # No files uploaded or deleted, so files_synced is 0
+        assert data["files_synced"] == 0
 
     @pytest.mark.asyncio
     async def test_sync_commit_normalizes_frontmatter(self, client: AsyncClient) -> None:

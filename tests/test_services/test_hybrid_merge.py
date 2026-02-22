@@ -87,3 +87,24 @@ class TestMergePostFile:
         parsed = frontmatter.loads(result.merged_content)
         assert parsed["title"] == "Server"
         assert "server body" in parsed.content
+
+    def test_malformed_yaml_in_client_returns_conflict(self, tmp_path: Path) -> None:
+        """Malformed YAML front matter should not crash; should return as conflict."""
+        git = GitService(tmp_path)
+        git.init_repo()
+        server = self._make_post({"title": "Server"}, "body\n")
+        malformed_client = "---\ntitle: [unclosed bracket\n---\n\nbody\n"
+        result = merge_post_file(None, server, malformed_client, git)
+        # Should not crash; server wins as conflict
+        assert result.body_conflicted
+        assert result.merged_content == server
+
+    def test_malformed_yaml_in_server_returns_conflict(self, tmp_path: Path) -> None:
+        """Malformed server YAML should not crash."""
+        git = GitService(tmp_path)
+        git.init_repo()
+        malformed_server = "---\ntitle: {bad yaml\n---\n\nserver body\n"
+        client = self._make_post({"title": "Client"}, "client body\n")
+        result = merge_post_file(None, malformed_server, client, git)
+        assert result.body_conflicted
+        assert result.merged_content == malformed_server

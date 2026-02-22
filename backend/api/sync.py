@@ -69,7 +69,7 @@ class SyncStatusRequest(BaseModel):
 
 
 class SyncPlanItem(BaseModel):
-    """Single item in a sync plan describing a conflict."""
+    """Single item in a sync plan. Currently used for conflict items in the status response."""
 
     file_path: str
     action: str
@@ -208,8 +208,15 @@ async def _sync_commit_inner(
     except json.JSONDecodeError as exc:
         raise HTTPException(status_code=400, detail=f"Invalid metadata JSON: {exc}") from exc
 
-    deleted_files: list[str] = meta.get("deleted_files", [])
-    last_sync_commit: str | None = meta.get("last_sync_commit")
+    raw_deleted = meta.get("deleted_files", [])
+    if not isinstance(raw_deleted, list) or not all(isinstance(f, str) for f in raw_deleted):
+        raise HTTPException(status_code=400, detail="deleted_files must be a list of strings")
+    deleted_files: list[str] = raw_deleted
+
+    raw_commit = meta.get("last_sync_commit")
+    if raw_commit is not None and not isinstance(raw_commit, str):
+        raise HTTPException(status_code=400, detail="last_sync_commit must be a string or null")
+    last_sync_commit: str | None = raw_commit
 
     # Load old manifest before any changes (needed for new-vs-edit detection)
     old_manifest = await get_server_manifest(session)
@@ -225,9 +232,12 @@ async def _sync_commit_inner(
     conflicts: list[SyncConflictInfo] = []
     to_download: list[str] = []
     uploaded_paths: list[str] = []
+    sync_warnings: list[str] = []
 
     for upload in upload_files:
         if upload.filename is None:
+            logger.warning("Sync upload with no filename, skipping")
+            sync_warnings.append("Skipped file upload with no filename")
             continue
 
         target_path = upload.filename.lstrip("/")
@@ -246,7 +256,7 @@ async def _sync_commit_inner(
             try:
                 server_content = full_path.read_text(encoding="utf-8")
             except UnicodeDecodeError:
-                # Binary file — read raw bytes for hash comparison
+                # Binary file on server — skip text-based merge
                 server_content = None
 
         client_text: str
@@ -254,8 +264,13 @@ async def _sync_commit_inner(
             client_text = upload_content.decode("utf-8")
         except UnicodeDecodeError:
             # Binary file — just write it, no merge
-            full_path.parent.mkdir(parents=True, exist_ok=True)
-            full_path.write_bytes(upload_content)
+            try:
+                full_path.parent.mkdir(parents=True, exist_ok=True)
+                full_path.write_bytes(upload_content)
+            except OSError as exc:
+                raise HTTPException(
+                    status_code=500, detail=f"File I/O error writing {target_path}"
+                ) from exc
             uploaded_paths.append(target_path)
             continue
 
@@ -266,10 +281,24 @@ async def _sync_commit_inner(
         if server_content is not None and server_content != client_text and is_post_md:
             # Get base version from git for three-way merge
             base_content = _get_base_content(git_service, last_sync_commit, target_path)
-            merge_result = merge_post_file(base_content, server_content, client_text, git_service)
+            try:
+                merge_result = merge_post_file(
+                    base_content, server_content, client_text, git_service
+                )
+            except (subprocess.CalledProcessError, OSError) as exc:
+                logger.error("Merge failed for %s: %s", target_path, exc)
+                conflicts.append(
+                    SyncConflictInfo(
+                        file_path=target_path, body_conflicted=True, field_conflicts=[]
+                    )
+                )
+                uploaded_paths.append(target_path)
+                continue
 
             if merge_result.body_conflicted or merge_result.field_conflicts:
-                # Conflict: keep server version on disk, report to client
+                # Conflict detected. Write merged content (which preserves non-conflicting
+                # changes from both sides, e.g. label additions) but report the conflict
+                # so the client knows which fields/body had server-wins resolution.
                 conflicts.append(
                     SyncConflictInfo(
                         file_path=target_path,
@@ -277,17 +306,33 @@ async def _sync_commit_inner(
                         field_conflicts=merge_result.field_conflicts,
                     )
                 )
-                # Server version is already on disk; no write needed
+                try:
+                    full_path.write_text(merge_result.merged_content, encoding="utf-8")
+                except OSError as exc:
+                    raise HTTPException(
+                        status_code=500, detail=f"File I/O error writing {target_path}"
+                    ) from exc
+                to_download.append(target_path)
             else:
                 # Clean merge — write merged result
-                full_path.write_text(merge_result.merged_content, encoding="utf-8")
+                try:
+                    full_path.write_text(merge_result.merged_content, encoding="utf-8")
+                except OSError as exc:
+                    raise HTTPException(
+                        status_code=500, detail=f"File I/O error writing {target_path}"
+                    ) from exc
                 to_download.append(target_path)
 
             uploaded_paths.append(target_path)
         else:
             # Non-conflict or non-post file: write client's version
-            full_path.parent.mkdir(parents=True, exist_ok=True)
-            full_path.write_text(client_text, encoding="utf-8")
+            try:
+                full_path.parent.mkdir(parents=True, exist_ok=True)
+                full_path.write_text(client_text, encoding="utf-8")
+            except OSError as exc:
+                raise HTTPException(
+                    status_code=500, detail=f"File I/O error writing {target_path}"
+                ) from exc
             uploaded_paths.append(target_path)
 
     # ── Normalize front matter for uploaded + merged post files ──
@@ -310,7 +355,7 @@ async def _sync_commit_inner(
             exc.returncode,
             exc.stderr.strip() if exc.stderr else "no stderr",
         )
-        fm_warnings.append(
+        sync_warnings.append(
             "Git commit failed; sync history may be degraded. "
             "Three-way merge on the next sync may produce incorrect results."
         )
@@ -325,10 +370,13 @@ async def _sync_commit_inner(
 
     _post_count, cache_warnings = await rebuild_cache(session, content_manager)
 
+    files_changed = len(uploaded_paths) + len(deleted_files)
+    all_warnings = sync_warnings + fm_warnings + cache_warnings
+
     return SyncCommitResponse(
-        status="warning" if git_failed else "ok",
-        files_synced=len(current_files),
-        warnings=fm_warnings + cache_warnings,
+        status="error" if git_failed else "ok",
+        files_synced=files_changed,
+        warnings=all_warnings,
         commit_hash=None if git_failed else git_service.head_commit(),
         conflicts=conflicts,
         to_download=to_download,
@@ -350,6 +398,12 @@ def _get_base_content(
         return None
     try:
         return git_service.show_file_at_commit(last_sync_commit, file_path)
-    except subprocess.CalledProcessError:
-        logger.warning("Failed to retrieve merge base for %s at %s", file_path, last_sync_commit)
+    except subprocess.CalledProcessError as exc:
+        logger.error(
+            "Git error retrieving base for %s at %s (exit %d): %s",
+            file_path,
+            last_sync_commit,
+            exc.returncode,
+            exc.stderr.strip() if exc.stderr else "no stderr",
+        )
         return None

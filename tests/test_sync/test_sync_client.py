@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+import httpx
+
 from cli import sync_client
 from cli.sync_client import SyncClient
 
@@ -23,7 +25,12 @@ class _DummyResponse:
         self.content = content
 
     def raise_for_status(self) -> None:
-        return None
+        if self.status_code >= 400:
+            response = httpx.Response(status_code=self.status_code)
+            request = httpx.Request("GET", "http://test")
+            raise httpx.HTTPStatusError(
+                f"HTTP {self.status_code}", request=request, response=response
+            )
 
     def json(self) -> dict[str, Any]:
         return self._json_data
@@ -352,6 +359,164 @@ class TestSyncClientSync:
             (url, kw) for url, kw in http_client.post_calls if url == "/api/sync/commit"
         ]
         assert len(commit_calls) == 1
+
+
+class TestSyncClientErrorHandling:
+    def test_download_http_error_does_not_crash_sync(
+        self, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        content_dir = tmp_path / "content"
+        content_dir.mkdir()
+
+        commit_resp = _DummyResponse(
+            json_data={
+                "status": "ok",
+                "commit_hash": "abc123",
+                "conflicts": [],
+                "to_download": [],
+                "warnings": [],
+            }
+        )
+        download_resp = _DummyResponse(status_code=404)
+        client, _http = _build_sync_client(
+            content_dir,
+            responses={
+                "/api/sync/commit": commit_resp,
+                "/api/sync/download/posts/missing.md": download_resp,
+            },
+        )
+        client.status = lambda: {
+            "to_upload": [],
+            "to_download": ["posts/missing.md"],
+            "to_delete_remote": [],
+            "to_delete_local": [],
+            "conflicts": [],
+        }
+
+        monkeypatch.setattr(sync_client, "scan_local_files", lambda _: {})
+        monkeypatch.setattr(sync_client, "save_manifest", lambda *_: None)
+
+        # Should not crash — download failure is handled gracefully
+        client.sync()
+
+    def test_download_path_traversal_rejected(self, tmp_path: Path) -> None:
+        content_dir = tmp_path / "content"
+        content_dir.mkdir()
+
+        client, _http = _build_sync_client(content_dir)
+        result = client._download_file("../../etc/passwd")
+        assert result is False
+
+    def test_delete_path_traversal_warns(
+        self, tmp_path: Path, monkeypatch: Any, capsys: Any
+    ) -> None:
+        content_dir = tmp_path / "content"
+        content_dir.mkdir()
+
+        commit_resp = _DummyResponse(
+            json_data={
+                "status": "ok",
+                "commit_hash": "abc123",
+                "conflicts": [],
+                "to_download": [],
+                "warnings": [],
+            }
+        )
+        client, _http = _build_sync_client(content_dir, responses={"/api/sync/commit": commit_resp})
+        client.status = lambda: {
+            "to_upload": [],
+            "to_download": [],
+            "to_delete_remote": [],
+            "to_delete_local": ["../../etc/passwd"],
+            "conflicts": [],
+        }
+
+        monkeypatch.setattr(sync_client, "scan_local_files", lambda _: {})
+        monkeypatch.setattr(sync_client, "save_manifest", lambda *_: None)
+
+        client.sync()
+        captured = capsys.readouterr()
+        assert "path traversal" in captured.out.lower()
+
+    def test_sync_summary_counts_successful_downloads_only(
+        self, tmp_path: Path, monkeypatch: Any, capsys: Any
+    ) -> None:
+        content_dir = tmp_path / "content"
+        content_dir.mkdir()
+
+        commit_resp = _DummyResponse(
+            json_data={
+                "status": "ok",
+                "commit_hash": "abc123",
+                "conflicts": [],
+                "to_download": [],
+                "warnings": [],
+            }
+        )
+        # One download succeeds, one fails
+        ok_resp = _DummyResponse(content=b"ok content")
+        fail_resp = _DummyResponse(status_code=500)
+        client, _http = _build_sync_client(
+            content_dir,
+            responses={
+                "/api/sync/commit": commit_resp,
+                "/api/sync/download/posts/ok.md": ok_resp,
+                "/api/sync/download/posts/fail.md": fail_resp,
+            },
+        )
+        client.status = lambda: {
+            "to_upload": [],
+            "to_download": ["posts/ok.md", "posts/fail.md"],
+            "to_delete_remote": [],
+            "to_delete_local": [],
+            "conflicts": [],
+        }
+
+        monkeypatch.setattr(sync_client, "scan_local_files", lambda _: {})
+        monkeypatch.setattr(sync_client, "save_manifest", lambda *_: None)
+
+        client.sync()
+        captured = capsys.readouterr()
+        # Should report 1 synced (only the successful download), not 2
+        assert "1 file(s) synced" in captured.out
+
+    def test_commit_metadata_contains_deleted_files(self, tmp_path: Path, monkeypatch: Any) -> None:
+        content_dir = tmp_path / "content"
+        content_dir.mkdir()
+
+        commit_resp = _DummyResponse(
+            json_data={
+                "status": "ok",
+                "commit_hash": "abc123",
+                "conflicts": [],
+                "to_download": [],
+                "warnings": [],
+            }
+        )
+        client, http_client = _build_sync_client(
+            content_dir, responses={"/api/sync/commit": commit_resp}
+        )
+        client.status = lambda: {
+            "to_upload": [],
+            "to_download": [],
+            "to_delete_remote": ["posts/deleted.md"],
+            "to_delete_local": [],
+            "conflicts": [],
+        }
+
+        monkeypatch.setattr(sync_client, "scan_local_files", lambda _: {})
+        monkeypatch.setattr(sync_client, "save_manifest", lambda *_: None)
+
+        client.sync()
+
+        commit_calls = [
+            (url, kw) for url, kw in http_client.post_calls if url == "/api/sync/commit"
+        ]
+        assert len(commit_calls) == 1
+        import json
+
+        sent_metadata = json.loads(commit_calls[0][1]["data"]["metadata"])
+        assert "posts/deleted.md" in sent_metadata["deleted_files"]
 
 
 class TestRemovedMethods:

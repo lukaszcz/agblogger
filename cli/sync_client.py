@@ -147,8 +147,12 @@ class SyncClient:
         if local_path is None:
             print(f"  Skip (path traversal): {file_path}")
             return False
-        resp = self.client.get(f"/api/sync/download/{file_path}")
-        resp.raise_for_status()
+        try:
+            resp = self.client.get(f"/api/sync/download/{file_path}")
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            print(f"  ERROR: Failed to download {file_path} (HTTP {exc.response.status_code})")
+            return False
         local_path.parent.mkdir(parents=True, exist_ok=True)
         local_path.write_bytes(resp.content)
         return True
@@ -187,12 +191,17 @@ class SyncClient:
             files_to_send.append(("files", (fp, full_path.read_bytes())))
             print(f"  Upload: {fp}")
 
-        resp = self.client.post(
-            "/api/sync/commit",
-            data={"metadata": metadata},
-            files=files_to_send if files_to_send else None,
-        )
-        resp.raise_for_status()
+        try:
+            resp = self.client.post(
+                "/api/sync/commit",
+                data={"metadata": metadata},
+                files=files_to_send if files_to_send else None,
+            )
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            print(f"Error: Sync commit failed (HTTP {exc.response.status_code})")
+            print("Local state may be inconsistent. Re-run sync to recover.")
+            return
         commit_data: dict[str, Any] = resp.json()
 
         # Download files: from plan's to_download + from commit response's to_download
@@ -201,14 +210,17 @@ class SyncClient:
             if fp not in all_downloads:
                 all_downloads.append(fp)
 
+        downloads_ok = 0
         for fp in all_downloads:
             if self._download_file(fp):
                 print(f"  Download: {fp}")
+                downloads_ok += 1
 
         # Delete local files
         for fp in to_delete_local:
             local_path = _is_safe_local_path(self.content_dir, fp)
             if local_path is None:
+                print(f"  Skip (path traversal in delete): {fp}")
                 continue
             if local_path.exists():
                 local_path.unlink()
@@ -235,7 +247,7 @@ class SyncClient:
         local_files = scan_local_files(self.content_dir)
         save_manifest(self.content_dir, local_files)
 
-        total = len(files_to_send) + len(all_downloads) + len(to_delete_local)
+        total = len(files_to_send) + downloads_ok + len(to_delete_local)
         print(f"Sync complete. {total} file(s) synced, {len(response_conflicts)} conflict(s).")
 
 

@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import frontmatter as fm
+import yaml
 from sqlalchemy import delete, select
 
 from backend.filesystem.frontmatter import RECOGNIZED_FIELDS, extract_title, strip_leading_heading
@@ -107,9 +108,9 @@ def compute_sync_plan(
 ) -> SyncPlan:
     """Compute sync plan by comparing client manifest, server manifest, and server current state.
 
-    For a "push" scenario (client -> server), client_manifest is the client's view,
-    server_manifest is the agreed-upon manifest from last sync, and server_current is
-    what the server has right now.
+    client_manifest is the client's current file state, server_manifest is the
+    agreed-upon state from the last sync, and server_current is the server's
+    current file state on disk.
     """
     plan = SyncPlan()
 
@@ -260,10 +261,13 @@ def merge_frontmatter(
     """Merge front matter fields semantically.
 
     Rules:
-    - modified_at: always stripped (caller sets server time after merge)
+    - modified_at: excluded from merge (caller sets server time via normalization)
     - labels: set-based merge (additions/removals relative to base from both sides)
     - title, author, created_at, draft: if both changed differently, server wins + reported
     - unrecognized fields: if one side changed, take that change; if both, server wins
+      (silently, not reported as a conflict)
+    - field deletion: removing a field counts as a change; if both sides changed and
+      server wins with deletion, the field is omitted from the merged result
     """
     if base is None:
         conflicts = [
@@ -345,12 +349,19 @@ def merge_post_file(
     """Merge a markdown post file using hybrid strategy.
 
     Front matter is merged semantically (set-based labels, server-wins scalars).
-    Body is merged via git merge-file. modified_at is stripped before merge.
+    Body is merged via git merge-file. modified_at is excluded during front matter
+    merge (the caller sets server time after merge via normalization).
     """
-    server_post = fm.loads(server)
-    client_post = fm.loads(client)
+    try:
+        server_post = fm.loads(server)
+        client_post = fm.loads(client)
+    except (yaml.YAMLError, ValueError) as exc:
+        logger.warning("Failed to parse front matter during merge: %s", exc)
+        return PostMergeResult(merged_content=server, body_conflicted=True, field_conflicts=[])
 
     if base is None:
+        # Without a merge base, three-way merge is impossible. Conservatively report
+        # body as conflicted and keep the server version.
         fm_result = merge_frontmatter(None, dict(server_post.metadata), dict(client_post.metadata))
         return PostMergeResult(
             merged_content=server,
@@ -358,7 +369,11 @@ def merge_post_file(
             field_conflicts=fm_result.field_conflicts,
         )
 
-    base_post = fm.loads(base)
+    try:
+        base_post = fm.loads(base)
+    except (yaml.YAMLError, ValueError) as exc:
+        logger.warning("Failed to parse base front matter during merge: %s", exc)
+        return PostMergeResult(merged_content=server, body_conflicted=True, field_conflicts=[])
 
     # Merge front matter semantically
     fm_result = merge_frontmatter(

@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import subprocess
 from typing import TYPE_CHECKING
+from unittest.mock import patch
+
+import pytest
 
 from backend.services.git_service import GitService
 
@@ -59,3 +63,19 @@ class TestMergeFileContent:
         merged, conflicted = git.merge_file_content(base, ours, theirs)
         assert not conflicted
         assert merged == "changed\n"
+
+    def test_raises_on_high_exit_code(self, tmp_path: Path) -> None:
+        """Exit codes >= 128 from git merge-file indicate errors, not conflicts."""
+        git = GitService(tmp_path)
+        git.init_repo()
+
+        fake_result = subprocess.CompletedProcess(
+            args=["git", "merge-file"],
+            returncode=128,
+            stdout="",
+            stderr="fatal: some error",
+        )
+        with patch("subprocess.run", return_value=fake_result):
+            with pytest.raises(subprocess.CalledProcessError) as exc_info:
+                git.merge_file_content("base\n", "ours\n", "theirs\n")
+            assert exc_info.value.returncode == 128

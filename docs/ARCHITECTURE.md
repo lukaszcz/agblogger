@@ -358,7 +358,7 @@ When both client and server modify the same `.md` file under `posts/`, the sync 
 1. **Client uploads all changed files** in a single multipart `POST /api/sync/commit` request
 2. **Server reads the base version** from git history at `last_sync_commit`, plus the current server version on disk
 3. **Front matter** is merged semantically via `merge_frontmatter()`:
-   - `modified_at` is stripped from both sides and set to server time after merge
+   - `modified_at` is excluded from the semantic merge; the subsequent front matter normalization pass sets it to the current server time
    - `labels` are merged as sets: additions and removals from each side relative to the base are applied together
    - `title`, `author`, `created_at`, `draft`: if both sides changed differently, server wins and the field is reported as a conflict
 4. **Body** (markdown below front matter) is merged via `git merge-file`. Non-overlapping edits merge cleanly. If body edits overlap, the server body wins and a body conflict is reported
