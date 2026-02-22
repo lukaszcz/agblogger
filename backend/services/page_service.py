@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 from backend.pandoc.renderer import render_markdown
@@ -9,6 +10,8 @@ from backend.schemas.page import PageConfig, PageResponse, SiteConfigResponse
 
 if TYPE_CHECKING:
     from backend.filesystem.content_manager import ContentManager
+
+logger = logging.getLogger(__name__)
 
 
 def get_site_config(content_manager: ContentManager) -> SiteConfigResponse:
@@ -39,7 +42,12 @@ async def get_page(content_manager: ContentManager, page_id: str) -> PageRespons
     if raw_content is None:
         return None
 
-    rendered_html = await render_markdown(raw_content)
+    try:
+        rendered_html = await render_markdown(raw_content)
+    except RuntimeError as exc:
+        logger.error("Pandoc rendering failed for page %s: %s", page_id, exc)
+        rendered_html = ""
+
     return PageResponse(
         id=page_id,
         title=page_cfg.title,

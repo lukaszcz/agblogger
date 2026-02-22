@@ -35,9 +35,7 @@ class TestGlobalExceptionHandlers:
         async def _raise_runtime_error() -> None:
             raise RuntimeError("pandoc failed")
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.get("/test-runtime-error")
         assert resp.status_code == 502
         assert resp.json()["detail"] == "Rendering service unavailable"
@@ -56,9 +54,7 @@ class TestGlobalExceptionHandlers:
         async def _raise_os_error() -> None:
             raise OSError("disk full")
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.get("/test-os-error")
         assert resp.status_code == 500
         assert resp.json()["detail"] == "Storage operation failed"
@@ -77,9 +73,7 @@ class TestGlobalExceptionHandlers:
         async def _raise_yaml_error() -> None:
             raise yaml.YAMLError("invalid yaml")
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.get("/test-yaml-error")
         assert resp.status_code == 422
         assert resp.json()["detail"] == "Invalid content format"
@@ -98,9 +92,7 @@ class TestGlobalExceptionHandlers:
         async def _raise_json_error() -> None:
             json.loads("not valid json {")
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.get("/test-json-error")
         assert resp.status_code == 500
         assert resp.json()["detail"] == "Data integrity error"

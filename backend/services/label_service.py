@@ -22,11 +22,14 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+_JSON_PARSE_ERRORS = (json.JSONDecodeError, TypeError)
+
+
 def _safe_parse_names(raw: str) -> list[str]:
     """Parse label names JSON, returning empty list on error."""
     try:
         result = json.loads(raw)
-    except (json.JSONDecodeError, TypeError):
+    except _JSON_PARSE_ERRORS:
         logger.warning("Invalid label names JSON: %s", raw[:100])
         return []
     return result if isinstance(result, list) else []

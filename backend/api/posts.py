@@ -9,6 +9,7 @@ import shutil
 from pathlib import Path as FilePath
 from typing import Annotated
 
+import yaml
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
 from sqlalchemy import delete, select, text
 from sqlalchemy.exc import OperationalError
@@ -205,9 +206,21 @@ async def upload_post(
         md_files[0],
     )
     md_filename, md_bytes = md_file
-    raw_content = md_bytes.decode("utf-8")
 
-    post_data = content_manager.read_post_from_string(raw_content, title_override=title)
+    # M1: Validate UTF-8 encoding
+    try:
+        raw_content = md_bytes.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise HTTPException(status_code=422, detail="File is not valid UTF-8 encoded text") from exc
+
+    # M2: Validate YAML front matter
+    try:
+        post_data = content_manager.read_post_from_string(raw_content, title_override=title)
+    except (ValueError, yaml.YAMLError) as exc:
+        logger.warning("Invalid front matter in uploaded file: %s", exc)
+        raise HTTPException(
+            status_code=422, detail="Invalid front matter in uploaded file"
+        ) from exc
 
     if post_data.title == "Untitled" and title is None:
         raise HTTPException(status_code=422, detail="no_title")
@@ -231,9 +244,18 @@ async def upload_post(
         dest.write_bytes(data)
         written_assets.append(dest)
 
-    md_excerpt = generate_markdown_excerpt(post_data.content)
-    rendered_excerpt = await render_markdown(md_excerpt) if md_excerpt else ""
-    rendered_html = await render_markdown(post_data.content)
+    # H1: Catch pandoc rendering failures and clean up assets
+    try:
+        md_excerpt = generate_markdown_excerpt(post_data.content)
+        rendered_excerpt = await render_markdown(md_excerpt) if md_excerpt else ""
+        rendered_html = await render_markdown(post_data.content)
+    except RuntimeError as exc:
+        logger.error("Pandoc rendering failed during upload of %s: %s", file_path, exc)
+        for asset in written_assets:
+            asset.unlink(missing_ok=True)
+        if post_dir.exists() and not any(post_dir.iterdir()):
+            post_dir.rmdir()
+        raise HTTPException(status_code=502, detail="Markdown rendering failed") from exc
     rendered_excerpt = rewrite_relative_urls(rendered_excerpt, file_path)
     rendered_html = rewrite_relative_urls(rendered_html, file_path)
 
@@ -342,7 +364,14 @@ async def upload_assets(
         if not filename or filename.startswith("."):
             raise HTTPException(status_code=400, detail=f"Invalid filename: {upload_file.filename}")
         dest = post_dir / filename
-        dest.write_bytes(content)
+        # M3: Handle filesystem errors during asset write
+        try:
+            dest.write_bytes(content)
+        except OSError as exc:
+            logger.error("Failed to write asset %s: %s", dest, exc)
+            raise HTTPException(
+                status_code=500, detail=f"Failed to write asset: {filename}"
+            ) from exc
         uploaded.append(filename)
 
     if uploaded:
@@ -402,9 +431,14 @@ async def create_post_endpoint(
         file_path=file_path,
     )
 
-    md_excerpt = generate_markdown_excerpt(post_data.content)
-    rendered_excerpt = await render_markdown(md_excerpt) if md_excerpt else ""
-    rendered_html = await render_markdown(post_data.content)
+    # H1: Catch pandoc rendering failures
+    try:
+        md_excerpt = generate_markdown_excerpt(post_data.content)
+        rendered_excerpt = await render_markdown(md_excerpt) if md_excerpt else ""
+        rendered_html = await render_markdown(post_data.content)
+    except RuntimeError as exc:
+        logger.error("Pandoc rendering failed for new post %s: %s", file_path, exc)
+        raise HTTPException(status_code=502, detail="Markdown rendering failed") from exc
     rendered_excerpt = rewrite_relative_urls(rendered_excerpt, file_path)
     rendered_html = rewrite_relative_urls(rendered_html, file_path)
 
@@ -501,10 +535,61 @@ async def update_post_endpoint(
 
     serialized = serialize_post(post_data)
     md_excerpt = generate_markdown_excerpt(post_data.content)
-    rendered_excerpt = await render_markdown(md_excerpt) if md_excerpt else ""
-    rendered_html = await render_markdown(post_data.content)
-    rendered_excerpt = rewrite_relative_urls(rendered_excerpt, file_path)
-    rendered_html = rewrite_relative_urls(rendered_html, file_path)
+
+    # H1: Catch pandoc rendering failures — render once, reuse for URL rewriting
+    try:
+        raw_rendered_excerpt = await render_markdown(md_excerpt) if md_excerpt else ""
+        raw_rendered_html = await render_markdown(post_data.content)
+    except RuntimeError as exc:
+        logger.error("Pandoc rendering failed for post %s: %s", file_path, exc)
+        raise HTTPException(status_code=502, detail="Markdown rendering failed") from exc
+    rendered_excerpt = rewrite_relative_urls(raw_rendered_excerpt, file_path)
+    rendered_html = rewrite_relative_urls(raw_rendered_html, file_path)
+
+    # C1: Determine if rename is needed and rewrite URLs with new path BEFORE any
+    # filesystem changes. This ensures that if rendering fails, nothing is moved.
+    new_file_path = file_path
+    new_rendered_excerpt = rendered_excerpt
+    new_rendered_html = rendered_html
+    needs_rename = False
+    old_dir: FilePath | None = None
+    new_dir: FilePath | None = None
+
+    if file_path.endswith("/index.md"):
+        new_slug = generate_post_slug(title)
+        old_dir_name = FilePath(file_path).parent.name
+        date_prefix_match = re.match(r"^(\d{4}-\d{2}-\d{2})-(.+)$", old_dir_name)
+        if date_prefix_match:
+            date_prefix = date_prefix_match.group(1)
+            old_slug = date_prefix_match.group(2)
+            if new_slug != old_slug:
+                old_dir = content_manager.content_dir / FilePath(file_path).parent
+                posts_parent = old_dir.parent
+                new_dir_name = f"{date_prefix}-{new_slug}"
+                new_dir = posts_parent / new_dir_name
+
+                # Handle collision: append -2, -3, etc.
+                if new_dir.exists():
+                    counter = 2
+                    while True:
+                        candidate = posts_parent / f"{new_dir_name}-{counter}"
+                        if not candidate.exists():
+                            new_dir = candidate
+                            break
+                        counter += 1
+
+                new_file_path = str((new_dir / "index.md").relative_to(content_manager.content_dir))
+
+                # Rewrite URLs with new path (reuse already-rendered HTML)
+                new_rendered_excerpt = rewrite_relative_urls(
+                    raw_rendered_excerpt, new_file_path
+                )
+                new_rendered_html = rewrite_relative_urls(
+                    raw_rendered_html, new_file_path
+                )
+
+                needs_rename = True
+
     previous_title = existing.title
     previous_content = existing_post_data.content if existing_post_data else ""
 
@@ -532,54 +617,44 @@ async def update_post_endpoint(
         await session.rollback()
         raise HTTPException(status_code=500, detail="Failed to write post file") from exc
 
-    # Rename directory if title changed and this is a directory-based post
-    new_file_path = file_path
-    if file_path.endswith("/index.md"):
-        new_slug = generate_post_slug(title)
-        old_dir_name = FilePath(file_path).parent.name
-        # Extract date prefix (YYYY-MM-DD) from directory name
-        date_prefix_match = re.match(r"^(\d{4}-\d{2}-\d{2})-(.+)$", old_dir_name)
-        if date_prefix_match:
-            date_prefix = date_prefix_match.group(1)
-            old_slug = date_prefix_match.group(2)
-            if new_slug != old_slug:
-                old_dir = content_manager.content_dir / FilePath(file_path).parent
-                posts_parent = old_dir.parent
-                new_dir_name = f"{date_prefix}-{new_slug}"
-                new_dir = posts_parent / new_dir_name
+    # Perform the rename after write succeeds
+    if needs_rename and old_dir is not None and new_dir is not None:
+        # H2: Handle OSError during shutil.move
+        try:
+            shutil.move(str(old_dir), str(new_dir))
+        except OSError as exc:
+            logger.error("Failed to rename post directory %s -> %s: %s", old_dir, new_dir, exc)
+            await session.rollback()
+            raise HTTPException(status_code=500, detail="Failed to rename post directory") from exc
 
-                # Handle collision: append -2, -3, etc.
-                if new_dir.exists():
-                    counter = 2
-                    while True:
-                        candidate = posts_parent / f"{new_dir_name}-{counter}"
-                        if not candidate.exists():
-                            new_dir = candidate
-                            break
-                        counter += 1
-
-                shutil.move(str(old_dir), str(new_dir))
-                os.symlink(new_dir.name, str(old_dir))
-
-                new_file_path = str((new_dir / "index.md").relative_to(content_manager.content_dir))
-                existing.file_path = new_file_path
-                post_data.file_path = new_file_path
-
-                # Re-apply URL rewriting with new file_path
-                rendered_excerpt = rewrite_relative_urls(
-                    await render_markdown(md_excerpt) if md_excerpt else "",
-                    new_file_path,
+        # H2: Handle OSError during os.symlink; rollback move on failure
+        try:
+            os.symlink(new_dir.name, str(old_dir))
+        except OSError as exc:
+            logger.error("Failed to create symlink %s -> %s: %s", old_dir, new_dir.name, exc)
+            # Rollback: move directory back to original location
+            try:
+                shutil.move(str(new_dir), str(old_dir))
+            except OSError as rollback_exc:
+                logger.error(
+                    "Failed to rollback directory rename %s -> %s: %s",
+                    new_dir,
+                    old_dir,
+                    rollback_exc,
                 )
-                rendered_html = rewrite_relative_urls(
-                    await render_markdown(post_data.content),
-                    new_file_path,
-                )
-                existing.rendered_excerpt = rendered_excerpt
-                existing.rendered_html = rendered_html
+            await session.rollback()
+            raise HTTPException(
+                status_code=500, detail="Failed to create backward-compat symlink"
+            ) from exc
+
+        existing.file_path = new_file_path
+        post_data.file_path = new_file_path
+        existing.rendered_excerpt = new_rendered_excerpt
+        existing.rendered_html = new_rendered_html
 
     await session.commit()
     await session.refresh(existing)
-    git_service.try_commit(f"Update post: {new_file_path}")
+    git_service.try_commit(f"Update post: {existing.file_path}")
 
     return PostDetail(
         id=existing.id,

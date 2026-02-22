@@ -1,0 +1,489 @@
+"""Tests for targeted error handling in API endpoints.
+
+Covers: H1 (pandoc failures), M1/M2 (upload validation), H10 (sync cache rebuild),
+H8 (label commit recovery), H2 (OSError in rename), H11/M4 (admin OSError),
+M3 (asset upload OSError), C1 (render before rename).
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+from unittest.mock import AsyncMock, patch
+
+import pytest
+
+from backend.config import Settings
+from tests.conftest import create_test_client
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
+    from pathlib import Path
+
+    from httpx import AsyncClient
+
+
+@pytest.fixture
+def app_settings(tmp_content_dir: Path, tmp_path: Path) -> Settings:
+    """Create settings for test app."""
+    posts_dir = tmp_content_dir / "posts"
+    (posts_dir / "hello.md").write_text(
+        "---\ncreated_at: 2026-02-02 22:21:29.975359+00\n"
+        "author: Admin\nlabels: ['#swe']\n---\n# Hello World\n\nTest content.\n"
+    )
+    (tmp_content_dir / "labels.toml").write_text(
+        "[labels]\n[labels.swe]\nnames = ['software engineering']\n"
+    )
+    # Add about page
+    index_toml = tmp_content_dir / "index.toml"
+    index_toml.write_text(
+        '[site]\ntitle = "Test Blog"\ntimezone = "UTC"\n\n'
+        '[[pages]]\nid = "timeline"\ntitle = "Posts"\n\n'
+        '[[pages]]\nid = "about"\ntitle = "About"\nfile = "about.md"\n'
+    )
+    (tmp_content_dir / "about.md").write_text("# About\n\nAbout page.\n")
+
+    db_path = tmp_path / "test.db"
+    return Settings(
+        secret_key="test-secret-key-with-at-least-32-characters",
+        debug=True,
+        database_url=f"sqlite+aiosqlite:///{db_path}",
+        content_dir=tmp_content_dir,
+        frontend_dir=tmp_path / "frontend",
+        admin_username="admin",
+        admin_password="admin123",
+        auth_self_registration=True,
+    )
+
+
+@pytest.fixture
+async def client(app_settings: Settings) -> AsyncGenerator[AsyncClient]:
+    """Create test HTTP client."""
+    async with create_test_client(app_settings) as ac:
+        yield ac
+
+
+async def login(client: AsyncClient) -> str:
+    """Login as admin and return access token."""
+    resp = await client.post("/api/auth/login", json={"username": "admin", "password": "admin123"})
+    return resp.json()["access_token"]
+
+
+class TestRenderEndpointPandocFailure:
+    """H1: render endpoint handles pandoc failure."""
+
+    @pytest.mark.asyncio
+    async def test_preview_pandoc_failure_returns_502(self, client: AsyncClient) -> None:
+        token = await login(client)
+        with patch(
+            "backend.api.render.render_markdown",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("pandoc not found"),
+        ):
+            resp = await client.post(
+                "/api/render/preview",
+                json={"markdown": "# Hello"},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert resp.status_code == 502
+        assert "render" in resp.json()["detail"].lower()
+
+
+class TestPagePandocFailure:
+    """H1: page service handles pandoc failure gracefully."""
+
+    @pytest.mark.asyncio
+    async def test_page_pandoc_failure_returns_empty_html(self, client: AsyncClient) -> None:
+        with patch(
+            "backend.services.page_service.render_markdown",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("pandoc broken"),
+        ):
+            resp = await client.get("/api/pages/about")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["rendered_html"] == ""
+
+
+class TestUploadPostValidation:
+    """M1/M2: upload_post validates encoding and YAML."""
+
+    @pytest.mark.asyncio
+    async def test_upload_invalid_utf8_returns_422(self, client: AsyncClient) -> None:
+        token = await login(client)
+        # Invalid UTF-8 bytes
+        invalid_bytes = b"\x80\x81\x82\x83"
+        resp = await client.post(
+            "/api/posts/upload",
+            files={"files": ("post.md", invalid_bytes, "text/markdown")},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 422
+        assert "utf-8" in resp.json()["detail"].lower() or "decode" in resp.json()["detail"].lower()
+
+    @pytest.mark.asyncio
+    async def test_upload_invalid_yaml_returns_422(self, client: AsyncClient) -> None:
+        token = await login(client)
+        # Malformed YAML in front matter
+        bad_yaml = "---\ntitle: [\ninvalid yaml\n---\n\nBody text.\n"
+        resp = await client.post(
+            "/api/posts/upload",
+            files={"files": ("post.md", bad_yaml.encode(), "text/markdown")},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 422
+        detail = resp.json()["detail"].lower()
+        assert "front matter" in detail or "yaml" in detail or "parse" in detail
+
+
+class TestPostCreatePandocFailure:
+    """H1: create_post handles pandoc failure."""
+
+    @pytest.mark.asyncio
+    async def test_create_post_pandoc_failure_returns_502(self, client: AsyncClient) -> None:
+        token = await login(client)
+        with patch(
+            "backend.api.posts.render_markdown",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("pandoc crashed"),
+        ):
+            resp = await client.post(
+                "/api/posts",
+                json={
+                    "title": "Test Post",
+                    "body": "Hello world",
+                    "labels": [],
+                    "is_draft": False,
+                },
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert resp.status_code == 502
+        assert "render" in resp.json()["detail"].lower()
+
+
+class TestPostUpdatePandocFailure:
+    """H1: update_post handles pandoc failure."""
+
+    @pytest.mark.asyncio
+    async def test_update_post_pandoc_failure_returns_502(self, client: AsyncClient) -> None:
+        token = await login(client)
+        with patch(
+            "backend.api.posts.render_markdown",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("pandoc crashed"),
+        ):
+            resp = await client.put(
+                "/api/posts/posts/hello.md",
+                json={
+                    "title": "Updated",
+                    "body": "Updated content",
+                    "labels": [],
+                    "is_draft": False,
+                },
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert resp.status_code == 502
+        assert "render" in resp.json()["detail"].lower()
+
+
+class TestUploadPostPandocFailure:
+    """H1: upload_post handles pandoc failure."""
+
+    @pytest.mark.asyncio
+    async def test_upload_pandoc_failure_returns_502(self, client: AsyncClient) -> None:
+        token = await login(client)
+        with patch(
+            "backend.api.posts.render_markdown",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("pandoc crashed"),
+        ):
+            md_content = "---\ntitle: Upload Test\n---\n\nContent.\n"
+            resp = await client.post(
+                "/api/posts/upload",
+                files={"files": ("post.md", md_content.encode(), "text/markdown")},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert resp.status_code == 502
+
+    @pytest.mark.asyncio
+    async def test_upload_pandoc_failure_cleans_up_assets(
+        self, client: AsyncClient, app_settings: Settings
+    ) -> None:
+        token = await login(client)
+        with patch(
+            "backend.api.posts.render_markdown",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("pandoc crashed"),
+        ):
+            md_content = "---\ntitle: Upload Cleanup Test\n---\n\nContent.\n"
+            png_bytes = b"\x89PNG\r\n\x1a\n" + b"\x00" * 50
+            resp = await client.post(
+                "/api/posts/upload",
+                files=[
+                    ("files", ("index.md", md_content.encode(), "text/markdown")),
+                    ("files", ("photo.png", png_bytes, "image/png")),
+                ],
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert resp.status_code == 502
+        # Verify assets were cleaned up -- no directory with photo.png should remain
+        posts_dir = app_settings.content_dir / "posts"
+        for p in posts_dir.rglob("photo.png"):
+            pytest.fail(f"Asset file should have been cleaned up but found: {p}")
+
+
+class TestUpdatePostRenderBeforeRename:
+    """C1: render happens BEFORE rename in title-change path."""
+
+    @pytest.mark.asyncio
+    async def test_render_failure_does_not_rename_directory(
+        self, client: AsyncClient, app_settings: Settings
+    ) -> None:
+        """If rendering fails during title change, the directory must NOT be renamed."""
+        token = await login(client)
+        # Create a directory-based post first
+        md_content = "---\ntitle: Original Title\n---\n\nContent here.\n"
+        resp = await client.post(
+            "/api/posts/upload",
+            files={"files": ("index.md", md_content.encode(), "text/markdown")},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 201
+        original_path = resp.json()["file_path"]
+        original_dir = (app_settings.content_dir / original_path).parent
+
+        # Now update with a different title, but make render fail
+        with patch(
+            "backend.api.posts.render_markdown",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("pandoc crashed"),
+        ):
+            resp = await client.put(
+                f"/api/posts/{original_path}",
+                json={
+                    "title": "New Different Title",
+                    "body": "Updated content",
+                    "labels": [],
+                    "is_draft": False,
+                },
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert resp.status_code == 502
+        # The directory should NOT have been renamed
+        assert original_dir.exists(), "Directory was renamed despite render failure"
+
+
+class TestUpdatePostOSError:
+    """H2: update_post handles OSError during shutil.move/os.symlink."""
+
+    @pytest.mark.asyncio
+    async def test_move_oserror_returns_500(
+        self, client: AsyncClient, app_settings: Settings
+    ) -> None:
+        token = await login(client)
+        # Create a directory-based post
+        md_content = "---\ntitle: Move Test\n---\n\nContent.\n"
+        resp = await client.post(
+            "/api/posts/upload",
+            files={"files": ("index.md", md_content.encode(), "text/markdown")},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 201
+        original_path = resp.json()["file_path"]
+
+        with patch(
+            "backend.api.posts.shutil.move",
+            side_effect=OSError("disk full"),
+        ):
+            resp = await client.put(
+                f"/api/posts/{original_path}",
+                json={
+                    "title": "New Move Title",
+                    "body": "Updated content",
+                    "labels": [],
+                    "is_draft": False,
+                },
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert resp.status_code == 500
+
+    @pytest.mark.asyncio
+    async def test_symlink_oserror_rolls_back_move(
+        self, client: AsyncClient, app_settings: Settings
+    ) -> None:
+        token = await login(client)
+        # Create a directory-based post
+        md_content = "---\ntitle: Symlink Test\n---\n\nContent.\n"
+        resp = await client.post(
+            "/api/posts/upload",
+            files={"files": ("index.md", md_content.encode(), "text/markdown")},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 201
+        original_path = resp.json()["file_path"]
+        original_dir = (app_settings.content_dir / original_path).parent
+
+        with patch(
+            "backend.api.posts.os.symlink",
+            side_effect=OSError("permission denied"),
+        ):
+            resp = await client.put(
+                f"/api/posts/{original_path}",
+                json={
+                    "title": "New Symlink Title",
+                    "body": "Updated content",
+                    "labels": [],
+                    "is_draft": False,
+                },
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert resp.status_code == 500
+        # Original directory should still be at its original location (rolled back)
+        assert original_dir.exists(), "Directory was not rolled back after symlink failure"
+
+
+class TestAssetUploadOSError:
+    """M3: asset upload handles OSError."""
+
+    @pytest.mark.asyncio
+    async def test_asset_write_oserror_returns_500(self, client: AsyncClient) -> None:
+        token = await login(client)
+        # Create a post first
+        md_content = "---\ntitle: Asset Error Test\n---\nBody.\n"
+        resp = await client.post(
+            "/api/posts/upload",
+            files={"files": ("index.md", md_content.encode(), "text/markdown")},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 201
+        file_path = resp.json()["file_path"]
+
+        with patch("pathlib.Path.write_bytes", side_effect=OSError("disk full")):
+            resp = await client.post(
+                f"/api/posts/{file_path}/assets",
+                files={"files": ("photo.png", b"\x89PNG" + b"\x00" * 50, "image/png")},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert resp.status_code == 500
+
+
+class TestSyncCacheRebuildFailure:
+    """H10: sync commit handles cache rebuild failure gracefully."""
+
+    @pytest.mark.asyncio
+    async def test_sync_commit_cache_failure_returns_warning(self, client: AsyncClient) -> None:
+        token = await login(client)
+
+        with patch(
+            "backend.services.cache_service.rebuild_cache",
+            new_callable=AsyncMock,
+            side_effect=Exception("cache rebuild exploded"),
+        ):
+            resp = await client.post(
+                "/api/sync/commit",
+                data={"metadata": '{"deleted_files": [], "last_sync_commit": null}'},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert any("cache" in w.lower() for w in data["warnings"])
+
+
+class TestLabelCommitRecovery:
+    """H8: label commit failure recovers by restoring TOML."""
+
+    @pytest.mark.asyncio
+    async def test_label_create_commit_failure_returns_500(self, client: AsyncClient) -> None:
+        token = await login(client)
+        with patch(
+            "backend.api.labels.AsyncSession.commit",
+            side_effect=Exception("db commit failed"),
+        ):
+            resp = await client.post(
+                "/api/labels",
+                json={"id": "test-broken", "names": ["test broken"], "parents": []},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert resp.status_code == 500
+
+
+class TestAdminOSError:
+    """H11/M4: admin endpoints handle OSError."""
+
+    @pytest.mark.asyncio
+    async def test_update_settings_oserror_returns_500(self, client: AsyncClient) -> None:
+        token = await login(client)
+        with patch(
+            "backend.api.admin.update_site_settings",
+            side_effect=OSError("disk full"),
+        ):
+            resp = await client.put(
+                "/api/admin/site",
+                json={
+                    "title": "New Title",
+                    "description": "desc",
+                    "default_author": "Admin",
+                    "timezone": "UTC",
+                },
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert resp.status_code == 500
+
+    @pytest.mark.asyncio
+    async def test_create_page_oserror_returns_500(self, client: AsyncClient) -> None:
+        token = await login(client)
+        with patch(
+            "backend.api.admin.create_page",
+            side_effect=OSError("disk full"),
+        ):
+            resp = await client.post(
+                "/api/admin/pages",
+                json={"id": "contact", "title": "Contact"},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert resp.status_code == 500
+
+    @pytest.mark.asyncio
+    async def test_update_page_oserror_returns_500(self, client: AsyncClient) -> None:
+        token = await login(client)
+        with patch(
+            "backend.api.admin.update_page",
+            side_effect=OSError("disk full"),
+        ):
+            resp = await client.put(
+                "/api/admin/pages/about",
+                json={"title": "About Us", "content": "# About\n\nUpdated."},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert resp.status_code == 500
+
+    @pytest.mark.asyncio
+    async def test_delete_page_oserror_returns_500(self, client: AsyncClient) -> None:
+        token = await login(client)
+        with patch(
+            "backend.api.admin.delete_page",
+            side_effect=OSError("disk full"),
+        ):
+            resp = await client.delete(
+                "/api/admin/pages/about",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert resp.status_code == 500
+
+    @pytest.mark.asyncio
+    async def test_update_page_order_oserror_returns_500(self, client: AsyncClient) -> None:
+        token = await login(client)
+        with patch(
+            "backend.api.admin.update_page_order",
+            side_effect=OSError("disk full"),
+        ):
+            resp = await client.put(
+                "/api/admin/pages/order",
+                json={
+                    "pages": [
+                        {"id": "timeline", "title": "Posts", "file": None},
+                        {"id": "about", "title": "About", "file": "about.md"},
+                    ]
+                },
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert resp.status_code == 500

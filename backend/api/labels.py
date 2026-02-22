@@ -43,6 +43,9 @@ async def _persist_labels_and_commit(
     error_context: str,
 ) -> None:
     """Write labels to TOML, commit DB changes, and create a git commit."""
+    # Save current labels in case we need to restore on commit failure
+    old_labels = dict(content_manager.labels)
+
     try:
         write_labels_config(content_manager.content_dir, labels)
         content_manager.reload_config()
@@ -53,7 +56,20 @@ async def _persist_labels_and_commit(
             status_code=500, detail="Failed to persist label to filesystem"
         ) from exc
 
-    await session.commit()
+    # H8: Wrap session.commit with recovery -- restore TOML on failure
+    try:
+        await session.commit()
+    except Exception as exc:
+        logger.error("DB commit failed for %s: %s", error_context, exc)
+        await session.rollback()
+        # Restore old labels to TOML since DB commit failed
+        try:
+            write_labels_config(content_manager.content_dir, old_labels)
+            content_manager.reload_config()
+        except Exception as restore_exc:
+            logger.error("Failed to restore labels.toml after commit failure: %s", restore_exc)
+        raise HTTPException(status_code=500, detail="Failed to commit label changes") from exc
+
     git_service.try_commit(commit_message)
 
 

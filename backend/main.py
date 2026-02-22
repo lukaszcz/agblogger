@@ -346,9 +346,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def os_error_handler(request: Request, exc: OSError) -> JSONResponse:
         if isinstance(exc, (ConnectionError, TimeoutError)):
             raise exc
-        logger.error(
-            "OSError in %s %s: %s", request.method, request.url.path, exc, exc_info=exc
-        )
+        logger.error("OSError in %s %s: %s", request.method, request.url.path, exc, exc_info=exc)
         return JSONResponse(
             status_code=500,
             content={"detail": "Storage operation failed"},
@@ -356,9 +354,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.exception_handler(yaml.YAMLError)
     async def yaml_error_handler(request: Request, exc: yaml.YAMLError) -> JSONResponse:
-        logger.error(
-            "YAMLError in %s %s: %s", request.method, request.url.path, exc, exc_info=exc
-        )
+        logger.error("YAMLError in %s %s: %s", request.method, request.url.path, exc, exc_info=exc)
         return JSONResponse(
             status_code=422,
             content={"detail": "Invalid content format"},

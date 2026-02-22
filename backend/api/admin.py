@@ -70,13 +70,17 @@ async def update_settings(
     _user: Annotated[User, Depends(require_admin)],
 ) -> SiteSettingsResponse:
     """Update site settings."""
-    cfg = update_site_settings(
-        content_manager,
-        title=body.title,
-        description=body.description,
-        default_author=body.default_author,
-        timezone=body.timezone,
-    )
+    try:
+        cfg = update_site_settings(
+            content_manager,
+            title=body.title,
+            description=body.description,
+            default_author=body.default_author,
+            timezone=body.timezone,
+        )
+    except OSError as exc:
+        logger.error("Failed to update site settings: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to write site settings") from exc
     git_service.try_commit("Update site settings")
     return SiteSettingsResponse(
         title=cfg.title,
@@ -108,6 +112,9 @@ async def create_page_endpoint(
         page = create_page(content_manager, page_id=body.id, title=body.title)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except OSError as exc:
+        logger.error("Failed to create page %s: %s", body.id, exc)
+        raise HTTPException(status_code=500, detail="Failed to create page") from exc
     git_service.try_commit(f"Create page: {body.id}")
     return AdminPageConfig(
         id=page.id,
@@ -127,7 +134,11 @@ async def update_order(
 ) -> AdminPagesResponse:
     """Update page order."""
     pages = [PageConfig(id=p.id, title=p.title, file=p.file) for p in body.pages]
-    update_page_order(content_manager, pages)
+    try:
+        update_page_order(content_manager, pages)
+    except OSError as exc:
+        logger.error("Failed to update page order: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to update page order") from exc
     git_service.try_commit("Update page order")
     admin_pages = get_admin_pages(content_manager)
     return AdminPagesResponse(pages=[AdminPageConfig(**p) for p in admin_pages])
@@ -148,6 +159,9 @@ async def update_page_endpoint(
         update_page(content_manager, page_id, title=body.title, content=body.content)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except OSError as exc:
+        logger.error("Failed to update page %s: %s", page_id, exc)
+        raise HTTPException(status_code=500, detail="Failed to update page") from exc
     git_service.try_commit(f"Update page: {page_id}")
     return {"status": "ok"}
 
@@ -169,6 +183,9 @@ async def delete_page_endpoint(
         if "built-in" in str(exc):
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except OSError as exc:
+        logger.error("Failed to delete page %s: %s", page_id, exc)
+        raise HTTPException(status_code=500, detail="Failed to delete page") from exc
     git_service.try_commit(f"Delete page: {page_id}")
 
 
