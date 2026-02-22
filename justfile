@@ -3,7 +3,7 @@
 # Set up a fresh worktree: deps, env file, and local db directory
 setup:
     @echo "── Backend: sync dependencies ──"
-    uv sync
+    uv sync --extra dev
     @echo "\n── Frontend: install dependencies ──"
     cd frontend && npm install
     @echo "\n── Environment: ensure .env exists ──"
