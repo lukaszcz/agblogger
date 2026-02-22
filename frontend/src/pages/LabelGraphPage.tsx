@@ -24,6 +24,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { fetchLabel, fetchLabelGraph, updateLabel } from '@/api/labels'
 import { HTTPError } from '@/api/client'
 import type { LabelGraphResponse } from '@/api/client'
+import { computeDepths, wouldCreateCycle } from '@/components/labels/graphUtils'
 
 /* ── Types ─────────────────────────────────────────── */
 
@@ -118,94 +119,6 @@ function layoutGraph(
   }))
 
   return { nodes, edges }
-}
-
-/* ── Depth computation ──────────────────────────────── */
-
-function computeDepths(graphData: LabelGraphResponse): Map<string, number> {
-  const children = new Map<string, string[]>()
-  const allIds = new Set(graphData.nodes.map((n) => n.id))
-  const parentOf = new Map<string, string[]>()
-
-  for (const e of graphData.edges) {
-    const existingChildren = children.get(e.target)
-    if (existingChildren === undefined) {
-      children.set(e.target, [e.source])
-    } else {
-      existingChildren.push(e.source)
-    }
-
-    const existingParents = parentOf.get(e.source)
-    if (existingParents === undefined) {
-      parentOf.set(e.source, [e.target])
-    } else {
-      existingParents.push(e.target)
-    }
-  }
-
-  // Roots = nodes with no parents
-  const roots = [...allIds].filter((id) => !parentOf.has(id))
-  const depthMap = new Map<string, number>()
-
-  const queue = roots.map((id) => ({ id, depth: 0 }))
-  while (queue.length > 0) {
-    const next = queue.shift()
-    if (next === undefined) break
-    const { id, depth } = next
-    if (depthMap.has(id)) continue
-    depthMap.set(id, depth)
-    for (const child of children.get(id) ?? []) {
-      queue.push({ id: child, depth: depth + 1 })
-    }
-  }
-
-  // Fallback for disconnected nodes
-  for (const id of allIds) {
-    if (!depthMap.has(id)) depthMap.set(id, 0)
-  }
-
-  return depthMap
-}
-
-/* ── Cycle detection ────────────────────────────────── */
-
-/**
- * Check if adding childId -> proposedParentId would create a cycle.
- * BFS from childId following children edges. If proposedParentId is found
- * as a descendant of childId, the connection would create a cycle.
- */
-function wouldCreateCycle(
-  graphData: LabelGraphResponse,
-  childId: string,
-  proposedParentId: string,
-): boolean {
-  if (childId === proposedParentId) return true
-  // Build children map: parent -> list of children
-  const children = new Map<string, string[]>()
-  for (const e of graphData.edges) {
-    // edge.source = child, edge.target = parent
-    // So if target is the parent, source is the child
-    const existingChildren = children.get(e.target)
-    if (existingChildren === undefined) {
-      children.set(e.target, [e.source])
-    } else {
-      existingChildren.push(e.source)
-    }
-  }
-  // BFS from childId to see if proposedParentId is a descendant
-  const visited = new Set<string>()
-  const queue = [childId]
-  while (queue.length > 0) {
-    const node = queue.shift()
-    if (node === undefined) break
-    if (node === proposedParentId) return true
-    if (visited.has(node)) continue
-    visited.add(node)
-    for (const child of children.get(node) ?? []) {
-      queue.push(child)
-    }
-  }
-  return false
 }
 
 /* ── Main component ────────────────────────────────── */

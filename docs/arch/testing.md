@@ -38,3 +38,9 @@ Property-based testing is implemented with Hypothesis for high-invariant backend
 ## Frontend (Vitest)
 
 Vitest with jsdom environment, `@testing-library/react`, and `@testing-library/user-event`.
+
+Property-based testing is implemented with `fast-check` for deterministic frontend logic:
+- share utility invariants (`shareUtils`): URL/query encoding, hostname validation, and platform fallbacks
+- editor transformation invariants (`wrapSelection`): splice correctness, cursor bounds, and block newline semantics
+- label graph invariants (`graphUtils`): cycle detection, depth computation, and descendant traversal
+- cross-post text/url invariants (`crosspostText`): post-path normalization and hashtag truncation/content assembly

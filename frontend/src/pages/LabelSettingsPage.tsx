@@ -6,27 +6,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { fetchLabel, fetchLabels, updateLabel, deleteLabel } from '@/api/labels'
 import { HTTPError } from '@/api/client'
 import type { LabelResponse } from '@/api/client'
-
-/**
- * Compute all descendant label IDs of a given label using BFS on the children field.
- */
-function computeDescendants(labelId: string, labelsById: Map<string, LabelResponse>): Set<string> {
-  const descendants = new Set<string>()
-  const queue = [labelId]
-  while (queue.length > 0) {
-    const current = queue.shift()
-    if (current === undefined) break
-    const label = labelsById.get(current)
-    if (!label) continue
-    for (const child of label.children) {
-      if (!descendants.has(child)) {
-        descendants.add(child)
-        queue.push(child)
-      }
-    }
-  }
-  return descendants
-}
+import { computeDescendants } from '@/components/labels/graphUtils'
 
 export default function LabelSettingsPage() {
   const { labelId } = useParams()

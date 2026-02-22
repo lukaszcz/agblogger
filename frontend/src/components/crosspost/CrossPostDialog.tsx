@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { crossPost } from '@/api/crosspost'
 import type { SocialAccount, CrossPostResult } from '@/api/crosspost'
 import PlatformIcon from '@/components/crosspost/PlatformIcon'
+import { buildDefaultText } from '@/components/crosspost/crosspostText'
 
 const CHAR_LIMITS: Record<string, number> = {
   bluesky: 300,
@@ -19,33 +20,6 @@ interface CrossPostDialogProps {
   postExcerpt: string
   postLabels: string[]
   initialPlatforms?: string[]
-}
-
-function buildPostUrl(postPath: string): string {
-  let slug = postPath
-  if (slug.startsWith('posts/')) slug = slug.slice(6)
-  if (slug.endsWith('/index.md')) slug = slug.slice(0, -9)
-  else if (slug.endsWith('.md')) slug = slug.slice(0, -3)
-  return `${window.location.origin}/post/${slug}`
-}
-
-function buildDefaultText(
-  postTitle: string,
-  postExcerpt: string,
-  postLabels: string[],
-  postPath: string,
-): string {
-  const excerpt = postExcerpt || postTitle
-  const hashtags = postLabels
-    .slice(0, 5)
-    .map((label) => `#${label}`)
-    .join(' ')
-  const url = buildPostUrl(postPath)
-
-  const parts = [excerpt]
-  if (hashtags) parts.push(hashtags)
-  parts.push(url)
-  return parts.join('\n\n')
 }
 
 export default function CrossPostDialog({
