@@ -1,5 +1,5 @@
 import { createElement } from 'react'
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -82,6 +82,15 @@ const paginatedResponse: PostListResponse = {
   ...postsResponse,
   total: 30,
   total_pages: 3,
+}
+
+async function simulateFileUpload(file: File) {
+  const fileInput = document.querySelector('input[type="file"][accept=".md,.markdown"]') as HTMLInputElement
+  Object.defineProperty(fileInput, 'files', { value: [file] })
+  await act(async () => {
+    fileInput.dispatchEvent(new Event('change', { bubbles: true }))
+    await Promise.resolve()
+  })
 }
 
 function renderTimeline(initialEntry = '/') {
@@ -256,10 +265,8 @@ describe('TimelinePage', () => {
     })
 
     // Simulate file input change
-    const fileInput = document.querySelector('input[type="file"][accept=".md,.markdown"]') as HTMLInputElement
     const file = new File(['# Test'], 'test.md', { type: 'text/markdown' })
-    Object.defineProperty(fileInput, 'files', { value: [file] })
-    fileInput.dispatchEvent(new Event('change', { bubbles: true }))
+    await simulateFileUpload(file)
 
     await waitFor(() => {
       expect(mockUploadPost).toHaveBeenCalledWith([file])
@@ -278,10 +285,8 @@ describe('TimelinePage', () => {
       expect(screen.getByText('Upload file')).toBeInTheDocument()
     })
 
-    const fileInput = document.querySelector('input[type="file"][accept=".md,.markdown"]') as HTMLInputElement
     const file = new File(['big'], 'big.md', { type: 'text/markdown' })
-    Object.defineProperty(fileInput, 'files', { value: [file] })
-    fileInput.dispatchEvent(new Event('change', { bubbles: true }))
+    await simulateFileUpload(file)
 
     await waitFor(() => {
       expect(screen.getByText('File too large. Maximum size is 10 MB per file.')).toBeInTheDocument()
@@ -302,10 +307,8 @@ describe('TimelinePage', () => {
       expect(screen.getByText('Upload file')).toBeInTheDocument()
     })
 
-    const fileInput = document.querySelector('input[type="file"][accept=".md,.markdown"]') as HTMLInputElement
     const file = new File(['no title'], 'notitle.md', { type: 'text/markdown' })
-    Object.defineProperty(fileInput, 'files', { value: [file] })
-    fileInput.dispatchEvent(new Event('change', { bubbles: true }))
+    await simulateFileUpload(file)
 
     await waitFor(() => {
       expect(screen.getByText('Enter post title')).toBeInTheDocument()
@@ -333,10 +336,8 @@ describe('TimelinePage', () => {
       expect(screen.getByText('Upload file')).toBeInTheDocument()
     })
 
-    const fileInput = document.querySelector('input[type="file"][accept=".md,.markdown"]') as HTMLInputElement
     const file = new File(['no title'], 'notitle.md', { type: 'text/markdown' })
-    Object.defineProperty(fileInput, 'files', { value: [file] })
-    fileInput.dispatchEvent(new Event('change', { bubbles: true }))
+    await simulateFileUpload(file)
 
     await waitFor(() => {
       expect(screen.getByText('Enter post title')).toBeInTheDocument()
@@ -365,10 +366,8 @@ describe('TimelinePage', () => {
       expect(screen.getByText('Upload file')).toBeInTheDocument()
     })
 
-    const fileInput = document.querySelector('input[type="file"][accept=".md,.markdown"]') as HTMLInputElement
     const file = new File(['no title'], 'notitle.md', { type: 'text/markdown' })
-    Object.defineProperty(fileInput, 'files', { value: [file] })
-    fileInput.dispatchEvent(new Event('change', { bubbles: true }))
+    await simulateFileUpload(file)
 
     await waitFor(() => {
       expect(screen.getByText('Enter post title')).toBeInTheDocument()
@@ -389,10 +388,8 @@ describe('TimelinePage', () => {
       expect(screen.getByText('Upload file')).toBeInTheDocument()
     })
 
-    const fileInput = document.querySelector('input[type="file"][accept=".md,.markdown"]') as HTMLInputElement
     const file = new File(['test'], 'test.md', { type: 'text/markdown' })
-    Object.defineProperty(fileInput, 'files', { value: [file] })
-    fileInput.dispatchEvent(new Event('change', { bubbles: true }))
+    await simulateFileUpload(file)
 
     await waitFor(() => {
       expect(screen.getByText('Failed to upload post.')).toBeInTheDocument()
@@ -411,10 +408,8 @@ describe('TimelinePage', () => {
       expect(screen.getByText('Upload file')).toBeInTheDocument()
     })
 
-    const fileInput = document.querySelector('input[type="file"][accept=".md,.markdown"]') as HTMLInputElement
     const file = new File(['test'], 'test.md', { type: 'text/markdown' })
-    Object.defineProperty(fileInput, 'files', { value: [file] })
-    fileInput.dispatchEvent(new Event('change', { bubbles: true }))
+    await simulateFileUpload(file)
 
     await waitFor(() => {
       expect(screen.getByText('Session expired. Please log in again.')).toBeInTheDocument()

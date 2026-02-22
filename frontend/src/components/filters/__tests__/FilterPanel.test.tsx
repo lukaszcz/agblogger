@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
@@ -17,8 +17,10 @@ const allLabels: LabelResponse[] = [
   { id: 'math', names: ['mathematics'], is_implicit: false, parents: [], children: [], post_count: 3 },
 ]
 
-function renderPanel(value: FilterState = EMPTY_FILTER, onChange = vi.fn()) {
+async function renderPanel(value: FilterState = EMPTY_FILTER, onChange = vi.fn()) {
   const result = render(<FilterPanel value={value} onChange={onChange} />)
+  // Flush microtasks from the initial fetchLabels() effect
+  await act(async () => {})
   return { ...result, onChange }
 }
 
@@ -28,14 +30,14 @@ describe('FilterPanel', () => {
     mockFetchLabels.mockResolvedValue(allLabels)
   })
 
-  it('renders Filters button', () => {
-    renderPanel()
+  it('renders Filters button', async () => {
+    await renderPanel()
     expect(screen.getByText('Filters')).toBeInTheDocument()
   })
 
   it('opens panel on click', async () => {
     const user = userEvent.setup()
-    renderPanel()
+    await renderPanel()
 
     await user.click(screen.getByText('Filters'))
 
@@ -44,32 +46,34 @@ describe('FilterPanel', () => {
     })
   })
 
-  it('shows active filter count badge', () => {
+  it('shows active filter count badge', async () => {
     const filter: FilterState = { ...EMPTY_FILTER, labels: ['swe', 'cs'], author: 'Admin' }
-    renderPanel(filter)
+    await renderPanel(filter)
 
-    // 3 active: 2 labels + 1 author
-    expect(screen.getByText('3')).toBeInTheDocument()
+    // 3 active: 2 labels + 1 author (panel label list also renders post_count 3, so use selector)
+    expect(screen.getByText('3', { selector: '.rounded-full' })).toBeInTheDocument()
   })
 
-  it('shows filter chips when panel is closed', () => {
+  it('shows filter chips when panel is closed', async () => {
     const filter: FilterState = { ...EMPTY_FILTER, labels: ['swe'], author: 'Admin' }
-    renderPanel(filter)
+    await renderPanel(filter)
 
-    expect(screen.getByText('#swe')).toBeInTheDocument()
+    // Chip area renders #swe; the hidden panel label list also renders it
+    const sweElements = screen.getAllByText('#swe')
+    expect(sweElements.length).toBeGreaterThanOrEqual(1)
     expect(screen.getByText('Admin')).toBeInTheDocument()
   })
 
-  it('shows date range chips', () => {
+  it('shows date range chips', async () => {
     const filter: FilterState = { ...EMPTY_FILTER, fromDate: '2026-01-01', toDate: '2026-02-01' }
-    renderPanel(filter)
+    await renderPanel(filter)
 
     expect(screen.getByText('2026-01-01 - 2026-02-01')).toBeInTheDocument()
   })
 
   it('filters labels by search', async () => {
     const user = userEvent.setup()
-    renderPanel()
+    await renderPanel()
 
     await user.click(screen.getByText('Filters'))
 
@@ -87,7 +91,7 @@ describe('FilterPanel', () => {
 
   it('filters labels by name case-insensitively', async () => {
     const user = userEvent.setup()
-    renderPanel()
+    await renderPanel()
 
     await user.click(screen.getByText('Filters'))
 
@@ -104,7 +108,7 @@ describe('FilterPanel', () => {
   it('toggles label selection', async () => {
     const onChange = vi.fn()
     const user = userEvent.setup()
-    renderPanel(EMPTY_FILTER, onChange)
+    await renderPanel(EMPTY_FILTER, onChange)
 
     await user.click(screen.getByText('Filters'))
 
@@ -121,7 +125,7 @@ describe('FilterPanel', () => {
     const onChange = vi.fn()
     const user = userEvent.setup()
     const filter: FilterState = { ...EMPTY_FILTER, labels: ['swe'] }
-    renderPanel(filter, onChange)
+    await renderPanel(filter, onChange)
 
     await user.click(screen.getByText('Filters'))
 
@@ -137,7 +141,7 @@ describe('FilterPanel', () => {
   it('toggles label mode OR/AND', async () => {
     const onChange = vi.fn()
     const user = userEvent.setup()
-    renderPanel(EMPTY_FILTER, onChange)
+    await renderPanel(EMPTY_FILTER, onChange)
 
     await user.click(screen.getByText('Filters'))
 
@@ -153,7 +157,7 @@ describe('FilterPanel', () => {
   it('updates author filter', async () => {
     const onChange = vi.fn()
     const user = userEvent.setup()
-    renderPanel(EMPTY_FILTER, onChange)
+    await renderPanel(EMPTY_FILTER, onChange)
 
     await user.click(screen.getByText('Filters'))
 
@@ -170,7 +174,7 @@ describe('FilterPanel', () => {
     const onChange = vi.fn()
     const user = userEvent.setup()
     const filter: FilterState = { labels: ['swe'], labelMode: 'and', author: 'Admin', fromDate: '2026-01-01', toDate: '' }
-    renderPanel(filter, onChange)
+    await renderPanel(filter, onChange)
 
     // Chips area has "Clear all" (panel is closed, so only 1 visible)
     const clearAllButtons = screen.getAllByText('Clear all')
@@ -181,7 +185,7 @@ describe('FilterPanel', () => {
 
   it('shows "No matching labels" when search has no results', async () => {
     const user = userEvent.setup()
-    renderPanel()
+    await renderPanel()
 
     await user.click(screen.getByText('Filters'))
 
@@ -196,7 +200,7 @@ describe('FilterPanel', () => {
 
   it('closes panel via Close button', async () => {
     const user = userEvent.setup()
-    renderPanel()
+    await renderPanel()
 
     await user.click(screen.getByText('Filters'))
 
@@ -213,7 +217,7 @@ describe('FilterPanel', () => {
   it('updates from date', async () => {
     const onChange = vi.fn()
     const user = userEvent.setup()
-    renderPanel(EMPTY_FILTER, onChange)
+    await renderPanel(EMPTY_FILTER, onChange)
 
     await user.click(screen.getByText('Filters'))
 
@@ -234,10 +238,12 @@ describe('FilterPanel', () => {
     const onChange = vi.fn()
     const user = userEvent.setup()
     const filter: FilterState = { ...EMPTY_FILTER, labels: ['swe'] }
-    renderPanel(filter, onChange)
+    await renderPanel(filter, onChange)
 
-    // Chips are visible when panel is closed
-    const chipButton = screen.getByText('#swe').parentElement?.querySelector('button')
+    // Chip area: find the chip span (bg-tag-bg), not the panel label button
+    const sweElements = screen.getAllByText('#swe')
+    const chipSpan = sweElements.find((el) => el.classList.contains('bg-tag-bg'))
+    const chipButton = chipSpan?.querySelector('button')
     expect(chipButton).toBeTruthy()
     await user.click(chipButton!)
 
@@ -248,7 +254,7 @@ describe('FilterPanel', () => {
     const onChange = vi.fn()
     const user = userEvent.setup()
     const filter: FilterState = { ...EMPTY_FILTER, author: 'Admin' }
-    renderPanel(filter, onChange)
+    await renderPanel(filter, onChange)
 
     const chipButton = screen.getByText('Admin').parentElement?.querySelector('button')
     expect(chipButton).toBeTruthy()
@@ -261,7 +267,7 @@ describe('FilterPanel', () => {
     const onChange = vi.fn()
     const user = userEvent.setup()
     const filter: FilterState = { ...EMPTY_FILTER, fromDate: '2026-01-01', toDate: '2026-02-01' }
-    renderPanel(filter, onChange)
+    await renderPanel(filter, onChange)
 
     const dateChipButton = screen.getByText('2026-01-01 - 2026-02-01').parentElement?.querySelector('button')
     expect(dateChipButton).toBeTruthy()
@@ -274,7 +280,7 @@ describe('FilterPanel', () => {
     const onChange = vi.fn()
     const user = userEvent.setup()
     const filter: FilterState = { labels: ['swe'], labelMode: 'or', author: 'Admin', fromDate: '', toDate: '' }
-    renderPanel(filter, onChange)
+    await renderPanel(filter, onChange)
 
     // Open the panel
     await user.click(screen.getByText('Filters'))

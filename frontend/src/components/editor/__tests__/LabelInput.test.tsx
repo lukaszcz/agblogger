@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
@@ -33,6 +33,18 @@ const sampleLabels: LabelResponse[] = [
   { id: 'cs', names: ['computer science'], is_implicit: false, parents: [], children: ['swe'], post_count: 5 },
 ]
 
+async function renderLabelInput(
+  props: { value?: string[]; onChange?: (labels: string[]) => void; disabled?: boolean } = {},
+) {
+  const onChange = props.onChange ?? vi.fn<(labels: string[]) => void>()
+  const result = render(
+    <LabelInput value={props.value ?? []} onChange={onChange} {...(props.disabled != null && { disabled: props.disabled })} />,
+  )
+  // Flush microtasks from the initial fetchLabels() effect
+  await act(async () => {})
+  return { ...result, onChange }
+}
+
 describe('LabelInput', () => {
   beforeEach(() => {
     mockFetchLabels.mockReset()
@@ -43,7 +55,7 @@ describe('LabelInput', () => {
   it('loads and shows labels in dropdown on focus', async () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
-    render(<LabelInput value={[]} onChange={onChange} />)
+    await renderLabelInput({ onChange })
 
     const input = screen.getByRole('combobox')
     await user.click(input)
@@ -58,7 +70,7 @@ describe('LabelInput', () => {
   it('filters labels by query', async () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
-    render(<LabelInput value={[]} onChange={onChange} />)
+    await renderLabelInput({ onChange })
 
     const input = screen.getByRole('combobox')
     await user.type(input, 'sw')
@@ -72,7 +84,7 @@ describe('LabelInput', () => {
   it('selects label on click', async () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
-    render(<LabelInput value={[]} onChange={onChange} />)
+    await renderLabelInput({ onChange })
 
     const input = screen.getByRole('combobox')
     await user.click(input)
@@ -89,7 +101,7 @@ describe('LabelInput', () => {
   it('excludes already-selected labels from dropdown', async () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
-    render(<LabelInput value={['swe']} onChange={onChange} />)
+    await renderLabelInput({ value: ['swe'], onChange })
 
     const input = screen.getByRole('combobox')
     await user.click(input)
@@ -101,9 +113,9 @@ describe('LabelInput', () => {
     expect(screen.queryByRole('option', { name: /#swe/ })).not.toBeInTheDocument()
   })
 
-  it('renders selected label chips with remove buttons', () => {
+  it('renders selected label chips with remove buttons', async () => {
     const onChange = vi.fn()
-    render(<LabelInput value={['swe', 'math']} onChange={onChange} />)
+    await renderLabelInput({ value: ['swe', 'math'], onChange })
 
     expect(screen.getByText('#swe')).toBeInTheDocument()
     expect(screen.getByText('#math')).toBeInTheDocument()
@@ -113,7 +125,7 @@ describe('LabelInput', () => {
   it('removes label on chip X click', async () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
-    render(<LabelInput value={['swe', 'math']} onChange={onChange} />)
+    await renderLabelInput({ value: ['swe', 'math'], onChange })
 
     await user.click(screen.getByLabelText('Remove label swe'))
 
@@ -123,7 +135,7 @@ describe('LabelInput', () => {
   it('removes last label on Backspace when input is empty', async () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
-    render(<LabelInput value={['swe', 'math']} onChange={onChange} />)
+    await renderLabelInput({ value: ['swe', 'math'], onChange })
 
     const input = screen.getByRole('combobox')
     await user.click(input)
@@ -135,7 +147,7 @@ describe('LabelInput', () => {
   it('selects first label on Enter when dropdown is open', async () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
-    render(<LabelInput value={[]} onChange={onChange} />)
+    await renderLabelInput({ onChange })
 
     const input = screen.getByRole('combobox')
     await user.click(input)
@@ -152,7 +164,7 @@ describe('LabelInput', () => {
   it('navigates with ArrowDown/ArrowUp and selects with Enter', async () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
-    render(<LabelInput value={[]} onChange={onChange} />)
+    await renderLabelInput({ onChange })
 
     const input = screen.getByRole('combobox')
     await user.click(input)
@@ -173,7 +185,7 @@ describe('LabelInput', () => {
   it('closes dropdown on Escape', async () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
-    render(<LabelInput value={[]} onChange={onChange} />)
+    await renderLabelInput({ onChange })
 
     const input = screen.getByRole('combobox')
     await user.click(input)
@@ -190,7 +202,7 @@ describe('LabelInput', () => {
   it('shows "Create #label" option for new label', async () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
-    render(<LabelInput value={[]} onChange={onChange} />)
+    await renderLabelInput({ onChange })
 
     const input = screen.getByRole('combobox')
     await user.type(input, 'newlabel')
@@ -208,7 +220,7 @@ describe('LabelInput', () => {
       parents: [], children: [], post_count: 0,
     }
     mockCreateLabel.mockResolvedValueOnce(newLabel)
-    render(<LabelInput value={[]} onChange={onChange} />)
+    await renderLabelInput({ onChange })
 
     const input = screen.getByRole('combobox')
     await user.type(input, 'newlabel')
@@ -226,7 +238,7 @@ describe('LabelInput', () => {
     mockCreateLabel.mockRejectedValueOnce(
       new (HTTPError as unknown as new (s: number) => Error)(409),
     )
-    render(<LabelInput value={[]} onChange={onChange} />)
+    await renderLabelInput({ onChange })
 
     const input = screen.getByRole('combobox')
     // Use a label that doesn't match any existing ID exactly
@@ -248,7 +260,7 @@ describe('LabelInput', () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
     mockCreateLabel.mockRejectedValueOnce(new Error('Network'))
-    render(<LabelInput value={[]} onChange={onChange} />)
+    await renderLabelInput({ onChange })
 
     const input = screen.getByRole('combobox')
     await user.type(input, 'badlabel')
@@ -264,24 +276,24 @@ describe('LabelInput', () => {
     mockFetchLabels.mockRejectedValueOnce(new Error('Network error'))
 
     const onChange = vi.fn()
-    render(<LabelInput value={[]} onChange={onChange} />)
+    await renderLabelInput({ onChange })
 
     await waitFor(() => {
       expect(screen.getByText('Failed to load labels. Type to create new ones.')).toBeInTheDocument()
     })
   })
 
-  it('hides remove buttons when disabled', () => {
+  it('hides remove buttons when disabled', async () => {
     const onChange = vi.fn()
-    render(<LabelInput value={['swe']} onChange={onChange} disabled />)
+    await renderLabelInput({ value: ['swe'], onChange, disabled: true })
 
     expect(screen.getByText('#swe')).toBeInTheDocument()
     expect(screen.queryByLabelText('Remove label swe')).not.toBeInTheDocument()
   })
 
-  it('disables input when disabled prop is true', () => {
+  it('disables input when disabled prop is true', async () => {
     const onChange = vi.fn()
-    render(<LabelInput value={[]} onChange={onChange} disabled />)
+    await renderLabelInput({ onChange, disabled: true })
 
     expect(screen.getByRole('combobox')).toBeDisabled()
   })
@@ -289,7 +301,7 @@ describe('LabelInput', () => {
   it('shows primary name next to label ID in dropdown', async () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
-    render(<LabelInput value={[]} onChange={onChange} />)
+    await renderLabelInput({ onChange })
 
     const input = screen.getByRole('combobox')
     await user.click(input)
@@ -302,7 +314,7 @@ describe('LabelInput', () => {
   it('ArrowUp wraps around to last item', async () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
-    render(<LabelInput value={[]} onChange={onChange} />)
+    await renderLabelInput({ onChange })
 
     const input = screen.getByRole('combobox')
     await user.click(input)
