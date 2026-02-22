@@ -133,3 +133,57 @@ Property-based testing is implemented with `fast-check` for deterministic fronte
 - editor transformation invariants (`wrapSelection`): splice correctness, cursor bounds, and block newline semantics
 - label graph invariants (`graphUtils`): cycle detection, depth computation, and descendant traversal
 - cross-post text/url invariants (`crosspostText`): post-path normalization and hashtag truncation/content assembly
+
+## Mutation Testing
+
+Mutation testing is implemented in three production phases with dedicated `just` targets.
+
+### Backend targeted profile
+
+- Runner: `cli/mutation_backend.py`, profile `backend`
+- Goal: strict mutation gate for high-risk backend paths (auth, sync, front matter normalization, slugging, SSRF, rate limiting)
+- Command: `just mutation-backend`
+- Runtime mode: `mutate_only_covered_lines = false` (full-file mutation for stronger robustness at the cost of runtime)
+- Quality enforcement:
+  - minimum strict mutation score (`killed / (total - skipped - not_checked)`)
+  - explicit budgets for `survived`, `timeout`, `suspicious`, `no tests`, `segfault`, and interrupted mutants
+- Report: `reports/mutation/backend.json`
+- Tunables:
+  - `MUTATION_MAX_CHILDREN=<n>` to cap worker parallelism
+  - `MUTATION_KEEP_ARTIFACTS=true` to persist mutmut workspaces in `reports/mutation/artifacts/`
+  - when artifacts are persisted, clean them (`rm -rf reports/mutation/artifacts`) before running `just check` to avoid static-analysis noise from instrumented files
+
+### Backend full profile
+
+- Runner: `cli/mutation_backend.py`, profile `backend-full`
+- Goal: broad backend + CLI mutation sweep across stable, high-signal suites
+- Test selection: backend service/CLI/sync/labels/rendering suites (API-heavy suites are handled by the targeted backend profile and excluded here for mutmut stats stability)
+- Uses the same full-file mutation mode (`mutate_only_covered_lines = false`)
+- Excludes `tests/test_services/test_sync_merge_integration.py` from mutation runs due mutmut instrumentation instability in that flow
+- Excludes `tests/test_rendering/test_renderer_no_dead_code.py` from mutation runs because mutmut-generated symbols intentionally violate that module’s dead-code/introspection assertions
+- Excludes broad API integration/security modules from full-profile stats collection because mutmut stats-mode instrumentation causes repeated false failures in shared ASGI fixture flows
+- Deselects introspection-sensitive coroutine-shape assertions (for example `TestIsSafeUrlAsync::test_is_safe_url_is_async`) that are invalidated by mutmut trampoline wrapping in `stats` mode
+- Excludes mutation of `backend/main.py` to avoid mutmut stats-stage bootstrap instability in full-suite runs
+- Command: `just mutation-backend-full`
+- Report: `reports/mutation/backend-full.json`
+
+### Frontend mutation profiles
+
+- Engine: StrykerJS with Vitest runner
+- Tooling is pinned in `frontend/package.json` devDependencies (`@stryker-mutator/*` v`9.3.0`) and run via local `stryker` binaries
+- Targeted config: `frontend/stryker.mutation.config.mjs`
+- Broad full-run config: `frontend/stryker.mutation-full.config.mjs`
+- Commands:
+  - `just mutation-frontend`
+  - `just mutation-frontend-full`
+- `just` targets auto-clean `.stryker-tmp/frontend*` sandboxes on exit (success or failure) to keep frontend static checks clean after mutation runs
+- Reports:
+  - `frontend/reports/mutation/frontend.html`
+  - `frontend/reports/mutation/frontend.json`
+  - `frontend/reports/mutation/frontend-full.html`
+  - `frontend/reports/mutation/frontend-full.json`
+
+### Composite mutation gates
+
+- PR gate: `just mutation` (backend targeted + frontend targeted)
+- Nightly gate: `just mutation-full` (backend targeted + backend full + frontend full)
