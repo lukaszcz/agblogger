@@ -286,3 +286,12 @@ syncrun:
     uv run uvicorn backend.main:app --reload --host 0.0.0.0 --port {{ backend_port }} &
     cd frontend && npm run dev -- --port {{ frontend_port }} &
     wait
+
+# ── Developer commands (don't use unless you're human) ──────────────────────────────────────────
+
+cloc:
+    @echo "Source LOC count"
+    @cloc backend/ frontend/src/ cli/
+    @echo ""
+    @echo "Tests LOC count"
+    @cloc tests/
