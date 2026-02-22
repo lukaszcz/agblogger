@@ -36,6 +36,7 @@ def test_index_toml_is_valid(tmp_path: Path) -> None:
     assert config["site"]["title"] == "My Blog"
     assert config["site"]["timezone"] == "UTC"
     assert config["pages"][0]["id"] == "timeline"
+    assert config["pages"][1]["id"] == "labels"
 
 
 def test_labels_toml_is_valid(tmp_path: Path) -> None:

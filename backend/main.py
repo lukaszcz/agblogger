@@ -41,7 +41,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _DEFAULT_INDEX_TOML = (
-    '[site]\ntitle = "My Blog"\ntimezone = "UTC"\n\n[[pages]]\nid = "timeline"\ntitle = "Posts"\n'
+    '[site]\ntitle = "My Blog"\ntimezone = "UTC"\n\n'
+    '[[pages]]\nid = "timeline"\ntitle = "Posts"\n\n'
+    '[[pages]]\nid = "labels"\ntitle = "Labels"\n'
 )
 _DEFAULT_LABELS_TOML = "[labels]\n"
 
