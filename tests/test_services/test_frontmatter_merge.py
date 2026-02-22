@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from backend.services.sync_service import FrontmatterMergeResult, merge_frontmatter
+from backend.services.sync_service import merge_frontmatter
 
 
 class TestMergeFrontmatter:

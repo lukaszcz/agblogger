@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from backend.services.git_service import GitService
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 class TestMergeFileContent:
@@ -25,7 +28,7 @@ class TestMergeFileContent:
         base = "line1\noriginal\nline3\n"
         ours = "line1\nours-version\nline3\n"
         theirs = "line1\ntheirs-version\nline3\n"
-        merged, conflicted = git.merge_file_content(base, ours, theirs)
+        _merged, conflicted = git.merge_file_content(base, ours, theirs)
         assert conflicted
 
     def test_identical_changes(self, tmp_path: Path) -> None:

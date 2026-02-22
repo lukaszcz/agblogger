@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import frontmatter
 
@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 
 class TestMergePostFile:
-    def _make_post(self, meta: dict, body: str) -> str:
+    def _make_post(self, meta: dict[str, Any], body: str) -> str:
         post = frontmatter.Post(body, **meta)
         return frontmatter.dumps(post) + "\n"
 

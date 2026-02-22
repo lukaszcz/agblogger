@@ -120,9 +120,7 @@ class GitService:
             stderr=result.stderr,
         )
 
-    def merge_file_content(
-        self, base: str, ours: str, theirs: str
-    ) -> tuple[str, bool]:
+    def merge_file_content(self, base: str, ours: str, theirs: str) -> tuple[str, bool]:
         """Three-way merge of text content using git merge-file.
 
         Writes base/ours/theirs to temp files, runs git merge-file with -p flag

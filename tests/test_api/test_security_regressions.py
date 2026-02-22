@@ -110,7 +110,7 @@ class TestSyncAuthorizationBoundary:
         token = await _login(client, "writer", "writer-password")
 
         resp = await client.post(
-            "/api/sync/init",
+            "/api/sync/status",
             json={"client_manifest": []},
             headers={"Authorization": f"Bearer {token}"},
         )

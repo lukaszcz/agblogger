@@ -1,4 +1,4 @@
-"""Integration tests for three-way merge in sync protocol."""
+"""Integration tests for simplified sync protocol."""
 
 from __future__ import annotations
 
@@ -19,11 +19,10 @@ if TYPE_CHECKING:
 
 @pytest.fixture
 def merge_settings(tmp_content_dir: Path, tmp_path: Path) -> Settings:
-    """Create settings for merge integration tests."""
     posts_dir = tmp_content_dir / "posts"
     (posts_dir / "shared.md").write_text(
-        "---\ncreated_at: 2026-02-01 00:00:00+00\nauthor: Admin\n---\n"
-        "# Shared Post\n\nParagraph one.\n\nParagraph two.\n"
+        "---\ntitle: Shared Post\ncreated_at: 2026-02-01 00:00:00+00\nauthor: Admin\n"
+        "labels:\n- '#a'\n---\n\nParagraph one.\n\nParagraph two.\n"
     )
     db_path = tmp_path / "test.db"
     return Settings(
@@ -39,7 +38,6 @@ def merge_settings(tmp_content_dir: Path, tmp_path: Path) -> Settings:
 
 @pytest.fixture
 async def merge_client(merge_settings: Settings) -> AsyncGenerator[AsyncClient]:
-    """Create test HTTP client with git service for merge tests."""
     async with create_test_client(merge_settings) as ac:
         yield ac
 
@@ -52,314 +50,196 @@ async def _login(client: AsyncClient) -> str:
     return resp.json()["access_token"]
 
 
-class TestThreeWayMerge:
-    @pytest.mark.asyncio
-    async def test_clean_merge(self, merge_client: AsyncClient, merge_settings: Settings) -> None:
+class TestSyncStatus:
+    async def test_status_returns_plan(self, merge_client: AsyncClient) -> None:
+        token = await _login(merge_client)
+        headers = {"Authorization": f"Bearer {token}"}
+        resp = await merge_client.post(
+            "/api/sync/status",
+            json={"client_manifest": []},
+            headers=headers,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "to_upload" in data
+        assert "to_download" in data
+        assert "server_commit" in data
+
+
+class TestSyncCommit:
+    async def test_clean_body_merge(
+        self, merge_client: AsyncClient, merge_settings: Settings
+    ) -> None:
         token = await _login(merge_client)
         headers = {"Authorization": f"Bearer {token}"}
 
-        # Get initial server commit by doing a sync init
         resp = await merge_client.post(
-            "/api/sync/init",
+            "/api/sync/status",
             json={"client_manifest": []},
             headers=headers,
         )
         server_commit = resp.json()["server_commit"]
-        assert server_commit is not None
 
-        # Server-side edit (paragraph one) via API
         resp = await merge_client.put(
             "/api/posts/posts/shared.md",
             json={
                 "title": "Shared Post",
                 "body": "Paragraph one (server edit).\n\nParagraph two.\n",
-                "labels": [],
+                "labels": ["a"],
                 "is_draft": False,
             },
             headers=headers,
         )
         assert resp.status_code == 200
 
-        # Upload client's version (paragraph two edited)
         client_content = (
-            "---\ncreated_at: 2026-02-01 00:00:00+00\nauthor: Admin\n---\n"
-            "# Shared Post\n\nParagraph one.\n\nParagraph two (client edit).\n"
+            "---\ntitle: Shared Post\ncreated_at: 2026-02-01 00:00:00+00\nauthor: Admin\n"
+            "labels:\n- '#a'\n---\n\nParagraph one.\n\nParagraph two (client edit).\n"
         )
-        resp = await merge_client.post(
-            "/api/sync/upload",
-            params={"file_path": "posts/shared.md"},
-            files={"file": ("shared.md", io.BytesIO(client_content.encode()), "text/plain")},
-            headers=headers,
-        )
-        assert resp.status_code == 200
+        import json
 
-        # Commit with conflict_files and last_sync_commit
+        metadata = json.dumps({"deleted_files": [], "last_sync_commit": server_commit})
         resp = await merge_client.post(
             "/api/sync/commit",
-            json={
-                "resolutions": {},
-                "uploaded_files": [],
-                "conflict_files": ["posts/shared.md"],
-                "last_sync_commit": server_commit,
-            },
+            data={"metadata": metadata},
+            files=[
+                ("files", ("posts/shared.md", io.BytesIO(client_content.encode()), "text/plain")),
+            ],
             headers=headers,
         )
         assert resp.status_code == 200
         data = resp.json()
         assert data["commit_hash"] is not None
-        assert len(data["merge_results"]) == 1
-        assert data["merge_results"][0]["status"] == "merged"
+        assert len(data["conflicts"]) == 0
 
-        # Verify the merged content on server has both edits
         dl_resp = await merge_client.get("/api/sync/download/posts/shared.md", headers=headers)
         merged = dl_resp.content.decode()
         assert "server edit" in merged
         assert "client edit" in merged
 
-    @pytest.mark.asyncio
-    async def test_conflict_returns_markers(
+    async def test_body_conflict_server_wins(
         self, merge_client: AsyncClient, merge_settings: Settings
     ) -> None:
         token = await _login(merge_client)
         headers = {"Authorization": f"Bearer {token}"}
 
         resp = await merge_client.post(
-            "/api/sync/init",
+            "/api/sync/status",
             json={"client_manifest": []},
             headers=headers,
         )
         server_commit = resp.json()["server_commit"]
 
-        # Server edits paragraph one
         resp = await merge_client.put(
             "/api/posts/posts/shared.md",
             json={
                 "title": "Shared Post",
                 "body": "Server version of paragraph one.\n\nParagraph two.\n",
-                "labels": [],
+                "labels": ["a"],
                 "is_draft": False,
             },
             headers=headers,
         )
         assert resp.status_code == 200
 
-        # Client also edits paragraph one (conflict!)
         client_content = (
-            "---\ncreated_at: 2026-02-01 00:00:00+00\nauthor: Admin\n---\n"
-            "# Shared Post\n\nClient version of paragraph one.\n\nParagraph two.\n"
+            "---\ntitle: Shared Post\ncreated_at: 2026-02-01 00:00:00+00\nauthor: Admin\n"
+            "labels:\n- '#a'\n---\n\nClient version of paragraph one.\n\nParagraph two.\n"
         )
-        resp = await merge_client.post(
-            "/api/sync/upload",
-            params={"file_path": "posts/shared.md"},
-            files={"file": ("shared.md", io.BytesIO(client_content.encode()), "text/plain")},
-            headers=headers,
-        )
-        assert resp.status_code == 200
+        import json
 
+        metadata = json.dumps({"deleted_files": [], "last_sync_commit": server_commit})
         resp = await merge_client.post(
             "/api/sync/commit",
-            json={
-                "resolutions": {},
-                "uploaded_files": [],
-                "conflict_files": ["posts/shared.md"],
-                "last_sync_commit": server_commit,
-            },
+            data={"metadata": metadata},
+            files=[
+                ("files", ("posts/shared.md", io.BytesIO(client_content.encode()), "text/plain")),
+            ],
             headers=headers,
         )
         assert resp.status_code == 200
         data = resp.json()
-        assert len(data["merge_results"]) == 1
-        mr = data["merge_results"][0]
-        assert mr["status"] == "conflicted"
-        assert "<<<<<<< SERVER" in mr["content"]
-        assert ">>>>>>> CLIENT" in mr["content"]
+        assert len(data["conflicts"]) == 1
+        assert data["conflicts"][0]["body_conflicted"] is True
 
-    @pytest.mark.asyncio
-    async def test_no_base_falls_back_to_server(
-        self, merge_client: AsyncClient, merge_settings: Settings
-    ) -> None:
-        token = await _login(merge_client)
-        headers = {"Authorization": f"Bearer {token}"}
-
-        # Upload client version without providing last_sync_commit
-        client_content = b"---\nauthor: Admin\n---\n# Conflict\n\nClient only.\n"
-        resp = await merge_client.post(
-            "/api/sync/upload",
-            params={"file_path": "posts/shared.md"},
-            files={"file": ("shared.md", io.BytesIO(client_content), "text/plain")},
-            headers=headers,
-        )
-        assert resp.status_code == 200
-
-        resp = await merge_client.post(
-            "/api/sync/commit",
-            json={
-                "resolutions": {},
-                "uploaded_files": [],
-                "conflict_files": ["posts/shared.md"],
-                "last_sync_commit": None,
-            },
-            headers=headers,
-        )
-        assert resp.status_code == 200
-        data = resp.json()
-        assert len(data["merge_results"]) == 1
-        assert data["merge_results"][0]["status"] == "conflicted"
-
-    @pytest.mark.asyncio
-    async def test_invalid_commit_hash_falls_back(
-        self, merge_client: AsyncClient, merge_settings: Settings
-    ) -> None:
-        token = await _login(merge_client)
-        headers = {"Authorization": f"Bearer {token}"}
-
-        client_content = b"---\nauthor: Admin\n---\n# Different\n\nContent.\n"
-        resp = await merge_client.post(
-            "/api/sync/upload",
-            params={"file_path": "posts/shared.md"},
-            files={"file": ("shared.md", io.BytesIO(client_content), "text/plain")},
-            headers=headers,
-        )
-        assert resp.status_code == 200
-
-        resp = await merge_client.post(
-            "/api/sync/commit",
-            json={
-                "resolutions": {},
-                "uploaded_files": [],
-                "conflict_files": ["posts/shared.md"],
-                "last_sync_commit": "0000000000000000000000000000000000000000",
-            },
-            headers=headers,
-        )
-        assert resp.status_code == 200
-        data = resp.json()
-        assert len(data["merge_results"]) == 1
-        assert data["merge_results"][0]["status"] == "conflicted"
-
-    @pytest.mark.asyncio
-    async def test_delete_modify_conflict_keeps_modified(
-        self, merge_client: AsyncClient, merge_settings: Settings
-    ) -> None:
-        token = await _login(merge_client)
-        headers = {"Authorization": f"Bearer {token}"}
-
-        resp = await merge_client.post(
-            "/api/sync/init",
-            json={"client_manifest": []},
-            headers=headers,
-        )
-        server_commit = resp.json()["server_commit"]
-
-        # Server deletes the file via API
-        resp = await merge_client.delete(
-            "/api/posts/posts/shared.md",
-            headers=headers,
-        )
-        assert resp.status_code == 204
-
-        # Client uploads their modified version
-        client_content = b"---\nauthor: Admin\n---\n# Modified by client\n\nStill here.\n"
-        resp = await merge_client.post(
-            "/api/sync/upload",
-            params={"file_path": "posts/shared.md"},
-            files={"file": ("shared.md", io.BytesIO(client_content), "text/plain")},
-            headers=headers,
-        )
-        assert resp.status_code == 200
-
-        resp = await merge_client.post(
-            "/api/sync/commit",
-            json={
-                "resolutions": {},
-                "uploaded_files": [],
-                "conflict_files": ["posts/shared.md"],
-                "last_sync_commit": server_commit,
-            },
-            headers=headers,
-        )
-        assert resp.status_code == 200
-        data = resp.json()
-        assert len(data["merge_results"]) == 1
-        assert data["merge_results"][0]["status"] == "merged"
-
-        # File should still exist with client content
         dl_resp = await merge_client.get("/api/sync/download/posts/shared.md", headers=headers)
-        assert dl_resp.status_code == 200
-        assert b"Modified by client" in dl_resp.content
+        assert b"Server version" in dl_resp.content
 
-    @pytest.mark.asyncio
-    async def test_commit_without_conflicts_backward_compatible(
-        self, merge_client: AsyncClient
-    ) -> None:
+    async def test_no_base_server_wins(self, merge_client: AsyncClient) -> None:
         token = await _login(merge_client)
         headers = {"Authorization": f"Bearer {token}"}
 
+        client_content = b"---\ntitle: Different\nauthor: Admin\n---\n\nClient only.\n"
+        import json
+
+        metadata = json.dumps({"deleted_files": [], "last_sync_commit": None})
         resp = await merge_client.post(
             "/api/sync/commit",
-            json={"resolutions": {}},
+            data={"metadata": metadata},
+            files=[
+                ("files", ("posts/shared.md", io.BytesIO(client_content), "text/plain")),
+            ],
+            headers=headers,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["conflicts"]) == 1
+
+    async def test_commit_no_changes(self, merge_client: AsyncClient) -> None:
+        token = await _login(merge_client)
+        headers = {"Authorization": f"Bearer {token}"}
+
+        import json
+
+        metadata = json.dumps({"deleted_files": []})
+        resp = await merge_client.post(
+            "/api/sync/commit",
+            data={"metadata": metadata},
             headers=headers,
         )
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "ok"
-        assert data["commit_hash"] is not None
 
-    @pytest.mark.asyncio
-    async def test_clean_merge_normalizes_frontmatter(
-        self, merge_client: AsyncClient, merge_settings: Settings
-    ) -> None:
+    async def test_upload_new_file(self, merge_client: AsyncClient) -> None:
         token = await _login(merge_client)
         headers = {"Authorization": f"Bearer {token}"}
 
-        resp = await merge_client.post(
-            "/api/sync/init",
-            json={"client_manifest": []},
-            headers=headers,
-        )
-        server_commit = resp.json()["server_commit"]
+        new_content = b"---\ntitle: New Post\nauthor: Admin\n---\n\nBrand new.\n"
+        import json
 
-        # Server edits paragraph one
-        resp = await merge_client.put(
-            "/api/posts/posts/shared.md",
-            json={
-                "title": "Shared Post",
-                "body": "Paragraph one (server).\n\nParagraph two.\n",
-                "labels": [],
-                "is_draft": False,
-            },
-            headers=headers,
-        )
-        assert resp.status_code == 200
-
-        # Client edits paragraph two (clean merge)
-        client_content = (
-            "---\ncreated_at: 2026-02-01 00:00:00+00\nauthor: Admin\n---\n"
-            "# Shared Post\n\nParagraph one.\n\nParagraph two (client).\n"
-        )
-        resp = await merge_client.post(
-            "/api/sync/upload",
-            params={"file_path": "posts/shared.md"},
-            files={"file": ("shared.md", io.BytesIO(client_content.encode()), "text/plain")},
-            headers=headers,
-        )
-        assert resp.status_code == 200
-
+        metadata = json.dumps({"deleted_files": []})
         resp = await merge_client.post(
             "/api/sync/commit",
-            json={
-                "resolutions": {},
-                "uploaded_files": [],
-                "conflict_files": ["posts/shared.md"],
-                "last_sync_commit": server_commit,
-            },
+            data={"metadata": metadata},
+            files=[
+                (
+                    "files",
+                    ("posts/2026-02-22-new/index.md", io.BytesIO(new_content), "text/plain"),
+                ),
+            ],
             headers=headers,
         )
         assert resp.status_code == 200
 
-        # Verify the merged post has normalized timestamps
-        post_resp = await merge_client.get("/api/posts/posts/shared.md")
-        assert post_resp.status_code == 200
-        data = post_resp.json()
-        assert data["created_at"] is not None
-        assert data["modified_at"] is not None
+        dl_resp = await merge_client.get(
+            "/api/sync/download/posts/2026-02-22-new/index.md", headers=headers
+        )
+        assert dl_resp.status_code == 200
+
+    async def test_delete_file(self, merge_client: AsyncClient, merge_settings: Settings) -> None:
+        token = await _login(merge_client)
+        headers = {"Authorization": f"Bearer {token}"}
+
+        import json
+
+        metadata = json.dumps({"deleted_files": ["posts/shared.md"]})
+        resp = await merge_client.post(
+            "/api/sync/commit",
+            data={"metadata": metadata},
+            headers=headers,
+        )
+        assert resp.status_code == 200
+
+        dl_resp = await merge_client.get("/api/sync/download/posts/shared.md", headers=headers)
+        assert dl_resp.status_code == 404
