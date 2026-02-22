@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import TYPE_CHECKING
 
 from sqlalchemy import delete, func, select, text
@@ -17,6 +18,18 @@ from backend.schemas.label import (
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
+
+
+def _safe_parse_names(raw: str) -> list[str]:
+    """Parse label names JSON, returning empty list on error."""
+    try:
+        result = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        logger.warning("Invalid label names JSON: %s", raw[:100])
+        return []
+    return result if isinstance(result, list) else []
 
 
 async def ensure_label_cache_entry(session: AsyncSession, label_id: str) -> None:
@@ -55,7 +68,7 @@ async def get_all_labels(session: AsyncSession) -> list[LabelResponse]:
         responses.append(
             LabelResponse(
                 id=label.id,
-                names=json.loads(label.names),
+                names=_safe_parse_names(label.names),
                 is_implicit=label.is_implicit,
                 parents=parents_map.get(label.id, []),
                 children=children_map.get(label.id, []),
@@ -88,7 +101,7 @@ async def get_label(session: AsyncSession, label_id: str) -> LabelResponse | Non
 
     return LabelResponse(
         id=label.id,
-        names=json.loads(label.names),
+        names=_safe_parse_names(label.names),
         is_implicit=label.is_implicit,
         parents=parents,
         children=children,

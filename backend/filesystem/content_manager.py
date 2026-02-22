@@ -90,7 +90,7 @@ class ContentManager:
                     default_tz=self.site_config.timezone,
                     default_author=self.site_config.default_author,
                 )
-            except (UnicodeDecodeError, ValueError, yaml.YAMLError) as exc:
+            except (UnicodeDecodeError, ValueError, yaml.YAMLError, OSError) as exc:
                 logger.warning("Skipping post %s due to parse error: %s", rel_path, exc)
                 continue
             posts.append(post_data)
@@ -125,13 +125,17 @@ class ContentManager:
         full_path = self._validate_path(rel_path)
         if not full_path.exists() or not full_path.is_file():
             return None
-        raw_content = full_path.read_text(encoding="utf-8")
-        post_data = parse_post(
-            raw_content,
-            file_path=rel_path,
-            default_tz=self.site_config.timezone,
-            default_author=self.site_config.default_author,
-        )
+        try:
+            raw_content = full_path.read_text(encoding="utf-8")
+            post_data = parse_post(
+                raw_content,
+                file_path=rel_path,
+                default_tz=self.site_config.timezone,
+                default_author=self.site_config.default_author,
+            )
+        except (UnicodeDecodeError, ValueError, yaml.YAMLError, OSError) as exc:
+            logger.warning("Failed to read post %s: %s", rel_path, exc)
+            return None
         return post_data
 
     def write_post(self, rel_path: str, post_data: PostData) -> None:
@@ -180,7 +184,11 @@ class ContentManager:
                     logger.warning("Rejected unsafe page file path for page %s", page_id)
                     return None
                 if page_path.exists():
-                    return page_path.read_text(encoding="utf-8")
+                    try:
+                        return page_path.read_text(encoding="utf-8")
+                    except (UnicodeDecodeError, OSError) as exc:
+                        logger.warning("Failed to read page %s: %s", page_id, exc)
+                        return None
         return None
 
     def build_index(self) -> ContentIndex:

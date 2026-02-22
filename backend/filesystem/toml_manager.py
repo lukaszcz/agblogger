@@ -56,7 +56,7 @@ def parse_site_config(content_dir: Path) -> SiteConfig:
 
     try:
         data = tomllib.loads(index_path.read_text(encoding="utf-8"))
-    except (tomllib.TOMLDecodeError, UnicodeDecodeError) as exc:
+    except (tomllib.TOMLDecodeError, UnicodeDecodeError, OSError) as exc:
         logger.warning("Failed to parse %s, using defaults: %s", index_path, exc)
         return SiteConfig()
 
@@ -100,13 +100,16 @@ def parse_labels_config(content_dir: Path) -> dict[str, LabelDef]:
 
     try:
         data = tomllib.loads(labels_path.read_text(encoding="utf-8"))
-    except (tomllib.TOMLDecodeError, UnicodeDecodeError) as exc:
+    except (tomllib.TOMLDecodeError, UnicodeDecodeError, OSError) as exc:
         logger.warning("Failed to parse %s, using empty labels: %s", labels_path, exc)
         return {}
     labels_data: dict[str, Any] = data.get("labels", {})
 
     result: dict[str, LabelDef] = {}
     for label_id, label_info in labels_data.items():
+        if not isinstance(label_info, dict):
+            logger.warning("Skipping non-dict label entry %r in labels.toml", label_id)
+            continue
         names = label_info.get("names", [])
         # Handle both parent (single) and parents (list)
         raw_parent = label_info.get("parent")
@@ -138,7 +141,9 @@ def write_labels_config(content_dir: Path, labels: dict[str, LabelDef]) -> None:
         labels_data[label_id] = entry
 
     labels_path = content_dir / "labels.toml"
-    labels_path.write_bytes(tomli_w.dumps({"labels": labels_data}).encode("utf-8"))
+    tmp_path = labels_path.with_suffix(".toml.tmp")
+    tmp_path.write_bytes(tomli_w.dumps({"labels": labels_data}).encode("utf-8"))
+    tmp_path.replace(labels_path)
 
 
 def write_site_config(content_dir: Path, config: SiteConfig) -> None:
@@ -158,4 +163,6 @@ def write_site_config(content_dir: Path, config: SiteConfig) -> None:
         pages_data.append(entry)
 
     index_path = content_dir / "index.toml"
-    index_path.write_bytes(tomli_w.dumps({"site": site_data, "pages": pages_data}).encode("utf-8"))
+    tmp_path = index_path.with_suffix(".toml.tmp")
+    tmp_path.write_bytes(tomli_w.dumps({"site": site_data, "pages": pages_data}).encode("utf-8"))
+    tmp_path.replace(index_path)

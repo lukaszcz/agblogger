@@ -216,6 +216,8 @@ def _render_markdown_sync(markdown: str) -> str:
         ) from None
     except subprocess.TimeoutExpired:
         raise RuntimeError("Pandoc rendering timed out after 30 seconds") from None
+    except OSError as exc:
+        raise RuntimeError(f"Pandoc subprocess system error: {exc}") from None
 
 
 def _add_heading_anchors(html: str) -> str:

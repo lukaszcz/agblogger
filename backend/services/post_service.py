@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import math
 from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import func, or_, select, text
+from sqlalchemy.exc import OperationalError
 
 from backend.models.label import PostLabelCache
 from backend.models.post import PostCache
@@ -20,6 +22,8 @@ from backend.services.datetime_service import format_iso, parse_datetime
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
 
 
 async def _post_labels(session: AsyncSession, post_id: int) -> list[str]:
@@ -63,14 +67,20 @@ async def list_posts(
         stmt = stmt.where(PostCache.author == author)
 
     if from_date:
-        date_part = from_date.split("T")[0].split(" ")[0]
-        from_dt = parse_datetime(date_part + " 00:00:00", default_tz="UTC")
-        stmt = stmt.where(PostCache.created_at >= from_dt)
+        try:
+            date_part = from_date.split("T")[0].split(" ")[0]
+            from_dt = parse_datetime(date_part + " 00:00:00", default_tz="UTC")
+            stmt = stmt.where(PostCache.created_at >= from_dt)
+        except ValueError:
+            pass  # Skip filter on invalid date
 
     if to_date:
-        date_part = to_date.split("T")[0].split(" ")[0]
-        to_dt = parse_datetime(date_part + " 23:59:59.999999", default_tz="UTC")
-        stmt = stmt.where(PostCache.created_at <= to_dt)
+        try:
+            date_part = to_date.split("T")[0].split(" ")[0]
+            to_dt = parse_datetime(date_part + " 23:59:59.999999", default_tz="UTC")
+            stmt = stmt.where(PostCache.created_at <= to_dt)
+        except ValueError:
+            pass  # Skip filter on invalid date
 
     # Label filtering
     label_ids: list[str] = []
@@ -204,7 +214,11 @@ async def search_posts(session: AsyncSession, query: str, *, limit: int = 20) ->
         ORDER BY rank
         LIMIT :limit
     """)
-    result = await session.execute(stmt, {"query": safe_query, "limit": limit})
+    try:
+        result = await session.execute(stmt, {"query": safe_query, "limit": limit})
+    except OperationalError as exc:
+        logger.warning("FTS search failed (index may be corrupted): %s", exc)
+        return []
     rows = result.all()
     results: list[SearchResult] = []
     for r in rows:

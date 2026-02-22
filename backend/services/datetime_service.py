@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pendulum
+from pendulum.parsing.exceptions import ParserError
 
 # Strict output format: YYYY-MM-DD HH:MM:SS.ffffff±TZ
 STRICT_FORMAT = "%Y-%m-%d %H:%M:%S.%f%z"
@@ -32,7 +33,10 @@ def parse_datetime(value: str | datetime, default_tz: str = "UTC") -> datetime:
 
     value_str = value.strip()
 
-    parsed = pendulum.parse(value_str, tz=default_tz, strict=False)
+    try:
+        parsed = pendulum.parse(value_str, tz=default_tz, strict=False)
+    except ParserError as exc:
+        raise ValueError(f"Cannot parse date from: {value_str}") from exc
     if isinstance(parsed, pendulum.DateTime):
         return parsed
     if not isinstance(parsed, pendulum.Date):
