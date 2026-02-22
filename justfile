@@ -190,6 +190,11 @@ build-cli:
         --exclude-module sqlite3 \
         cli/sync_client.py
 
+# ── Deployment ──────────────────────────────────────────────
+
+deploy:
+    uv run agblogger-deploy
+
 # ── Development server ──────────────────────────────────────────────
 
 backend_port := "8000"

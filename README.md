@@ -55,27 +55,6 @@ Self-registration is disabled by default; create invite codes from the admin acc
 
 ## Testing
 
-### Backend
-
-```bash
-# Run all tests
-pytest tests/ -v
-
-# With coverage
-pytest tests/ --cov=backend --cov-report=html
-```
-
-93 backend tests cover API integration, services, sync, rendering, labels, and datetime handling.
-
-### Frontend
-
-```bash
-cd frontend
-npm test
-```
-
-### Type Checking, Linting & Formatting
-
 ```bash
 # Run full quality gate (static checks, then tests)
 just check
@@ -131,12 +110,6 @@ python cli/sync_client.py --dir ./my-blog --server https://your-server.com init
 # Preview what would change
 python cli/sync_client.py --dir ./my-blog status
 
-# Push local changes to server
-python cli/sync_client.py --dir ./my-blog push
-
-# Pull server changes to local
-python cli/sync_client.py --dir ./my-blog pull
-
 # Full bidirectional sync
 python cli/sync_client.py --dir ./my-blog sync
 ```
@@ -164,7 +137,7 @@ The build targets the current platform — cross-compile by running `just build-
 ### 1. Run the interactive deploy script
 
 ```bash
-uv run agblogger-deploy
+just deploy
 ```
 
 The script asks for all required production settings:

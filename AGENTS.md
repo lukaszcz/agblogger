@@ -4,7 +4,7 @@ AgBlogger is a markdown-first blogging platform where markdown files with YAML f
 
 ## Architecture
 
-Read docs/ARCHITECTURE.md to understand application architecture. Update docs/ARCHITECTURE.md whenever architecture changes – always keep it up-to-date with the codebase.
+**IMPORTANT** Read @docs/arch/overview.md for architecture overview. Read other files in docs/arch/ when you need deeper understanding of application architecture. ALWAYS read files under docs/arch/ relevant to your current task. Update docs/arch/*.md (all relevant files) whenever architecture changes – always keep these files up-to-date with the codebase.
 
 ## Build, Test, and Development Commands
 
@@ -86,7 +86,7 @@ Always start a dev server with `just start`. Remember to stop a running dev serv
 
 ## Instructions
 
-- **IMPORTANT**: Keep docs/ARCHITECTURE.md in sync with the codebase. Update it after any frontend or backend architecture changes, addition of major new features, database schema updates.
+- **IMPORTANT**: Keep ALL files under docs/arch/ in sync with the codebase. Update them after any frontend or backend architecture changes, addition of major new features, workflow changes.
 - Avoid code duplication. Abstract common logic into parameterized functions.
 - Use the frontend-design skill to design the user interface and user experience.
 - Ensure the application works end-to-end. Use the playwright mcp to test in the browser.
