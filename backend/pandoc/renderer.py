@@ -14,7 +14,9 @@ from urllib.parse import urlparse as _urlparse
 logger = logging.getLogger(__name__)
 
 _SAFE_ID_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9:_-]*$")
-_VOID_TAGS: frozenset[str] = frozenset({"br", "hr", "img"})
+_SAFE_STYLE_RE = re.compile(r"^text-align:\s*(left|center|right|justify)\s*;?\s*$")
+_BOOLEAN_ATTRS: frozenset[str] = frozenset({"checked", "disabled"})
+_VOID_TAGS: frozenset[str] = frozenset({"br", "hr", "img", "input"})
 _ALLOWED_TAGS: frozenset[str] = frozenset(
     {
         "a",
@@ -37,6 +39,7 @@ _ALLOWED_TAGS: frozenset[str] = frozenset(
         "h6",
         "hr",
         "img",
+        "input",
         "kbd",
         "li",
         "ol",
@@ -63,8 +66,9 @@ _GLOBAL_ALLOWED_ATTRS: frozenset[str] = frozenset({"class", "id"})
 _TAG_ALLOWED_ATTRS: dict[str, frozenset[str]] = {
     "a": frozenset({"href", "title"}),
     "img": frozenset({"alt", "src", "title"}),
-    "td": frozenset({"colspan", "rowspan"}),
-    "th": frozenset({"colspan", "rowspan"}),
+    "input": frozenset({"type", "checked", "disabled"}),
+    "td": frozenset({"colspan", "rowspan", "style"}),
+    "th": frozenset({"colspan", "rowspan", "style"}),
 }
 
 
@@ -149,7 +153,11 @@ class _HtmlSanitizer(HTMLParser):
 
         for raw_name, raw_value in attrs:
             name = raw_name.lower()
-            if raw_value is None or name not in allowed_attrs:
+            if name not in allowed_attrs:
+                continue
+            if raw_value is None:
+                if name in _BOOLEAN_ATTRS:
+                    sanitized.append((name, name))
                 continue
 
             value = raw_value.strip()
@@ -158,6 +166,8 @@ class _HtmlSanitizer(HTMLParser):
             if name == "src" and not _is_safe_url(value, allow_non_http=False):
                 continue
             if name == "id" and not _SAFE_ID_RE.fullmatch(value):
+                continue
+            if name == "style" and not _SAFE_STYLE_RE.fullmatch(value):
                 continue
 
             sanitized.append((name, value))
@@ -188,11 +198,12 @@ def _render_markdown_sync(markdown: str) -> str:
             [
                 "pandoc",
                 "-f",
-                "gfm+tex_math_dollars+footnotes+raw_html",
+                "gfm+tex_math_dollars+footnotes+raw_html"
+                "+attributes+definition_lists+superscript+subscript",
                 "-t",
                 "html5",
                 "--katex",
-                "--highlight-style=pygments",
+                "--syntax-highlighting=pygments",
                 "--wrap=none",
             ],
             input=markdown,
