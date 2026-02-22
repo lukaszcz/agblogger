@@ -26,6 +26,11 @@ node_modules/
 frontend/dist/
 frontend/.tsbuildinfo
 frontend/node_modules/.tmp/
+frontend/.stryker-tmp/
+frontend/reports/
+
+# ── Mutation reports ─────────────────────────────────────────────────
+reports/
 
 # ── Environment ─────────────────────────────────────────────────────
 .env

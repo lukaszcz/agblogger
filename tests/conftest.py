@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
@@ -67,11 +68,25 @@ async def create_test_client(settings: Settings) -> AsyncGenerator[AsyncClient]:
     git_service.init_repo()
     app.state.git_service = git_service
 
-    from backend.crosspost.atproto_oauth import load_or_create_keypair
+    # mutmut stats/test runs can perturb cryptography internals in instrumented modules.
+    # For mutation-testing contexts, these state fields only need to exist.
+    in_mutation_mode = "MUTANT_UNDER_TEST" in os.environ
     from backend.crosspost.bluesky_oauth_state import OAuthStateStore
 
-    oauth_key_path = settings.content_dir / ".atproto-oauth-key.json"
-    atproto_key, atproto_jwk = load_or_create_keypair(oauth_key_path)
+    if in_mutation_mode:
+        atproto_key: object = object()
+        atproto_jwk: dict[str, str] = {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "mutmut-x",
+            "y": "mutmut-y",
+            "kid": "mutmut",
+        }
+    else:
+        from backend.crosspost.atproto_oauth import load_or_create_keypair
+
+        oauth_key_path = settings.content_dir / ".atproto-oauth-key.json"
+        atproto_key, atproto_jwk = load_or_create_keypair(oauth_key_path)
     app.state.atproto_oauth_key = atproto_key
     app.state.atproto_oauth_jwk = atproto_jwk
     app.state.bluesky_oauth_state = OAuthStateStore(ttl_seconds=600)

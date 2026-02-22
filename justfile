@@ -14,6 +14,10 @@ setup:
 
 # ── Quality checks ──────────────────────────────────────────────────
 
+mutation_max_children := env_var_or_default("MUTATION_MAX_CHILDREN", "")
+mutation_keep_artifacts := env_var_or_default("MUTATION_KEEP_ARTIFACTS", "false")
+mutmut_version := "3.4.0"
+
 # Run all static analysis checks (no tests)
 check-static: check-backend-static check-frontend-static check-vulture check-semgrep check-trivy
     @echo "\n✓ Static checks passed"
@@ -36,6 +40,60 @@ check-audit-full:
 # Run extra checks not covered by `check`
 check-extra: check-audit-full check-codeql
     @echo "\n✓ Extra checks passed"
+
+# ── Mutation testing ────────────────────────────────────────────────
+
+# Targeted backend mutation gate for critical code paths
+mutation-backend:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "\n── Backend mutation testing (targeted gate) ──"
+    args=()
+    if [ "{{ mutation_keep_artifacts }}" = "true" ]; then args+=(--keep-artifacts); fi
+    if [ -n "{{ mutation_max_children }}" ]; then args+=(--max-children "{{ mutation_max_children }}"); fi
+    if [ "${#args[@]}" -eq 0 ]; then
+        uv run --extra dev --with "mutmut=={{ mutmut_version }}" python -m cli.mutation_backend backend
+    else
+        uv run --extra dev --with "mutmut=={{ mutmut_version }}" python -m cli.mutation_backend backend "${args[@]}"
+    fi
+
+# Full backend+cli mutation sweep (nightly/full run)
+mutation-backend-full:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "\n── Backend mutation testing (full backend+cli sweep) ──"
+    args=()
+    if [ "{{ mutation_keep_artifacts }}" = "true" ]; then args+=(--keep-artifacts); fi
+    if [ -n "{{ mutation_max_children }}" ]; then args+=(--max-children "{{ mutation_max_children }}"); fi
+    if [ "${#args[@]}" -eq 0 ]; then
+        uv run --extra dev --with "mutmut=={{ mutmut_version }}" python -m cli.mutation_backend backend-full
+    else
+        uv run --extra dev --with "mutmut=={{ mutmut_version }}" python -m cli.mutation_backend backend-full "${args[@]}"
+    fi
+
+# Targeted frontend mutation gate on high-impact flows
+mutation-frontend:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "\n── Frontend mutation testing (targeted gate) ──"
+    trap 'rm -rf frontend/.stryker-tmp/frontend' EXIT
+    cd frontend && npm run mutation
+
+# Full frontend mutation sweep (nightly/full run)
+mutation-frontend-full:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "\n── Frontend mutation testing (full sweep) ──"
+    trap 'rm -rf frontend/.stryker-tmp/frontend-full' EXIT
+    cd frontend && npm run mutation:full
+
+# Recommended PR mutation gate
+mutation: mutation-backend mutation-frontend
+    @echo "\n✓ Mutation gate passed"
+
+# Comprehensive nightly mutation gate
+mutation-full: mutation-backend mutation-backend-full mutation-frontend-full
+    @echo "\n✓ Full mutation gate passed"
 
 # Backend static checks: mypy, pyright, deptry, import-linter, ruff, pip-audit
 check-backend-static:
