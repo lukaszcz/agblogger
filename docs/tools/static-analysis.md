@@ -76,21 +76,10 @@ All checks are fail-fast and CI-blocking.
 
 ## Trivy Security Scan (`check-trivy`)
 
-- `trivy config --exit-code 1 --severity MEDIUM,HIGH,CRITICAL docker-compose.yml`
-  - Purpose: detect medium/high/critical IaC misconfigurations in Compose.
-  - Scope: `docker-compose.yml`.
-- `trivy config --exit-code 1 --severity MEDIUM,HIGH,CRITICAL Dockerfile`
-  - Purpose: detect medium/high/critical container build misconfigurations.
-  - Scope: `Dockerfile`.
-- `trivy fs --scanners secret --detection-priority precise --exit-code 1 --severity MEDIUM,HIGH,CRITICAL backend`
-  - Purpose: detect medium/high/critical secrets with lower false-positive bias.
-  - Scope: backend source directory.
-- `trivy fs --scanners secret --detection-priority precise --exit-code 1 --severity MEDIUM,HIGH,CRITICAL cli`
-  - Purpose: detect medium/high/critical secrets with lower false-positive bias.
-  - Scope: CLI source directory.
-- `trivy fs --scanners secret --detection-priority precise --exit-code 1 --severity MEDIUM,HIGH,CRITICAL frontend/src`
-  - Purpose: detect medium/high/critical secrets with lower false-positive bias.
-  - Scope: frontend source directory.
+- `trivy fs --scanners vuln,misconfig,secret,license --exit-code 1 .`
+  - Purpose: broad repository security scan in one pass (vulnerabilities, misconfigurations, secrets, and license findings).
+  - Scope: repository filesystem, constrained by `trivy.yaml` skip rules.
+  - Severity policy: configured in `trivy.yaml` (`UNKNOWN`, `MEDIUM`, `HIGH`, `CRITICAL`; `LOW` suppressed).
 
 ## Related Test Gates
 
