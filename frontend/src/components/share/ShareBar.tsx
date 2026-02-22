@@ -80,53 +80,60 @@ export default function ShareBar({ title, author, url }: ShareBarProps) {
     <div className="mt-10 border-t border-border pt-6">
       <div className="flex flex-wrap items-center gap-1">
         {canNativeShare() && (
-          <button
-            onClick={() => void handleNativeShare()}
-            aria-label="Share via device"
-            className="rounded-lg p-2 text-muted transition-colors hover:bg-paper-warm hover:text-ink"
-            title="Share"
-          >
-            <Share2 size={18} />
-          </button>
+          <div className="tooltip-wrap">
+            <button
+              onClick={() => void handleNativeShare()}
+              aria-label="Share via device"
+              className="rounded-lg p-2 text-muted transition-colors hover:bg-paper-warm hover:text-ink"
+            >
+              <Share2 size={18} />
+            </button>
+            <span role="tooltip">Share</span>
+          </div>
         )}
 
         {SHARE_PLATFORMS.map((platform) => (
-          <button
-            key={platform.id}
-            onClick={() => {
-              handlePlatformClick(platform.id)
-            }}
-            aria-label={platform.label}
-            className="rounded-lg p-2 text-muted transition-colors hover:bg-paper-warm hover:text-ink"
-            title={platform.label}
-          >
-            <PlatformIcon platform={platform.id} size={18} />
-          </button>
+          <div key={platform.id} className="tooltip-wrap">
+            <button
+              onClick={() => {
+                handlePlatformClick(platform.id)
+              }}
+              aria-label={platform.label}
+              className="rounded-lg p-2 text-muted transition-colors hover:bg-paper-warm hover:text-ink"
+            >
+              <PlatformIcon platform={platform.id} size={18} />
+            </button>
+            <span role="tooltip">{platform.label}</span>
+          </div>
         ))}
 
-        <button
-          onClick={handleEmailClick}
-          aria-label="Share via email"
-          className="rounded-lg p-2 text-muted transition-colors hover:bg-paper-warm hover:text-ink"
-          title="Share via email"
-        >
-          <Mail size={18} />
-        </button>
+        <div className="tooltip-wrap">
+          <button
+            onClick={handleEmailClick}
+            aria-label="Share via email"
+            className="rounded-lg p-2 text-muted transition-colors hover:bg-paper-warm hover:text-ink"
+          >
+            <Mail size={18} />
+          </button>
+          <span role="tooltip">Share via email</span>
+        </div>
 
-        <button
-          onClick={() => void handleCopy()}
-          aria-label="Copy link"
-          className="rounded-lg p-2 text-muted transition-colors hover:bg-paper-warm hover:text-ink"
-          title="Copy link"
-        >
-          {copied ? (
-            <Check size={18} className="text-green-600" />
-          ) : copyFailed ? (
-            <XIcon size={18} className="text-red-600" />
-          ) : (
-            <Link size={18} />
-          )}
-        </button>
+        <div className="tooltip-wrap">
+          <button
+            onClick={() => void handleCopy()}
+            aria-label="Copy link"
+            className="rounded-lg p-2 text-muted transition-colors hover:bg-paper-warm hover:text-ink"
+          >
+            {copied ? (
+              <Check size={18} className="text-green-600" />
+            ) : copyFailed ? (
+              <XIcon size={18} className="text-red-600" />
+            ) : (
+              <Link size={18} />
+            )}
+          </button>
+          <span role="tooltip">Copy link</span>
+        </div>
 
         {copied && (
           <span className="animate-fade-in text-xs font-medium text-green-600">Copied!</span>

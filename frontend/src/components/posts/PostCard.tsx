@@ -25,7 +25,7 @@ export default function PostCard({ post, index = 0 }: PostCardProps) {
     <article
       className={`group opacity-0 animate-slide-up ${staggerClass}`}
     >
-      <Link to={postUrl} className="block py-6 -mx-4 px-4 rounded-xl transition-all duration-200 hover:bg-paper-warm/60 hover:-translate-y-0.5 hover:shadow-sm">
+      <Link to={postUrl} className="block py-6 -mx-4 px-4 rounded-xl border-l-2 border-l-transparent transition-all duration-200 hover:bg-paper-warm/60 hover:-translate-y-0.5 hover:shadow-md hover:border-l-accent">
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1 min-w-0">
             <h2 className="font-display text-xl text-ink group-hover:text-accent transition-colors leading-snug">

@@ -215,6 +215,65 @@ html {
   background: var(--color-muted);
 }
 
+/* Tooltip */
+.tooltip-wrap {
+  position: relative;
+}
+
+.tooltip-wrap [role="tooltip"] {
+  pointer-events: none;
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  transform: translateX(-50%) translateY(4px);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  white-space: nowrap;
+  font-size: 0.6875rem;
+  line-height: 1;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--color-ink);
+  color: var(--color-paper);
+  z-index: 20;
+}
+
+.tooltip-wrap:hover [role="tooltip"],
+.tooltip-wrap:focus-within [role="tooltip"] {
+  opacity: 1;
+}
+
+/* Filter panel expand/collapse */
+@keyframes filter-expand {
+  from { opacity: 0; grid-template-rows: 0fr; }
+  to { opacity: 1; grid-template-rows: 1fr; }
+}
+
+@keyframes filter-collapse {
+  from { opacity: 1; grid-template-rows: 1fr; }
+  to { opacity: 0; grid-template-rows: 0fr; }
+}
+
+.filter-panel-grid {
+  display: grid;
+}
+
+.filter-panel-grid[data-state="open"] {
+  animation: filter-expand 0.25s ease-out forwards;
+}
+
+.filter-panel-grid[data-state="closing"] {
+  animation: filter-collapse 0.2s ease-in forwards;
+}
+
+.filter-panel-grid[data-state="closed"] {
+  display: none;
+}
+
+.filter-panel-grid > .filter-panel-inner {
+  overflow: hidden;
+}
+
 /* Animations */
 @keyframes fade-in {
   from { opacity: 0; transform: translateY(8px); }

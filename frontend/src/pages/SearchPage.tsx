@@ -57,14 +57,14 @@ export default function SearchPage() {
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             placeholder="Search posts..."
-            className="flex-1 px-4 py-2.5 text-lg bg-paper-warm border border-border rounded-lg
+            className="flex-1 px-3 py-1.5 text-sm bg-paper-warm border border-border rounded-lg
                      font-body text-ink placeholder:text-muted
                      focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20"
           />
           <button
             type="submit"
             disabled={!inputValue.trim() || loading}
-            className="px-4 py-2.5 text-sm font-medium bg-accent text-white rounded-lg
+            className="px-3 py-1.5 text-sm font-medium bg-accent text-white rounded-lg
                      hover:bg-accent-light disabled:opacity-50 transition-colors"
           >
             Search

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Filter, X, Calendar, User, Tag, ChevronDown, ChevronUp } from 'lucide-react'
 import { fetchLabels } from '@/api/labels'
 import type { LabelResponse } from '@/api/client'
@@ -24,14 +24,38 @@ interface FilterPanelProps {
   onChange: (f: FilterState) => void
 }
 
+type PanelState = 'closed' | 'open' | 'closing'
+
 export default function FilterPanel({ value, onChange }: FilterPanelProps) {
-  const [expanded, setExpanded] = useState(false)
+  const [panelState, setPanelState] = useState<PanelState>('closed')
   const [allLabels, setAllLabels] = useState<LabelResponse[]>([])
   const [labelSearch, setLabelSearch] = useState('')
+
+  const expanded = panelState === 'open'
 
   useEffect(() => {
     fetchLabels().then(setAllLabels).catch(console.error)
   }, [])
+
+  function togglePanel() {
+    if (panelState === 'closed') {
+      setPanelState('open')
+    } else if (panelState === 'open') {
+      setPanelState('closing')
+    }
+  }
+
+  function closePanel() {
+    if (panelState === 'open') {
+      setPanelState('closing')
+    }
+  }
+
+  const handleAnimationEnd = useCallback(() => {
+    if (panelState === 'closing') {
+      setPanelState('closed')
+    }
+  }, [panelState])
 
   const hasActive =
     value.labels.length > 0 || value.author !== '' || value.fromDate !== '' || value.toDate !== ''
@@ -57,7 +81,7 @@ export default function FilterPanel({ value, onChange }: FilterPanelProps) {
     <div className="mb-6">
       {/* Toggle bar */}
       <button
-        onClick={() => setExpanded(!expanded)}
+        onClick={togglePanel}
         className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors
           ${hasActive ? 'bg-accent/10 text-accent' : 'text-muted hover:text-ink hover:bg-paper-warm'}`}
       >
@@ -107,128 +131,134 @@ export default function FilterPanel({ value, onChange }: FilterPanelProps) {
         </div>
       )}
 
-      {/* Expanded panel */}
-      {expanded && (
-        <div className="mt-3 p-4 border border-border rounded-xl bg-paper-warm/40 space-y-5 animate-fade-in">
-          {/* Labels section */}
-          <div>
-            <div className="flex items-center gap-1.5 text-xs font-mono text-muted uppercase tracking-wider mb-2">
-              <Tag size={12} />
-              Labels
-              <span className="normal-case tracking-normal font-body opacity-70">(incl. sub-labels)</span>
-            </div>
+      {/* Expanded panel with slide/fade animation */}
+      <div
+        className="filter-panel-grid mt-3"
+        data-state={panelState}
+        onAnimationEnd={handleAnimationEnd}
+      >
+        <div className="filter-panel-inner">
+          <div className="p-4 border border-border rounded-xl bg-paper-warm/40 space-y-5">
+            {/* Labels section */}
+            <div>
+              <div className="flex items-center gap-1.5 text-xs font-mono text-muted uppercase tracking-wider mb-2">
+                <Tag size={12} />
+                Labels
+                <span className="normal-case tracking-normal font-body opacity-70">(incl. sub-labels)</span>
+              </div>
 
-            <div className="flex items-center gap-2 mb-2">
-              <input
-                type="text"
-                value={labelSearch}
-                onChange={(e) => setLabelSearch(e.target.value)}
-                placeholder="Search labels..."
-                className="flex-1 text-sm px-2.5 py-1.5 border border-border rounded-md bg-paper
-                  focus:outline-none focus:border-accent/50"
-              />
-              <div className="flex text-[11px] border border-border rounded-md overflow-hidden">
-                <button
-                  onClick={() => onChange({ ...value, labelMode: 'or' })}
-                  className={`px-2 py-1 transition-colors ${
-                    value.labelMode === 'or' ? 'bg-accent text-white' : 'bg-paper text-muted hover:bg-paper-warm'
-                  }`}
-                >
-                  OR
-                </button>
-                <button
-                  onClick={() => onChange({ ...value, labelMode: 'and' })}
-                  className={`px-2 py-1 transition-colors ${
-                    value.labelMode === 'and' ? 'bg-accent text-white' : 'bg-paper text-muted hover:bg-paper-warm'
-                  }`}
-                >
-                  AND
-                </button>
+              <div className="flex items-center gap-2 mb-2">
+                <input
+                  type="text"
+                  value={labelSearch}
+                  onChange={(e) => setLabelSearch(e.target.value)}
+                  placeholder="Search labels..."
+                  className="flex-1 text-sm px-2.5 py-1.5 border border-border rounded-md bg-paper
+                    focus:outline-none focus:border-accent/50"
+                />
+                <div className="flex text-[11px] border border-border rounded-md overflow-hidden">
+                  <button
+                    onClick={() => onChange({ ...value, labelMode: 'or' })}
+                    className={`px-2 py-1 transition-colors ${
+                      value.labelMode === 'or' ? 'bg-accent text-white' : 'bg-paper text-muted hover:bg-paper-warm'
+                    }`}
+                  >
+                    OR
+                  </button>
+                  <button
+                    onClick={() => onChange({ ...value, labelMode: 'and' })}
+                    className={`px-2 py-1 transition-colors ${
+                      value.labelMode === 'and' ? 'bg-accent text-white' : 'bg-paper text-muted hover:bg-paper-warm'
+                    }`}
+                  >
+                    AND
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
+                {filteredLabels.map((label) => {
+                  const active = value.labels.includes(label.id)
+                  return (
+                    <button
+                      key={label.id}
+                      onClick={() => toggleLabel(label.id)}
+                      className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
+                        active
+                          ? 'bg-accent text-white'
+                          : 'bg-tag-bg text-tag-text hover:bg-border'
+                      }`}
+                    >
+                      #{label.id}
+                      <span className="ml-1 opacity-60">{label.post_count}</span>
+                    </button>
+                  )
+                })}
+                {filteredLabels.length === 0 && (
+                  <span className="text-xs text-muted py-2">No matching labels</span>
+                )}
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
-              {filteredLabels.map((label) => {
-                const active = value.labels.includes(label.id)
-                return (
-                  <button
-                    key={label.id}
-                    onClick={() => toggleLabel(label.id)}
-                    className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
-                      active
-                        ? 'bg-accent text-white'
-                        : 'bg-tag-bg text-tag-text hover:bg-border'
-                    }`}
-                  >
-                    #{label.id}
-                    <span className="ml-1 opacity-60">{label.post_count}</span>
-                  </button>
-                )
-              })}
-              {filteredLabels.length === 0 && (
-                <span className="text-xs text-muted py-2">No matching labels</span>
-              )}
+            {/* Date range */}
+            <div>
+              <div className="flex items-center gap-1.5 text-xs font-mono text-muted uppercase tracking-wider mb-2">
+                <Calendar size={12} />
+                Date range
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={value.fromDate}
+                  onChange={(e) => onChange({ ...value, fromDate: e.target.value })}
+                  className="text-sm px-2.5 py-1.5 border border-border rounded-md bg-paper
+                    focus:outline-none focus:border-accent/50"
+                />
+                <span className="text-muted text-xs">to</span>
+                <input
+                  type="date"
+                  value={value.toDate}
+                  onChange={(e) => onChange({ ...value, toDate: e.target.value })}
+                  className="text-sm px-2.5 py-1.5 border border-border rounded-md bg-paper
+                    focus:outline-none focus:border-accent/50"
+                />
+              </div>
             </div>
-          </div>
 
-          {/* Date range */}
-          <div>
-            <div className="flex items-center gap-1.5 text-xs font-mono text-muted uppercase tracking-wider mb-2">
-              <Calendar size={12} />
-              Date range
-            </div>
-            <div className="flex items-center gap-2">
+            {/* Author */}
+            <div>
+              <div className="flex items-center gap-1.5 text-xs font-mono text-muted uppercase tracking-wider mb-2">
+                <User size={12} />
+                Author
+              </div>
               <input
-                type="date"
-                value={value.fromDate}
-                onChange={(e) => onChange({ ...value, fromDate: e.target.value })}
-                className="text-sm px-2.5 py-1.5 border border-border rounded-md bg-paper
-                  focus:outline-none focus:border-accent/50"
-              />
-              <span className="text-muted text-xs">to</span>
-              <input
-                type="date"
-                value={value.toDate}
-                onChange={(e) => onChange({ ...value, toDate: e.target.value })}
-                className="text-sm px-2.5 py-1.5 border border-border rounded-md bg-paper
+                type="text"
+                value={value.author}
+                onChange={(e) => onChange({ ...value, author: e.target.value })}
+                placeholder="Filter by author..."
+                className="w-full max-w-xs text-sm px-2.5 py-1.5 border border-border rounded-md bg-paper
                   focus:outline-none focus:border-accent/50"
               />
             </div>
-          </div>
 
-          {/* Author */}
-          <div>
-            <div className="flex items-center gap-1.5 text-xs font-mono text-muted uppercase tracking-wider mb-2">
-              <User size={12} />
-              Author
+            {/* Actions */}
+            <div className="flex items-center gap-3 pt-2 border-t border-border/50">
+              <button
+                onClick={clearAll}
+                className="text-xs text-muted hover:text-ink transition-colors"
+              >
+                Clear all
+              </button>
+              <button
+                onClick={closePanel}
+                className="text-xs text-accent hover:underline ml-auto"
+              >
+                Close
+              </button>
             </div>
-            <input
-              type="text"
-              value={value.author}
-              onChange={(e) => onChange({ ...value, author: e.target.value })}
-              placeholder="Filter by author..."
-              className="w-full max-w-xs text-sm px-2.5 py-1.5 border border-border rounded-md bg-paper
-                focus:outline-none focus:border-accent/50"
-            />
-          </div>
-
-          {/* Actions */}
-          <div className="flex items-center gap-3 pt-2 border-t border-border/50">
-            <button
-              onClick={clearAll}
-              className="text-xs text-muted hover:text-ink transition-colors"
-            >
-              Clear all
-            </button>
-            <button
-              onClick={() => setExpanded(false)}
-              className="text-xs text-accent hover:underline ml-auto"
-            >
-              Close
-            </button>
           </div>
         </div>
-      )}
+      </div>
     </div>
   )
 }
