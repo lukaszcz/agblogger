@@ -468,12 +468,30 @@ def normalize_post_frontmatter(
         for ts_field in ("created_at", "modified_at"):
             raw_value = post.get(ts_field)
             if raw_value is not None:
-                if isinstance(raw_value, date) and not isinstance(raw_value, datetime):
-                    raw_value = datetime(raw_value.year, raw_value.month, raw_value.day, tzinfo=UTC)
-                if isinstance(raw_value, datetime):
-                    post[ts_field] = format_datetime(raw_value)
-                else:
-                    post[ts_field] = format_datetime(parse_datetime(str(raw_value)))
+                try:
+                    if isinstance(raw_value, date) and not isinstance(raw_value, datetime):
+                        raw_value = datetime(
+                            raw_value.year,
+                            raw_value.month,
+                            raw_value.day,
+                            tzinfo=UTC,
+                        )
+                    if isinstance(raw_value, datetime):
+                        post[ts_field] = format_datetime(raw_value)
+                    else:
+                        post[ts_field] = format_datetime(parse_datetime(str(raw_value)))
+                except Exception as exc:
+                    logger.warning(
+                        "Invalid %s value in %s (%r): %s",
+                        ts_field,
+                        file_path,
+                        raw_value,
+                        exc,
+                    )
+                    warnings.append(
+                        f"{file_path}: invalid {ts_field} value; replaced with current time"
+                    )
+                    post.metadata.pop(ts_field, None)
 
         if is_edit:
             # Edited post: always update modified_at, fill missing fields

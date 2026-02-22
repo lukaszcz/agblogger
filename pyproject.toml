@@ -57,6 +57,7 @@ dev = [
     "types-PyYAML>=6.0",
     "pre-commit>=4.1",
     "pyinstaller>=6.0",
+    "hypothesis>=6.151.9",
 ]
 
 [project.scripts]
@@ -129,6 +130,7 @@ DEP002 = [
     "python-multipart",
     "types-PyYAML",
     "pytest",
+    "hypothesis",
     "pytest-asyncio",
     "pytest-cov",
     "ruff",
@@ -166,6 +168,7 @@ module = ["tests.*"]
 disallow_untyped_defs = false
 disallow_incomplete_defs = false
 check_untyped_defs = false
+disallow_any_decorated = false
 disallow_any_unimported = false
 warn_return_any = false
 disable_error_code = ["method-assign", "no-any-return", "union-attr"]

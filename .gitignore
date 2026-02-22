@@ -17,6 +17,7 @@ build/
 .venv/
 .mypy_cache/
 .pytest_cache/
+.hypothesis/
 .ruff_cache/
 .coverage
 htmlcov/
