@@ -2,16 +2,23 @@
 
 from __future__ import annotations
 
-import asyncio
 import html
 import logging
 import posixpath
 import re
-import subprocess
 from html.parser import HTMLParser
+from typing import TYPE_CHECKING
 from urllib.parse import urlparse as _urlparse
 
+import httpx
+
+if TYPE_CHECKING:
+    from backend.pandoc.server import PandocServer
+
 logger = logging.getLogger(__name__)
+
+_server: PandocServer | None = None
+_http_client: httpx.AsyncClient | None = None
 
 _SAFE_ID_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9:_-]*$")
 _VOID_TAGS: frozenset[str] = frozenset({"br", "hr", "img"})
@@ -172,52 +179,76 @@ def _sanitize_html(rendered_html: str) -> str:
     return sanitizer.get_sanitized_html()
 
 
+_RENDER_TIMEOUT = 10.0
+
+
+def init_renderer(server: PandocServer) -> None:
+    """Initialize the renderer with a running PandocServer instance."""
+    global _server, _http_client
+    _server = server
+    _http_client = httpx.AsyncClient(timeout=_RENDER_TIMEOUT)
+
+
+async def close_renderer() -> None:
+    """Close the httpx client and reset module state."""
+    global _server, _http_client
+    if _http_client is not None:
+        await _http_client.aclose()
+    _server = None
+    _http_client = None
+
+
 async def render_markdown(markdown: str) -> str:
-    """Render markdown to HTML using pandoc.
+    """Render markdown to HTML using the pandoc server HTTP API.
 
     Uses GFM + KaTeX math + syntax highlighting.
-    Raises RuntimeError if pandoc is not installed or fails.
+    Raises RuntimeError if the renderer is not initialized or pandoc fails.
     """
-    return await asyncio.to_thread(_render_markdown_sync, markdown)
+    if _server is None or _http_client is None:
+        raise RuntimeError(
+            "Pandoc renderer not initialized. Call init_renderer() during app startup."
+        )
 
+    payload = {
+        "text": markdown,
+        "from": "gfm+tex_math_dollars+footnotes+raw_html",
+        "to": "html5",
+        "html-math-method": {"method": "katex"},
+        "highlight-style": "pygments",
+        "wrap": "none",
+    }
+    headers = {"Accept": "application/json"}
 
-def _render_markdown_sync(markdown: str) -> str:
-    """Synchronous pandoc rendering (runs in thread pool)."""
     try:
-        result = subprocess.run(
-            [
-                "pandoc",
-                "-f",
-                "gfm+tex_math_dollars+footnotes+raw_html",
-                "-t",
-                "html5",
-                "--katex",
-                "--highlight-style=pygments",
-                "--wrap=none",
-            ],
-            input=markdown,
-            capture_output=True,
-            text=True,
-            timeout=30,
-            check=False,
+        response = await _http_client.post(
+            f"{_server.base_url}/", json=payload, headers=headers
         )
-        if result.returncode == 0:
-            sanitized_html = _sanitize_html(result.stdout)
-            sanitized_html = _add_heading_anchors(sanitized_html)
-            return sanitized_html
-        logger.error("Pandoc failed (rc=%d): %s", result.returncode, result.stderr)
+    except httpx.ConnectError:
+        logger.warning("Pandoc server connection failed, attempting restart")
+        await _server.ensure_running()
+        try:
+            response = await _http_client.post(
+                f"{_server.base_url}/", json=payload, headers=headers
+            )
+        except httpx.ConnectError:
+            raise RuntimeError("Pandoc server unreachable after restart") from None
+    except httpx.ReadTimeout:
         raise RuntimeError(
-            f"Pandoc rendering failed with return code {result.returncode}: {result.stderr[:200]}"
-        )
-    except FileNotFoundError:
-        raise RuntimeError(
-            "Pandoc is not installed. Install pandoc to enable markdown rendering. "
-            "See https://pandoc.org/installing.html"
+            f"Pandoc rendering timed out after {_RENDER_TIMEOUT}s"
         ) from None
-    except subprocess.TimeoutExpired:
-        raise RuntimeError("Pandoc rendering timed out after 30 seconds") from None
-    except OSError as exc:
-        raise RuntimeError(f"Pandoc subprocess system error: {exc}") from None
+
+    try:
+        data = response.json()
+    except ValueError:
+        raise RuntimeError(
+            f"Pandoc server returned non-JSON response (HTTP {response.status_code})"
+        ) from None
+    if "error" in data:
+        raise RuntimeError(f"Pandoc rendering error: {str(data['error'])[:200]}")
+
+    output = data.get("output", "")
+    sanitized = _sanitize_html(output)
+    return _add_heading_anchors(sanitized)
 
 
 def _add_heading_anchors(html: str) -> str:

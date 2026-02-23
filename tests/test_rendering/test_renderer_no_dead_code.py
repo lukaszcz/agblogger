@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import inspect
-from unittest.mock import patch
 
 
 class TestRendererModule:
@@ -30,7 +29,7 @@ class TestRendererModule:
         assert inspect.iscoroutinefunction(render_markdown)
 
     def test_module_public_functions(self) -> None:
-        """The public functions should be render_markdown and rewrite_relative_urls."""
+        """Public API: close_renderer, init_renderer, render_markdown, rewrite_relative_urls."""
         from backend.pandoc import renderer
 
         public_functions = sorted(
@@ -38,15 +37,9 @@ class TestRendererModule:
             for name, obj in inspect.getmembers(renderer, inspect.isfunction)
             if not name.startswith("_")
         )
-        assert public_functions == ["render_markdown", "rewrite_relative_urls"]
-
-    def test_missing_pandoc_raises_runtime_error(self) -> None:
-        """FileNotFoundError from subprocess should become RuntimeError."""
-        from backend.pandoc.renderer import _render_markdown_sync
-
-        with patch("subprocess.run", side_effect=FileNotFoundError("No such file")):
-            try:
-                _render_markdown_sync("# Hello")
-                raise AssertionError("Expected RuntimeError was not raised")
-            except RuntimeError as exc:
-                assert "Pandoc is not installed" in str(exc)
+        assert public_functions == [
+            "close_renderer",
+            "init_renderer",
+            "render_markdown",
+            "rewrite_relative_urls",
+        ]

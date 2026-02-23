@@ -16,7 +16,6 @@ from backend.filesystem.toml_manager import (
     write_labels_config,
     write_site_config,
 )
-from backend.pandoc.renderer import _render_markdown_sync
 from backend.services.datetime_service import parse_datetime
 
 
@@ -99,17 +98,6 @@ class TestReadPageErrorHandling:
         cm = ContentManager(content_dir=tmp_path)
         result = cm.read_page("about")
         assert result is None
-
-
-class TestPandocOSError:
-    """M13: OSError from subprocess.run caught and raised as RuntimeError."""
-
-    def test_oserror_raises_runtime_error(self) -> None:
-        with (
-            patch("subprocess.run", side_effect=OSError("Too many open files")),
-            pytest.raises(RuntimeError, match="system error"),
-        ):
-            _render_markdown_sync("# hello")
 
 
 class TestSafeParseNames:
