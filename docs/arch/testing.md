@@ -159,7 +159,7 @@ Mutation testing is implemented in three production phases with dedicated `just`
 - Goal: broad backend + CLI mutation sweep across stable, high-signal suites
 - Test selection: backend service/CLI/sync/labels/rendering suites (API-heavy suites are handled by the targeted backend profile and excluded here for mutmut stats stability)
 - Uses the same full-file mutation mode (`mutate_only_covered_lines = false`)
-- Excludes `tests/test_services/test_sync_merge_integration.py` from mutation runs due mutmut instrumentation instability in that flow
+- Excludes `tests/test_services/test_sync_merge_integration.py` from mutation runs due to mutmut instrumentation instability in that flow
 - Excludes `tests/test_rendering/test_renderer_no_dead_code.py` from mutation runs because mutmut-generated symbols intentionally violate that module’s dead-code/introspection assertions
 - Excludes broad API integration/security modules from full-profile stats collection because mutmut stats-mode instrumentation causes repeated false failures in shared ASGI fixture flows
 - Deselects introspection-sensitive coroutine-shape assertions (for example `TestIsSafeUrlAsync::test_is_safe_url_is_async`) that are invalidated by mutmut trampoline wrapping in `stats` mode

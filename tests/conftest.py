@@ -70,6 +70,8 @@ async def create_test_client(settings: Settings) -> AsyncGenerator[AsyncClient]:
 
     # mutmut stats/test runs can perturb cryptography internals in instrumented modules.
     # For mutation-testing contexts, these state fields only need to exist.
+    # Note: MUTANT_UNDER_TEST is a standard env var set by mutmut itself
+    # when running mutants — do not rename it.
     in_mutation_mode = "MUTANT_UNDER_TEST" in os.environ
     from backend.crosspost.bluesky_oauth_state import OAuthStateStore
 

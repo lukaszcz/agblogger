@@ -51,19 +51,19 @@ describe('mock localStorage', () => {
 })
 
 describe('throwingLocalStorage', () => {
-  it('getItem throws SecurityError', () => {
+  it('getItem throws "Access denied"', () => {
     expect(() => throwingLocalStorage.getItem()).toThrow('Access denied')
   })
 
-  it('setItem throws SecurityError', () => {
+  it('setItem throws "Access denied"', () => {
     expect(() => throwingLocalStorage.setItem()).toThrow('Access denied')
   })
 
-  it('removeItem throws SecurityError', () => {
+  it('removeItem throws "Access denied"', () => {
     expect(() => throwingLocalStorage.removeItem()).toThrow('Access denied')
   })
 
-  it('clear throws SecurityError', () => {
+  it('clear throws "Access denied"', () => {
     expect(() => throwingLocalStorage.clear()).toThrow('Access denied')
   })
 

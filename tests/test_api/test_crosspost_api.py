@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from unittest.mock import AsyncMock, patch
 
 from tests.conftest import create_test_client
 
@@ -71,6 +72,82 @@ class TestMastodonCallback:
             )
             assert resp.status_code == 400
             assert resp.json()["detail"] == "Invalid or expired OAuth state"
+
+    async def test_mastodon_callback_rejects_empty_acct(self, test_settings: Settings) -> None:
+        test_settings.bluesky_client_url = "https://myblog.example.com"
+        test_settings.admin_password = "admin"
+        async with create_test_client(test_settings) as client:
+            # Seed a valid pending OAuth state
+            transport = client._transport
+            state_store = transport.app.state.mastodon_oauth_state  # type: ignore[attr-defined]
+            state_store.set(
+                "test-state",
+                {
+                    "instance_url": "https://mastodon.social",
+                    "client_id": "cid",
+                    "client_secret": "csec",
+                    "redirect_uri": "https://myblog.example.com/api/crosspost/mastodon/callback",
+                    "pkce_verifier": "verifier",
+                    "user_id": 1,
+                },
+            )
+
+            mock_result: dict[str, str] = {
+                "access_token": "valid-token",
+                "acct": "",
+                "hostname": "mastodon.social",
+                "instance_url": "https://mastodon.social",
+            }
+            with patch(
+                "backend.crosspost.mastodon.exchange_mastodon_oauth_token",
+                new_callable=AsyncMock,
+                return_value=mock_result,
+            ):
+                resp = await client.get(
+                    "/api/crosspost/mastodon/callback",
+                    params={"code": "test-code", "state": "test-state"},
+                    follow_redirects=False,
+                )
+            assert resp.status_code == 502
+            assert "incomplete account info" in resp.json()["detail"]
+
+    async def test_mastodon_callback_rejects_empty_hostname(self, test_settings: Settings) -> None:
+        test_settings.bluesky_client_url = "https://myblog.example.com"
+        test_settings.admin_password = "admin"
+        async with create_test_client(test_settings) as client:
+            # Seed a valid pending OAuth state
+            transport = client._transport
+            state_store = transport.app.state.mastodon_oauth_state  # type: ignore[attr-defined]
+            state_store.set(
+                "test-state",
+                {
+                    "instance_url": "https://mastodon.social",
+                    "client_id": "cid",
+                    "client_secret": "csec",
+                    "redirect_uri": "https://myblog.example.com/api/crosspost/mastodon/callback",
+                    "pkce_verifier": "verifier",
+                    "user_id": 1,
+                },
+            )
+
+            mock_result: dict[str, str] = {
+                "access_token": "valid-token",
+                "acct": "user",
+                "hostname": "",
+                "instance_url": "https://mastodon.social",
+            }
+            with patch(
+                "backend.crosspost.mastodon.exchange_mastodon_oauth_token",
+                new_callable=AsyncMock,
+                return_value=mock_result,
+            ):
+                resp = await client.get(
+                    "/api/crosspost/mastodon/callback",
+                    params={"code": "test-code", "state": "test-state"},
+                    follow_redirects=False,
+                )
+            assert resp.status_code == 502
+            assert "incomplete account info" in resp.json()["detail"]
 
 
 class TestXAuthorize:

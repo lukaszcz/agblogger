@@ -271,6 +271,10 @@ describe('TimelinePage', () => {
     await waitFor(() => {
       expect(mockUploadPost).toHaveBeenCalledWith([file])
     })
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith('/post/posts/uploaded.md')
+    })
   })
 
   it('shows 413 error for large file upload', async () => {

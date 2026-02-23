@@ -613,7 +613,13 @@ async def update_post_endpoint(
         await session.rollback()
         raise HTTPException(status_code=500, detail="Failed to write post file") from exc
 
-    # Perform the rename after write succeeds
+    # Perform the rename after write succeeds.
+    # Known limitation: this rename + symlink sequence is not atomic.  If
+    # shutil.move succeeds but os.symlink fails *and* the rollback move also
+    # fails, the directory will exist at new_dir with no symlink at old_dir,
+    # while the DB still references the old path.  A subsequent cache rebuild
+    # from disk will reconcile the state, but until then the post may appear
+    # missing.  Both failure paths are logged for manual recovery.
     if needs_rename and old_dir is not None and new_dir is not None:
         # H2: Handle OSError during shutil.move
         try:

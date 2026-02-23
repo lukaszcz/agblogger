@@ -217,6 +217,7 @@ class SyncClient:
                 downloads_ok += 1
 
         # Delete local files
+        deletes_done = 0
         for fp in to_delete_local:
             local_path = _is_safe_local_path(self.content_dir, fp)
             if local_path is None:
@@ -225,6 +226,7 @@ class SyncClient:
             if local_path.exists():
                 local_path.unlink()
                 print(f"  Delete local: {fp}")
+                deletes_done += 1
 
         # Report conflicts
         response_conflicts: list[dict[str, Any]] = commit_data.get("conflicts", [])
@@ -247,7 +249,7 @@ class SyncClient:
         local_files = scan_local_files(self.content_dir)
         save_manifest(self.content_dir, local_files)
 
-        total = len(files_to_send) + downloads_ok + len(to_delete_local)
+        total = len(files_to_send) + downloads_ok + deletes_done
         print(f"Sync complete. {total} file(s) synced, {len(response_conflicts)} conflict(s).")
 
 

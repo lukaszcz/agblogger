@@ -64,6 +64,40 @@ class TestMergeFileContent:
         assert not conflicted
         assert merged == "changed\n"
 
+    def test_temp_files_not_in_content_dir(self, tmp_path: Path) -> None:
+        """Temp merge files must not be created inside the git-tracked content_dir."""
+        git = GitService(tmp_path)
+        git.init_repo()
+        base = "line1\nline2\n"
+        ours = "line1 changed\nline2\n"
+        theirs = "line1\nline2 changed\n"
+
+        import tempfile as _tempfile
+
+        with patch(
+            "backend.services.git_service.tempfile.TemporaryDirectory",
+            wraps=_tempfile.TemporaryDirectory,
+        ) as mock_td:
+            git.merge_file_content(base, ours, theirs)
+
+        mock_td.assert_called_once()
+        kwargs = mock_td.call_args.kwargs
+        # dir must not be set to content_dir (should use system temp)
+        assert kwargs.get("dir") is None or kwargs["dir"] != tmp_path
+
+    def test_merge_preserves_non_ascii_content(self, tmp_path: Path) -> None:
+        """Merge must correctly handle non-ASCII characters (CJK, emoji, accented)."""
+        git = GitService(tmp_path)
+        git.init_repo()
+        base = "line1\nline2\nline3\nline4\nline5\n"
+        ours = "line1\nline2\n\u4e16\u754c\u4f60\u597d\nline4\nline5\n"
+        theirs = "line1\nline2\nline3\nline4\n\u00c9mile \U0001f680\n"
+        merged, conflicted = git.merge_file_content(base, ours, theirs)
+        assert not conflicted
+        assert "\u4e16\u754c\u4f60\u597d" in merged
+        assert "\u00c9mile" in merged
+        assert "\U0001f680" in merged
+
     def test_raises_on_high_exit_code(self, tmp_path: Path) -> None:
         """Exit codes >= 128 from git merge-file indicate errors, not conflicts."""
         git = GitService(tmp_path)

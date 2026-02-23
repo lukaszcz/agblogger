@@ -128,7 +128,7 @@ class GitService:
 
         Returns (merged_text, has_conflicts).
         """
-        with tempfile.TemporaryDirectory(dir=self.content_dir) as td:
+        with tempfile.TemporaryDirectory() as td:
             tmp = Path(td)
             base_f = tmp / "base"
             ours_f = tmp / "ours"
@@ -142,6 +142,7 @@ class GitService:
                 cwd=self.content_dir,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
                 check=False,
             )
             # exit 0 = clean merge, positive exit = number of conflicts (capped at 127),

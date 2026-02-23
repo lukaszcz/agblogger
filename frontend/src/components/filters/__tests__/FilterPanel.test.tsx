@@ -210,8 +210,33 @@ describe('FilterPanel', () => {
 
     await user.click(screen.getByText('Close'))
 
-    // The panel enters 'closing' state which will remove content after animation
-    // The close button itself should trigger the state change
+    // Panel should enter 'closing' state
+    const panel = document.querySelector('[data-state]')
+    expect(panel).toHaveAttribute('data-state', 'closing')
+  })
+
+  it('reopens panel when clicking Filters during closing animation', async () => {
+    const user = userEvent.setup()
+    await renderPanel()
+
+    // Open
+    await user.click(screen.getByText('Filters'))
+    await waitFor(() => {
+      expect(screen.getByText('Close')).toBeInTheDocument()
+    })
+
+    // Start closing
+    await user.click(screen.getByText('Close'))
+
+    // Panel should be in 'closing' state (data-state attribute)
+    const panel = document.querySelector('[data-state]')
+    expect(panel).toHaveAttribute('data-state', 'closing')
+
+    // Click Filters again during closing animation
+    await user.click(screen.getByText('Filters'))
+
+    // Panel should reopen
+    expect(panel).toHaveAttribute('data-state', 'open')
   })
 
   it('updates from date', async () => {

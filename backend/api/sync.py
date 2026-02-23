@@ -292,7 +292,6 @@ async def _sync_commit_inner(
                         file_path=target_path, body_conflicted=True, field_conflicts=[]
                     )
                 )
-                uploaded_paths.append(target_path)
                 continue
 
             if merge_result.body_conflicted or merge_result.field_conflicts:

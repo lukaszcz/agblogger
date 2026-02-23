@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import io
 import json
+import subprocess
 from typing import TYPE_CHECKING
+from unittest.mock import patch
 
 import pytest
 
@@ -397,3 +399,73 @@ class TestSyncCommit:
         assert "#server-label" in merged
         assert "#client-label" in merged
         assert "#a" in merged
+
+    async def test_merge_failure_does_not_normalize_frontmatter(
+        self, merge_client: AsyncClient, merge_settings: Settings
+    ) -> None:
+        """When merge_post_file raises CalledProcessError, the file must NOT be
+        added to uploaded_paths and normalize_post_frontmatter must NOT process it."""
+        token = await _login(merge_client)
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # Get server commit so the sync endpoint attempts a three-way merge
+        resp = await merge_client.post(
+            "/api/sync/status",
+            json={"client_manifest": []},
+            headers=headers,
+        )
+        server_commit = resp.json()["server_commit"]
+
+        # Edit server version so server_content != client_text (triggers merge path)
+        resp = await merge_client.put(
+            "/api/posts/posts/shared.md",
+            json={
+                "title": "Shared Post",
+                "body": "Server edited paragraph.\n\nParagraph two.\n",
+                "labels": ["a"],
+                "is_draft": False,
+            },
+            headers=headers,
+        )
+        assert resp.status_code == 200
+
+        client_content = (
+            "---\ntitle: Shared Post\ncreated_at: 2026-02-01 00:00:00+00\nauthor: Admin\n"
+            "labels:\n- '#a'\n---\n\nClient edited paragraph.\n\nParagraph two.\n"
+        )
+
+        # Patch merge_post_file to raise CalledProcessError and spy on normalize
+        error = subprocess.CalledProcessError(1, "git merge-file", stderr="merge failed")
+
+        with (
+            patch("backend.api.sync.merge_post_file", side_effect=error),
+            patch("backend.api.sync.normalize_post_frontmatter", return_value=[]) as mock_norm,
+        ):
+            metadata = json.dumps({"deleted_files": [], "last_sync_commit": server_commit})
+            resp = await merge_client.post(
+                "/api/sync/commit",
+                data={"metadata": metadata},
+                files=[
+                    (
+                        "files",
+                        ("posts/shared.md", io.BytesIO(client_content.encode()), "text/plain"),
+                    ),
+                ],
+                headers=headers,
+            )
+
+        assert resp.status_code == 200
+        data = resp.json()
+
+        # Should report the conflict
+        assert len(data["conflicts"]) == 1
+        assert data["conflicts"][0]["file_path"] == "posts/shared.md"
+        assert data["conflicts"][0]["body_conflicted"] is True
+
+        # The critical assertion: normalize_post_frontmatter should NOT
+        # receive the failed merge path in its uploaded_files list
+        mock_norm.assert_called_once()
+        uploaded_files_arg = mock_norm.call_args.kwargs.get(
+            "uploaded_files", mock_norm.call_args.args[0] if mock_norm.call_args.args else []
+        )
+        assert "posts/shared.md" not in uploaded_files_arg

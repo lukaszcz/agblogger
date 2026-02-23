@@ -534,7 +534,14 @@ async def mastodon_callback(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Mastodon token exchange returned no access token",
         )
-    account_name = f"@{token_result.get('acct', '')}@{token_result.get('hostname', '')}"
+    acct = token_result.get("acct", "")
+    hostname = token_result.get("hostname", "")
+    if not acct or not hostname:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Mastodon token exchange returned incomplete account info",
+        )
+    account_name = f"@{acct}@{hostname}"
     credentials = {
         "access_token": mastodon_access_token,
         "instance_url": token_result.get("instance_url", ""),

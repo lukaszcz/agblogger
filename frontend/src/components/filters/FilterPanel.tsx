@@ -38,7 +38,7 @@ export default function FilterPanel({ value, onChange }: FilterPanelProps) {
   }, [])
 
   function togglePanel() {
-    if (panelState === 'closed') {
+    if (panelState === 'closed' || panelState === 'closing') {
       setPanelState('open')
     } else if (panelState === 'open') {
       setPanelState('closing')
