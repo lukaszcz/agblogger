@@ -4,12 +4,12 @@ Displaying raw HTML or unrendered markdown is considered a bug, except in the po
 
 Make sure to test user workflows involving:
 - uploading (multiple) images and embedding them in posts,
-- adding, editing and viewing posts with complex markdown: tables, multiple headings on different levels with references, math formulas, images, block quotations, code syntax highlighting in code blocks, complex lists with multiple level sublists,
+- adding, editing and viewing posts with complex markdown: tables, multiple headings on different levels with references, math formulas, images, block quotations, code syntax highlighting in code blocks, complex lists with multiple level sublists, checkbox lists,
 - table of contents for long posts,
 - internal and external links in posts,
-- support for ALL of pandoc markdown (https://pandoc.org/MANUAL.html#pandocs-markdown) and whether it renders correctly and looks good in the Web UI,
+- support for ALL of pandoc markdown (read docs/pandoc/08-pandocs-markdown.md) and whether it renders correctly and looks good in the Web UI,
 - non-english characters, unicode,
-- invalid input (e.g. invalid markdown),
+- invalid input (e.g. invalid markdown, spaces in labels, invalid title or author),
 - post search and filtering,
 - sharing posts on social media platforms,
 - cross-posting,
