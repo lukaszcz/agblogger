@@ -64,6 +64,7 @@ All checks are fail-fast and CI-blocking.
   - `p/ci`
   - `p/security-audit`
   - `p/secrets`
+  - `p/owasp-top-ten`
   - `p/python`
   - `p/typescript`
   - `p/dockerfile`

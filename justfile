@@ -14,8 +14,8 @@ setup:
 
 # ── Quality checks ──────────────────────────────────────────────────
 
-mutation_max_children := env_var_or_default("MUTATION_MAX_CHILDREN", "")
-mutation_keep_artifacts := env_var_or_default("MUTATION_KEEP_ARTIFACTS", "false")
+mutation_max_children := env("MUTATION_MAX_CHILDREN", "")
+mutation_keep_artifacts := env("MUTATION_KEEP_ARTIFACTS", "false")
 mutmut_version := "3.4.0"
 
 # Run all static analysis checks (no tests)
@@ -167,6 +167,7 @@ check-semgrep:
         --config p/ci \
         --config p/security-audit \
         --config p/secrets \
+        --config p/owasp-top-ten \
         --config p/python \
         --config p/typescript \
         --config p/dockerfile \
