@@ -28,7 +28,8 @@ On startup, the lifespan handler:
 9. Initializes the `GitService` (creates a git repo in the content directory if one doesn't exist).
 10. Loads or creates the AT Protocol OAuth ES256 keypair (`content/.atproto-oauth-key.json`) and initializes OAuth state stores for Bluesky, Mastodon, X, and Facebook on `app.state`.
 11. Creates the admin user if it doesn't exist.
-12. Rebuilds the full database cache from the filesystem.
+12. Starts the pandoc server (`PandocServer`) and initializes the renderer.
+13. Rebuilds the full database cache from the filesystem.
 
 ## Layered Architecture
 
@@ -82,14 +83,13 @@ The database serves as a **cache**, not the source of truth:
 
 ## Rendering Pipeline
 
-Pandoc renders markdown to HTML at publish time (during cache rebuild), not per-request. The rendered HTML is stored in `PostCache.rendered_html`. A rendered excerpt is also generated from a markdown-preserving truncation (`generate_markdown_excerpt()`) and stored in `PostCache.rendered_excerpt`. Search results render excerpt HTML client-side (including KaTeX via `useRenderedHtml`), while timeline cards render excerpts as plain text extracted from sanitized HTML.
+Markdown is rendered to HTML via a long-lived `pandoc server` process managed by `PandocServer` in `backend/pandoc/server.py`. The server binds to `127.0.0.1` on an internal port and accepts JSON POST requests. `render_markdown()` in `renderer.py` sends async HTTP requests via `httpx` with a 10-second per-request timeout. If the server crashes, it is automatically restarted on the next render attempt.
+
+Rendering happens at publish time (during cache rebuild and post create/update), not per-request. The rendered HTML is stored in `PostCache.rendered_html`. A rendered excerpt is also generated from a markdown-preserving truncation (`generate_markdown_excerpt()`) and stored in `PostCache.rendered_excerpt`. Search results render excerpt HTML client-side (including KaTeX via `useRenderedHtml`), while timeline cards render excerpts as plain text extracted from sanitized HTML.
 
 Pandoc output is sanitized through an allowlist HTML sanitizer before storage and before heading-anchor injection. Unsafe tags/attributes and unsafe URL schemes (for example `javascript:`) are stripped.
 
-```
-pandoc -f gfm+tex_math_dollars+footnotes+raw_html -t html5
-       --katex --highlight-style=pygments --wrap=none
-```
+Pandoc conversion settings: GFM with `tex_math_dollars`, `footnotes`, and `raw_html` extensions, output as `html5` with KaTeX math rendering and Pygments syntax highlighting.
 
 Features: GitHub Flavored Markdown (tables, task lists, strikethrough), KaTeX math, syntax highlighting (140+ languages), and heading anchor injection.
 

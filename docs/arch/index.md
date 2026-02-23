@@ -123,7 +123,7 @@ Descendant queries use recursive CTEs in SQLite, enabling a "show me all posts i
 | Async throughout | Non-blocking I/O for file serving and database queries |
 | SQLite FTS5 for search | Zero-config full-text search with good performance |
 | Recursive CTEs for label DAG | SQLite supports them natively; efficient hierarchy traversal |
-| Pandoc rendering at publish time | ~100ms overhead on write is acceptable; no per-request cost |
+| Pandoc server mode | Amortizes Haskell startup cost across all renders; no per-request subprocess cost |
 | JWT with refresh token rotation | Prevents stolen refresh token reuse |
 | SHA-256 based sync | Clock-skew immune, deterministic conflict detection |
 | Git-backed content directory | Provides merge base for hybrid sync merge (`git merge-file` for body); full change history at no extra cost |
