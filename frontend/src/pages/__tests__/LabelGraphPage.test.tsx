@@ -29,10 +29,10 @@ vi.mock('@/api/labels', () => ({
 
 // Capture interactive props from ReactFlow for testing callbacks
 interface CapturedFlowProps {
-  onNodeClick?: (event: React.MouseEvent, node: { id: string }) => void
-  onConnect?: (connection: { source: string; target: string; sourceHandle: null; targetHandle: null }) => void
-  onEdgeClick?: (event: React.MouseEvent, edge: { id: string; source: string; target: string }) => void
-  isValidConnection?: (connection: { source: string | null; target: string | null }) => boolean
+  onNodeClick?: ((event: React.MouseEvent, node: { id: string }) => void) | undefined
+  onConnect?: ((connection: { source: string; target: string; sourceHandle: null; targetHandle: null }) => void) | undefined
+  onEdgeClick?: ((event: React.MouseEvent, edge: { id: string; source: string; target: string }) => void) | undefined
+  isValidConnection?: ((connection: { source: string | null; target: string | null }) => boolean) | undefined
 }
 
 let capturedFlowProps: CapturedFlowProps = {}
@@ -265,12 +265,12 @@ describe('LabelGraphPage', () => {
     // math node should not have opacity set (matches search)
     await waitFor(() => {
       const mathNode = screen.getByTestId('node-math')
-      expect(mathNode.dataset.opacity).toBeUndefined()
+      expect(mathNode.dataset['opacity']).toBeUndefined()
     })
 
     // cs node should have reduced opacity (does not match search)
     const csNode = screen.getByTestId('node-cs')
-    expect(csNode.dataset.opacity).toBe('0.2')
+    expect(csNode.dataset['opacity']).toBe('0.2')
   })
 
   it('search matches by label name (alias)', async () => {
@@ -287,12 +287,12 @@ describe('LabelGraphPage', () => {
     // swe node matches via its name "software engineering"
     await waitFor(() => {
       const sweNode = screen.getByTestId('node-swe')
-      expect(sweNode.dataset.opacity).toBeUndefined()
+      expect(sweNode.dataset['opacity']).toBeUndefined()
     })
 
     // cs should be dimmed
     const csNode = screen.getByTestId('node-cs')
-    expect(csNode.dataset.opacity).toBe('0.2')
+    expect(csNode.dataset['opacity']).toBe('0.2')
   })
 
   it('onNodeClick navigates to label page', async () => {
@@ -377,12 +377,12 @@ describe('LabelGraphPage', () => {
 
     // Trigger connect: source = parent (cs), target = child (math)
     await act(async () => {
-      capturedFlowProps.onConnect!({
+      await (capturedFlowProps.onConnect!({
         source: 'cs',
         target: 'math',
         sourceHandle: null,
         targetHandle: null,
-      })
+      }) as unknown as Promise<void>)
     })
 
     expect(mockFetchLabel).toHaveBeenCalledWith('math')
@@ -400,12 +400,12 @@ describe('LabelGraphPage', () => {
     })
 
     await act(async () => {
-      capturedFlowProps.onConnect!({
+      await (capturedFlowProps.onConnect!({
         source: 'cs',
         target: 'math',
         sourceHandle: null,
         targetHandle: null,
-      })
+      }) as unknown as Promise<void>)
     })
 
     await waitFor(() => {
@@ -447,10 +447,10 @@ describe('LabelGraphPage', () => {
 
     // Edge: source = parent (cs), target = child (swe) in ReactFlow
     await act(async () => {
-      capturedFlowProps.onEdgeClick!(
+      await (capturedFlowProps.onEdgeClick!(
         new MouseEvent('click') as unknown as React.MouseEvent,
         { id: 'cs-swe', source: 'cs', target: 'swe' },
-      )
+      ) as unknown as Promise<void>)
     })
 
     expect(window.confirm).toHaveBeenCalledWith('Remove parent #cs from #swe?')
@@ -469,10 +469,10 @@ describe('LabelGraphPage', () => {
     })
 
     await act(async () => {
-      capturedFlowProps.onEdgeClick!(
+      await (capturedFlowProps.onEdgeClick!(
         new MouseEvent('click') as unknown as React.MouseEvent,
         { id: 'cs-swe', source: 'cs', target: 'swe' },
-      )
+      ) as unknown as Promise<void>)
     })
 
     expect(mockFetchLabel).not.toHaveBeenCalled()
@@ -491,10 +491,10 @@ describe('LabelGraphPage', () => {
     })
 
     await act(async () => {
-      capturedFlowProps.onEdgeClick!(
+      await (capturedFlowProps.onEdgeClick!(
         new MouseEvent('click') as unknown as React.MouseEvent,
         { id: 'cs-swe', source: 'cs', target: 'swe' },
-      )
+      ) as unknown as Promise<void>)
     })
 
     await waitFor(() => {
