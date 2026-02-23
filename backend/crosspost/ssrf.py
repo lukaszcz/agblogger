@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import ipaddress
 import socket
 from contextlib import asynccontextmanager
@@ -57,9 +58,10 @@ class SSRFSafeBackend(httpcore.AsyncNetworkBackend):
             msg = f"SSRF protection: blocked hostname {host!r}"
             raise httpcore.ConnectError(msg)
 
-        # Resolve DNS and validate all returned IPs
+        # Resolve DNS asynchronously and validate all returned IPs
+        loop = asyncio.get_event_loop()
         try:
-            addr_infos = socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)
+            addr_infos = await loop.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)
         except socket.gaierror as exc:
             msg = f"DNS resolution failed for {host!r}"
             raise httpcore.ConnectError(msg) from exc

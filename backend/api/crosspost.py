@@ -321,11 +321,18 @@ async def bluesky_callback(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="DID mismatch in token response",
         )
+    # Validate required token response fields
+    access_token = token_data.get("access_token")
+    if not access_token:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Bluesky token response missing access_token",
+        )
     # The DPoP key used for PDS requests must match the key used during token
     # exchange, because the access token is DPoP-bound to that key.
     dpop_pem = private_key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, NoEncryption()).decode()
     credentials = {
-        "access_token": token_data["access_token"],
+        "access_token": access_token,
         "refresh_token": token_data.get("refresh_token", ""),
         "did": pending["did"],
         "handle": pending["handle"],
@@ -422,15 +429,26 @@ async def mastodon_authorize(
                     status_code=status.HTTP_502_BAD_GATEWAY,
                     detail=f"App registration failed: {reg_resp.status_code}",
                 )
-            reg_data = reg_resp.json()
+            try:
+                reg_data = reg_resp.json()
+            except ValueError as json_exc:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail="Mastodon app registration returned non-JSON response",
+                ) from json_exc
     except httpx.HTTPError as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Could not connect to Mastodon instance: {exc}",
         ) from exc
 
-    client_id = reg_data["client_id"]
-    client_secret = reg_data["client_secret"]
+    client_id = reg_data.get("client_id")
+    client_secret = reg_data.get("client_secret")
+    if not client_id or not client_secret:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Mastodon app registration response missing client credentials",
+        )
 
     # Store pending state
     state_store = request.app.state.mastodon_oauth_state
@@ -510,10 +528,16 @@ async def mastodon_callback(
             detail=f"Mastodon OAuth HTTP error: {exc}",
         ) from exc
 
-    account_name = f"@{token_result['acct']}@{token_result['hostname']}"
+    mastodon_access_token = token_result.get("access_token")
+    if not mastodon_access_token:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Mastodon token exchange returned no access token",
+        )
+    account_name = f"@{token_result.get('acct', '')}@{token_result.get('hostname', '')}"
     credentials = {
-        "access_token": token_result["access_token"],
-        "instance_url": token_result["instance_url"],
+        "access_token": mastodon_access_token,
+        "instance_url": token_result.get("instance_url", ""),
     }
     account_data = SocialAccountCreate(
         platform="mastodon",
@@ -660,13 +684,18 @@ async def x_callback(
             detail=f"X OAuth HTTP error: {exc}",
         ) from exc
 
-    access_token = token_result["access_token"]
-    refresh_token = token_result["refresh_token"]
-    username = token_result["username"]
+    x_access_token = token_result.get("access_token")
+    x_refresh_token = token_result.get("refresh_token")
+    username = token_result.get("username")
+    if not x_access_token or not x_refresh_token or not username:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="X token exchange returned incomplete data",
+        )
 
     credentials = {
-        "access_token": access_token,
-        "refresh_token": refresh_token,
+        "access_token": x_access_token,
+        "refresh_token": x_refresh_token,
         "username": username,
         "client_id": pending["client_id"],
         "client_secret": pending["client_secret"],

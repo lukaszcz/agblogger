@@ -369,9 +369,7 @@ async def _sync_commit_inner(
         await update_server_manifest(session, current_files)
     except Exception as exc:
         logger.error("Manifest update failed during sync commit: %s", exc)
-        sync_warnings.append(
-            "Server manifest update failed; next sync may show stale data."
-        )
+        sync_warnings.append("Server manifest update failed; next sync may show stale data.")
 
     content_manager.reload_config()
 

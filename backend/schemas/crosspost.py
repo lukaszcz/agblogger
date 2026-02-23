@@ -9,7 +9,7 @@ class SocialAccountCreate(BaseModel):
     """Request to connect a social media account."""
 
     platform: str = Field(min_length=1, description="Platform name, e.g. 'bluesky' or 'mastodon'")
-    account_name: str | None = Field(default=None, description="Display name for the account")
+    account_name: str = Field(default="", description="Display name for the account")
     credentials: dict[str, str] = Field(
         description="Platform-specific credentials (stored as JSON)"
     )

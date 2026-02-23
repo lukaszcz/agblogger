@@ -581,12 +581,8 @@ async def update_post_endpoint(
                 new_file_path = str((new_dir / "index.md").relative_to(content_manager.content_dir))
 
                 # Rewrite URLs with new path (reuse already-rendered HTML)
-                new_rendered_excerpt = rewrite_relative_urls(
-                    raw_rendered_excerpt, new_file_path
-                )
-                new_rendered_html = rewrite_relative_urls(
-                    raw_rendered_html, new_file_path
-                )
+                new_rendered_excerpt = rewrite_relative_urls(raw_rendered_excerpt, new_file_path)
+                new_rendered_html = rewrite_relative_urls(raw_rendered_html, new_file_path)
 
                 needs_rename = True
 
