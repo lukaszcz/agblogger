@@ -61,7 +61,9 @@ def extract_title(content: str, file_path: str = "") -> str:
         name = file_path.rsplit("/", maxsplit=1)[-1]
         name = re.sub(r"^\d{4}-\d{2}-\d{2}-?", "", name)  # strip date prefix
         name = name.removesuffix(".md")
-        return name.replace("-", " ").replace("_", " ").title()
+        title = name.replace("-", " ").replace("_", " ").title().strip()
+        if title:
+            return title
     return "Untitled"
 
 
