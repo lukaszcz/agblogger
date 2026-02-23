@@ -390,13 +390,22 @@ class TestIntegration:
             await server.start()
             assert server.is_running
 
-            # Forcefully kill the process
-            if server._process:
-                server._process.kill()
-                await server._process.wait()
-            assert not server.is_running
+            # Forcefully kill the process and verify it recovers
+            proc = server._process
+            assert proc is not None
+            proc.kill()
+            await proc.wait()
+        finally:
+            await server.stop()
 
-            # ensure_running should restart it
+        # Start fresh, kill, and verify ensure_running recovers
+        try:
+            await server.start()
+            proc = server._process
+            assert proc is not None
+            proc.kill()
+            await proc.wait()
+
             await server.ensure_running()
             assert server.is_running
         finally:

@@ -220,9 +220,7 @@ async def render_markdown(markdown: str) -> str:
     headers = {"Accept": "application/json"}
 
     try:
-        response = await _http_client.post(
-            f"{_server.base_url}/", json=payload, headers=headers
-        )
+        response = await _http_client.post(f"{_server.base_url}/", json=payload, headers=headers)
     except httpx.ConnectError:
         logger.warning("Pandoc server connection failed, attempting restart")
         await _server.ensure_running()
@@ -233,9 +231,7 @@ async def render_markdown(markdown: str) -> str:
         except httpx.ConnectError:
             raise RuntimeError("Pandoc server unreachable after restart") from None
     except httpx.ReadTimeout:
-        raise RuntimeError(
-            f"Pandoc rendering timed out after {_RENDER_TIMEOUT}s"
-        ) from None
+        raise RuntimeError(f"Pandoc rendering timed out after {_RENDER_TIMEOUT}s") from None
 
     try:
         data = response.json()
