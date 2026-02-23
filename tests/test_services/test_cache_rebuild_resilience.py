@@ -89,12 +89,10 @@ class TestPandocFailureResilience:
         _write_post(tmp_content_dir, "good", "Good Post", "This is fine.")
         _write_post(tmp_content_dir, "bad", "Bad Post", "This will fail pandoc.")
 
-        from backend.pandoc.renderer import render_markdown as real_render
-
         async def failing_render(markdown: str) -> str:
             if "will fail pandoc" in markdown:
                 raise RuntimeError("Pandoc rendering failed")
-            return await real_render(markdown)
+            return f"<p>{markdown}</p>"
 
         await ensure_tables(db_session)
         cm = ContentManager(tmp_content_dir)

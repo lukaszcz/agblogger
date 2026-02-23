@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import os
+import subprocess
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
@@ -23,7 +26,102 @@ if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
     from pathlib import Path
 
+logger = logging.getLogger(__name__)
+
 TEST_SECRET_KEY = "test-secret-key-with-at-least-32-characters"
+
+# Module-level flag: once pandoc server mode is known to be broken for this
+# process, skip all further attempts and use the subprocess fallback directly.
+_pandoc_server_broken = False
+
+# Modules that import render_markdown by name and may hold direct references.
+_RENDER_MARKDOWN_IMPORT_SITES = (
+    "backend.services.cache_service",
+    "backend.services.page_service",
+    "backend.api.posts",
+    "backend.api.render",
+)
+
+
+def _restore_original_renderer() -> None:
+    """Restore the original render_markdown function on all patched modules.
+
+    Called during fixture teardown so that unit tests for the renderer module
+    see the real (HTTP-based) function rather than the subprocess shim.
+    """
+    import sys
+
+    import backend.pandoc.renderer as _renderer_mod
+
+    original = getattr(_renderer_mod, "_original_render_markdown", None)
+    if original is None:
+        return
+
+    _renderer_mod.render_markdown = original
+    for mod_name in _RENDER_MARKDOWN_IMPORT_SITES:
+        mod = sys.modules.get(mod_name)
+        if mod is not None and hasattr(mod, "render_markdown"):
+            mod.render_markdown = original  # type: ignore[attr-defined]
+
+
+def _install_subprocess_fallback() -> None:
+    """Monkey-patch render_markdown to use subprocess instead of the HTTP API.
+
+    Sets the module-level ``_pandoc_server_broken`` flag so that subsequent
+    calls to ``create_test_client`` skip the server startup entirely.
+
+    Patches both the canonical module and all known import sites so that
+    modules which already hold a direct reference also pick up the shim.
+    """
+    global _pandoc_server_broken
+    _pandoc_server_broken = True
+
+    import sys
+
+    import backend.pandoc.renderer as _renderer_mod
+
+    # If already monkey-patched, skip.
+    if getattr(_renderer_mod.render_markdown, "_is_subprocess_fallback", False):
+        return
+
+    async def _subprocess_render(markdown: str) -> str:
+        """Fallback renderer using subprocess (for tests when server mode unavailable)."""
+        result = await asyncio.to_thread(
+            subprocess.run,
+            [
+                "pandoc",
+                "-f",
+                "gfm+tex_math_dollars+footnotes+raw_html",
+                "-t",
+                "html5",
+                "--katex",
+                "--highlight-style=pygments",
+                "--wrap=none",
+            ],
+            input=markdown,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"Pandoc failed: {result.stderr[:200]}")
+        sanitized = _renderer_mod._sanitize_html(result.stdout)
+        return _renderer_mod._add_heading_anchors(sanitized)
+
+    _subprocess_render._is_subprocess_fallback = True  # type: ignore[attr-defined]
+
+    # Save original so it can be restored on cleanup.
+    if not hasattr(_renderer_mod, "_original_render_markdown"):
+        _renderer_mod._original_render_markdown = _renderer_mod.render_markdown  # type: ignore[attr-defined]
+
+    _renderer_mod.render_markdown = _subprocess_render
+
+    # Patch modules that may have already imported render_markdown by reference.
+    for mod_name in _RENDER_MARKDOWN_IMPORT_SITES:
+        mod = sys.modules.get(mod_name)
+        if mod is not None and hasattr(mod, "render_markdown"):
+            mod.render_markdown = _subprocess_render  # type: ignore[attr-defined]
 
 
 @asynccontextmanager
@@ -39,7 +137,6 @@ async def create_test_client(settings: Settings) -> AsyncGenerator[AsyncClient]:
     from backend.filesystem.content_manager import ContentManager
     from backend.models.base import Base
     from backend.services.auth_service import ensure_admin_user
-    from backend.services.cache_service import rebuild_cache
 
     app = create_app(settings)
     settings.validate_runtime_security()
@@ -99,6 +196,34 @@ async def create_test_client(settings: Settings) -> AsyncGenerator[AsyncClient]:
     async with session_factory() as session:
         await ensure_admin_user(session, settings)
 
+    from backend.pandoc.renderer import close_renderer, init_renderer
+    from backend.pandoc.server import PandocServer
+
+    test_port = 13100 + os.getpid() % 900
+    pandoc_server: PandocServer | None = None
+    if not _pandoc_server_broken:
+        try:
+            pandoc_server = PandocServer(port=test_port)
+            await pandoc_server.start()
+            app.state.pandoc_server = pandoc_server
+            init_renderer(pandoc_server)
+            # Verify the server can actually render (catches broken builds
+            # where +server is listed but the runtime crashes on first request).
+            from backend.pandoc.renderer import render_markdown
+
+            await render_markdown("test")
+        except Exception:
+            logger.warning("Pandoc server unavailable in tests, using subprocess fallback")
+            await close_renderer()
+            if pandoc_server is not None:
+                await pandoc_server.stop()
+            pandoc_server = None
+            _install_subprocess_fallback()
+    else:
+        _install_subprocess_fallback()
+
+    from backend.services.cache_service import rebuild_cache
+
     async with session_factory() as session:
         await rebuild_cache(session, content_manager)
 
@@ -108,6 +233,10 @@ async def create_test_client(settings: Settings) -> AsyncGenerator[AsyncClient]:
     ) as ac:
         yield ac
 
+    await close_renderer()
+    if pandoc_server is not None:
+        await pandoc_server.stop()
+    _restore_original_renderer()
     await engine.dispose()
 
 

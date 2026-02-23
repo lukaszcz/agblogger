@@ -214,6 +214,18 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         logger.critical("Failed to ensure admin user: %s.", exc)
         raise
 
+    from backend.pandoc.renderer import close_renderer, init_renderer
+    from backend.pandoc.server import PandocServer
+
+    pandoc_server = PandocServer()
+    try:
+        await pandoc_server.start()
+    except Exception as exc:
+        logger.critical("Failed to start pandoc server: %s", exc)
+        raise
+    app.state.pandoc_server = pandoc_server
+    init_renderer(pandoc_server)
+
     from backend.services.cache_service import rebuild_cache
 
     try:
@@ -228,6 +240,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
     yield
 
+    await close_renderer()
+    await pandoc_server.stop()
     await engine.dispose()
     logger.info("AgBlogger stopped")
 

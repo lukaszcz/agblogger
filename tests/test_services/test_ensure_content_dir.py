@@ -64,6 +64,8 @@ def test_backfills_when_dir_exists(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_startup_backfilled_files_are_committed_and_cache_rebuilt(tmp_path: Path) -> None:
+    from unittest.mock import AsyncMock, patch
+
     from backend.main import create_app
 
     content_dir = tmp_path / "content"
@@ -88,16 +90,27 @@ async def test_startup_backfilled_files_are_committed_and_cache_rebuilt(tmp_path
     )
     app = create_app(settings)
 
-    async with app.router.lifespan_context(app):
-        assert (content_dir / "index.toml").is_file()
-        assert (content_dir / "labels.toml").is_file()
+    mock_server = AsyncMock()
+    mock_server.base_url = "http://127.0.0.1:3031"
 
-        git_service = app.state.git_service
-        head = git_service.head_commit()
-        assert head is not None
-        assert git_service.show_file_at_commit(head, "index.toml") is not None
-        assert git_service.show_file_at_commit(head, "labels.toml") is not None
+    async def _stub_render(markdown: str) -> str:
+        return f"<p>{markdown}</p>"
 
-        async with app.state.session_factory() as session:
-            result = await session.execute(select(func.count(PostCache.id)))
-            assert result.scalar_one() == 1
+    with (
+        patch("backend.pandoc.server.PandocServer", return_value=mock_server),
+        patch("backend.pandoc.renderer.init_renderer"),
+        patch("backend.services.cache_service.render_markdown", side_effect=_stub_render),
+    ):
+        async with app.router.lifespan_context(app):
+            assert (content_dir / "index.toml").is_file()
+            assert (content_dir / "labels.toml").is_file()
+
+            git_service = app.state.git_service
+            head = git_service.head_commit()
+            assert head is not None
+            assert git_service.show_file_at_commit(head, "index.toml") is not None
+            assert git_service.show_file_at_commit(head, "labels.toml") is not None
+
+            async with app.state.session_factory() as session:
+                result = await session.execute(select(func.count(PostCache.id)))
+                assert result.scalar_one() == 1
