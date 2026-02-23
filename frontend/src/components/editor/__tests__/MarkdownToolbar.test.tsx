@@ -136,4 +136,18 @@ describe('MarkdownToolbar', () => {
 
     expect(onChange).toHaveBeenCalledWith('some text\n## Heading')
   })
+
+  it('does not call onChange when textarea ref is null', async () => {
+    const onChange = vi.fn()
+    const ref = { current: null }
+
+    const user = userEvent.setup()
+    render(
+      <MarkdownToolbar textareaRef={ref} value="hello" onChange={onChange} />,
+    )
+
+    await user.click(screen.getByLabelText('Bold'))
+
+    expect(onChange).not.toHaveBeenCalled()
+  })
 })
