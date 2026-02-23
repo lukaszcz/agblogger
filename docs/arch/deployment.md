@@ -5,7 +5,7 @@
 Multi-stage build:
 
 1. **Stage 1** (Node 22 Alpine): `npm ci && npm run build` to produce `frontend/dist/`.
-2. **Stage 2** (Python 3.13 slim): Installs Pandoc, copies uv from astral-sh image, installs Python dependencies, copies backend + CLI + frontend dist, runs as non-root `agblogger` user on port 8000.
+2. **Stage 2** (Python 3.13 slim): Installs Pandoc from GitHub releases (pinned version with `+server` support), copies uv from astral-sh image, installs Python dependencies, copies backend + CLI + frontend dist, runs as non-root `agblogger` user on port 8000. The pandoc server runs as a child process of the application, started during app startup and stopped on shutdown.
 
 Volumes: `/data/content` (blog content) and `/data/db` (SQLite database).
 
