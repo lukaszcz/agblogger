@@ -1,0 +1,3 @@
+# Running pandoc as a Lua interpreter
+
+Calling the pandoc executable under the name `pandoc-lua` or with `lua` as the first argument will make it function as a standalone Lua interpreter. The behavior is mostly identical to that of the [standalone `lua` executable](https://www.lua.org/manual/5.4/manual.html#7), version 5.4. All `pandoc.*` packages, as well as the packages `re` and `lpeg`, are available via global variables. Furthermore, the globals `PANDOC_VERSION`, `PANDOC_STATE`, and `PANDOC_API_VERSION` are set at startup. For full documentation, see the [pandoc-lua](https://github.com/jgm/pandoc/blob/master/doc/pandoc-lua.md) man page.
