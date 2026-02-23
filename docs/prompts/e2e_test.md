@@ -8,6 +8,8 @@ Make sure to test user workflows involving:
 - table of contents for long posts,
 - internal and external links in posts,
 - support for ALL of pandoc markdown (https://pandoc.org/MANUAL.html#pandocs-markdown) and whether it renders correctly and looks good in the Web UI,
+- non-english characters, unicode,
+- invalid input (e.g. invalid markdown),
 - post search and filtering,
 - sharing posts on social media platforms,
 - cross-posting,
