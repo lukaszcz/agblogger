@@ -336,32 +336,53 @@ class TestEnsureRunning:
 
 
 async def _pandoc_server_available() -> bool:
-    """Check if pandoc server mode can actually start locally."""
+    """Check if pandoc server mode can actually process render requests.
+
+    Spawns a real pandoc server and verifies it can handle a POST render
+    request, not just bind to a port.  Some builds (e.g. macOS Homebrew
+    without GHC threaded runtime) bind but never process requests.
+    """
+    port = 13199
     try:
         proc = await asyncio.create_subprocess_exec(
             "pandoc",
             "server",
             "--port",
-            "0",
+            str(port),
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.PIPE,
         )
-        try:
-            await asyncio.wait_for(proc.wait(), timeout=1.0)
-            # If it exited within 1 second, server mode is not functional
-            return False
-        except TimeoutError:
-            # Still running after 1 second -- server mode works
-            proc.terminate()
-            try:
-                await asyncio.wait_for(proc.wait(), timeout=5.0)
-            except TimeoutError:
-                proc.kill()
-            return True
-    except FileNotFoundError:
-        return False
     except OSError:
         return False
+
+    try:
+        # Wait for process to either exit (broken) or stay alive
+        try:
+            await asyncio.wait_for(proc.wait(), timeout=1.0)
+            return False  # Exited immediately — server mode not functional
+        except TimeoutError:
+            pass  # Still running, good
+
+        # Verify it can actually process a POST render request
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            for _ in range(5):
+                try:
+                    resp = await client.post(
+                        f"http://127.0.0.1:{port}/",
+                        json={"text": "", "from": "markdown", "to": "html5"},
+                    )
+                    if resp.status_code == 200:
+                        return True
+                except httpx.HTTPError:
+                    await asyncio.sleep(1.0)
+        return False  # Server alive but never processed requests
+    finally:
+        proc.terminate()
+        try:
+            await asyncio.wait_for(proc.wait(), timeout=5.0)
+        except TimeoutError:
+            proc.kill()
+            await proc.wait()
 
 
 @pytest.fixture(scope="module")
@@ -521,6 +542,58 @@ class TestRenderViaServer:
         mock_client = AsyncMock()
         mock_client.post.side_effect = [
             httpx.ConnectError("connection refused"),
+            success_response,
+        ]
+
+        with (
+            patch.object(renderer, "_server", mock_server),
+            patch.object(renderer, "_http_client", mock_client),
+        ):
+            result = await renderer.render_markdown("ok")
+
+        mock_server.ensure_running.assert_awaited_once()
+        assert "<p>ok</p>" in result
+
+    async def test_render_read_error_triggers_restart(self) -> None:
+        """ReadError on initial POST should trigger restart+retry, not crash."""
+        from backend.pandoc import renderer
+
+        mock_server = AsyncMock(spec=PandocServer)
+        mock_server.base_url = "http://127.0.0.1:3031"
+
+        success_response = MagicMock()
+        success_response.raise_for_status = MagicMock()
+        success_response.json.return_value = {"output": "<p>ok</p>\n"}
+
+        mock_client = AsyncMock()
+        mock_client.post.side_effect = [
+            httpx.ReadError("connection reset"),
+            success_response,
+        ]
+
+        with (
+            patch.object(renderer, "_server", mock_server),
+            patch.object(renderer, "_http_client", mock_client),
+        ):
+            result = await renderer.render_markdown("ok")
+
+        mock_server.ensure_running.assert_awaited_once()
+        assert "<p>ok</p>" in result
+
+    async def test_render_write_error_triggers_restart(self) -> None:
+        """WriteError on initial POST should trigger restart+retry."""
+        from backend.pandoc import renderer
+
+        mock_server = AsyncMock(spec=PandocServer)
+        mock_server.base_url = "http://127.0.0.1:3031"
+
+        success_response = MagicMock()
+        success_response.raise_for_status = MagicMock()
+        success_response.json.return_value = {"output": "<p>ok</p>\n"}
+
+        mock_client = AsyncMock()
+        mock_client.post.side_effect = [
+            httpx.WriteError("broken pipe"),
             success_response,
         ]
 

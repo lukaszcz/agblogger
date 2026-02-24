@@ -226,8 +226,8 @@ async def render_markdown(markdown: str) -> str:
 
     try:
         response = await _http_client.post(f"{_server.base_url}/", json=payload, headers=headers)
-    except httpx.ConnectError:
-        logger.warning("Pandoc server connection failed, attempting restart")
+    except httpx.NetworkError:
+        logger.warning("Pandoc server network error, attempting restart")
         await _server.ensure_running()
         try:
             response = await _http_client.post(

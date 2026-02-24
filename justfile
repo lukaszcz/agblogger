@@ -338,6 +338,30 @@ stop:
     fi
     rm -f "{{ pidfile }}"
 
+# Check if the dev server is healthy (backend API responds, frontend serves pages)
+health:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ok=true
+    printf "Backend  (:%s): " "{{ backend_port }}"
+    if curl -sf "http://localhost:{{ backend_port }}/api/health" >/dev/null 2>&1; then
+        echo "✓ healthy"
+    else
+        echo "✗ unreachable"
+        ok=false
+    fi
+    printf "Frontend (:%s): " "{{ frontend_port }}"
+    if curl -sf "http://localhost:{{ frontend_port }}/" >/dev/null 2>&1; then
+        echo "✓ healthy"
+    else
+        echo "✗ unreachable"
+        ok=false
+    fi
+    if [ "$ok" = false ]; then
+        echo "Run 'just start' to start the dev server."
+        exit 1
+    fi
+
 # Start backend and frontend in the foreground (Ctrl-C to stop). Do not use unless you're human.
 syncrun:
     #!/usr/bin/env bash
