@@ -22,7 +22,7 @@ class TestGlobalExceptionHandlers:
     """Global exception handlers return structured JSON instead of crashing."""
 
     @pytest.mark.asyncio
-    async def test_runtime_error_returns_502(self, tmp_path: Path) -> None:
+    async def test_runtime_error_returns_500(self, tmp_path: Path) -> None:
         settings = Settings(
             secret_key="test-secret-key-min-32-characters-long",
             admin_password="testpassword",
@@ -33,12 +33,12 @@ class TestGlobalExceptionHandlers:
 
         @app.get("/test-runtime-error")
         async def _raise_runtime_error() -> None:
-            raise RuntimeError("pandoc failed")
+            raise RuntimeError("something broke")
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.get("/test-runtime-error")
-        assert resp.status_code == 502
-        assert resp.json()["detail"] == "Rendering service unavailable"
+        assert resp.status_code == 500
+        assert resp.json()["detail"] == "Internal processing error"
 
     @pytest.mark.asyncio
     async def test_os_error_returns_500(self, tmp_path: Path) -> None:

@@ -56,7 +56,7 @@ async def _persist_labels_and_commit(
             status_code=500, detail="Failed to persist label to filesystem"
         ) from exc
 
-    # H8: Wrap session.commit with recovery -- restore TOML on failure
+    # Wrap session.commit with recovery -- restore TOML on failure
     try:
         await session.commit()
     except Exception as exc:

@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Annotated
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.deps import get_content_manager, get_git_service, get_session, require_admin
@@ -361,12 +362,12 @@ async def _sync_commit_inner(
         git_failed = True
 
     # ── Update manifest and rebuild caches ──
-    # H10: Wrap manifest update and cache rebuild in try/except so sync still
+    # Wrap manifest update and cache rebuild in try/except so sync still
     # returns even if post-commit operations fail (files are already committed to git).
     try:
         current_files = scan_content_files(content_dir)
         await update_server_manifest(session, current_files)
-    except Exception as exc:
+    except (OSError, OperationalError, RuntimeError) as exc:
         logger.error("Manifest update failed during sync commit: %s", exc)
         sync_warnings.append("Server manifest update failed; next sync may show stale data.")
 
@@ -377,7 +378,7 @@ async def _sync_commit_inner(
         from backend.services.cache_service import rebuild_cache
 
         _post_count, cache_warnings = await rebuild_cache(session, content_manager)
-    except Exception as exc:
+    except (OSError, OperationalError, RuntimeError) as exc:
         logger.error("Cache rebuild failed during sync commit: %s", exc)
         sync_warnings.append(
             "Cache rebuild failed after sync; search and listing data may be stale "

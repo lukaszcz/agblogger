@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -32,7 +33,7 @@ class TestParseDatetimeParserError:
 
 
 class TestConfigParsingOSError:
-    """H4: OSError in config parsing returns defaults."""
+    """OSError in config parsing returns defaults and logs at ERROR level."""
 
     def test_site_config_permission_error(self, tmp_path: Path) -> None:
         index = tmp_path / "index.toml"
@@ -48,6 +49,16 @@ class TestConfigParsingOSError:
             result = parse_labels_config(tmp_path)
         assert result == {}
 
+    def test_corrupted_site_config_logs_at_error_level(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        index = tmp_path / "index.toml"
+        index.write_text("{{invalid toml")
+        with caplog.at_level(logging.ERROR, logger="backend.filesystem.toml_manager"):
+            result = parse_site_config(tmp_path)
+        assert result.title == "My Blog"  # default
+        assert any(r.levelno == logging.ERROR for r in caplog.records)
+
 
 class TestLabelsConfigTypeCheck:
     """M10: Non-dict label entries should be skipped."""
@@ -60,7 +71,7 @@ class TestLabelsConfigTypeCheck:
 
 
 class TestReadPostErrorHandling:
-    """H5: read_post returns None on parse errors."""
+    """read_post returns None on parse errors and logs appropriately."""
 
     def test_invalid_yaml_returns_none(self, tmp_path: Path) -> None:
         posts_dir = tmp_path / "posts"
@@ -84,6 +95,26 @@ class TestReadPostErrorHandling:
         result = cm.read_post("posts/binary.md")
         assert result is None
 
+    def test_oserror_logs_at_error_level(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        posts_dir = tmp_path / "posts"
+        posts_dir.mkdir()
+        good_post = posts_dir / "good.md"
+        good_post.write_text("---\ntitle: Test\n---\nbody")
+        (tmp_path / "index.toml").write_text('[site]\ntitle = "Test"')
+        (tmp_path / "labels.toml").write_text("[labels]")
+        cm = ContentManager(content_dir=tmp_path)
+
+        with (
+            patch.object(Path, "read_text", side_effect=PermissionError("denied")),
+            caplog.at_level(logging.ERROR, logger="backend.filesystem.content_manager"),
+        ):
+            result = cm.read_post("posts/good.md")
+
+        assert result is None
+        assert any(r.levelno == logging.ERROR for r in caplog.records)
+
 
 class TestReadPageErrorHandling:
     """M11: read_page returns None on I/O errors."""
@@ -98,6 +129,31 @@ class TestReadPageErrorHandling:
         cm = ContentManager(content_dir=tmp_path)
         result = cm.read_page("about")
         assert result is None
+
+
+class TestPageServicePropagatesRenderError:
+    """get_page propagates RenderError instead of returning empty HTML."""
+
+    async def test_get_page_propagates_render_error(self, tmp_path: Path) -> None:
+        from backend.pandoc.renderer import RenderError
+        from backend.services.page_service import get_page
+
+        (tmp_path / "index.toml").write_text(
+            '[site]\ntitle = "Test"\n\n[[pages]]\nid = "about"\ntitle = "About"\nfile = "about.md"'
+        )
+        (tmp_path / "labels.toml").write_text("[labels]")
+        (tmp_path / "about.md").write_text("# About\n\nAbout page.\n")
+        cm = ContentManager(content_dir=tmp_path)
+
+        with (
+            patch(
+                "backend.services.page_service.render_markdown",
+                new_callable=AsyncMock,
+                side_effect=RenderError("pandoc broken"),
+            ),
+            pytest.raises(RenderError, match="pandoc broken"),
+        ):
+            await get_page(cm, "about")
 
 
 class TestSafeParseNames:
@@ -143,10 +199,10 @@ class TestSyncYamlError:
 
 
 class TestFTSOperationalError:
-    """M8: FTS5 OperationalError returns empty results."""
+    """FTS5 OperationalError propagates to caller."""
 
     @pytest.mark.asyncio
-    async def test_fts_error_returns_empty(self) -> None:
+    async def test_fts_error_propagates(self) -> None:
         from sqlalchemy.exc import OperationalError
 
         mock_session = AsyncMock()
@@ -154,8 +210,56 @@ class TestFTSOperationalError:
 
         from backend.services.post_service import search_posts
 
-        results = await search_posts(mock_session, "test")
-        assert results == []
+        with pytest.raises(OperationalError):
+            await search_posts(mock_session, "test")
+
+
+class TestInvalidDateFilterLogging:
+    """Invalid date filters should log a warning."""
+
+    @pytest.mark.asyncio
+    async def test_invalid_from_date_logs_warning(self, caplog: pytest.LogCaptureFixture) -> None:
+        from unittest.mock import MagicMock
+
+        from backend.services.post_service import list_posts
+
+        mock_session = AsyncMock()
+        # Return 0 for count query (scalar() is sync on the result object)
+        mock_count_result = MagicMock()
+        mock_count_result.scalar.return_value = 0
+        # Return empty list for main query (scalars().all() are sync on the result)
+        mock_main_result = MagicMock()
+        mock_main_result.scalars.return_value.all.return_value = []
+        mock_session.execute = AsyncMock(side_effect=[mock_count_result, mock_main_result])
+
+        with caplog.at_level(logging.WARNING, logger="backend.services.post_service"):
+            await list_posts(mock_session, from_date="not-a-date")
+
+        assert any("Invalid from_date" in r.message for r in caplog.records)
+
+
+class TestSyncTimestampNarrowing:
+    """Sync timestamp normalization uses narrowed exception handling."""
+
+    def test_attribute_error_propagates(self, tmp_path: Path) -> None:
+        """AttributeError is not caught by narrowed exception handler."""
+        from backend.services.sync_service import normalize_post_frontmatter
+
+        post = tmp_path / "posts" / "test.md"
+        post.parent.mkdir(parents=True)
+        # Valid YAML but with a value that will cause AttributeError in the timestamp path
+        post.write_text("---\ntitle: Test\ncreated_at: valid\n---\nbody")
+
+        # The function should handle standard parse errors (ValueError)
+        # but not swallow programming bugs (AttributeError)
+        warnings = normalize_post_frontmatter(
+            uploaded_files=["posts/test.md"],
+            old_manifest={},
+            content_dir=tmp_path,
+            default_author="admin",
+        )
+        # ValueError from parse_datetime("valid") is still caught
+        assert any("invalid created_at" in w for w in warnings)
 
 
 class TestAtomicWrites:

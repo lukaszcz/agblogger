@@ -8,7 +8,6 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import func, or_, select, text
-from sqlalchemy.exc import OperationalError
 
 from backend.models.label import PostLabelCache
 from backend.models.post import PostCache
@@ -72,7 +71,7 @@ async def list_posts(
             from_dt = parse_datetime(date_part + " 00:00:00", default_tz="UTC")
             stmt = stmt.where(PostCache.created_at >= from_dt)
         except ValueError:
-            pass  # Skip filter on invalid date
+            logger.warning("Invalid from_date filter ignored: %r", from_date)
 
     if to_date:
         try:
@@ -80,7 +79,7 @@ async def list_posts(
             to_dt = parse_datetime(date_part + " 23:59:59.999999", default_tz="UTC")
             stmt = stmt.where(PostCache.created_at <= to_dt)
         except ValueError:
-            pass  # Skip filter on invalid date
+            logger.warning("Invalid to_date filter ignored: %r", to_date)
 
     # Label filtering
     label_ids: list[str] = []
@@ -214,11 +213,7 @@ async def search_posts(session: AsyncSession, query: str, *, limit: int = 20) ->
         ORDER BY rank
         LIMIT :limit
     """)
-    try:
-        result = await session.execute(stmt, {"query": safe_query, "limit": limit})
-    except OperationalError as exc:
-        logger.warning("FTS search failed (index may be corrupted): %s", exc)
-        return []
+    result = await session.execute(stmt, {"query": safe_query, "limit": limit})
     rows = result.all()
     results: list[SearchResult] = []
     for r in rows:

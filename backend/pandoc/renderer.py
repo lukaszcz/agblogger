@@ -17,6 +17,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
+class RenderError(RuntimeError):
+    """Raised when pandoc rendering fails (server unreachable, timeout, parse error)."""
+
+
 _server: PandocServer | None = None
 _http_client: httpx.AsyncClient | None = None
 
@@ -228,19 +233,19 @@ async def render_markdown(markdown: str) -> str:
             response = await _http_client.post(
                 f"{_server.base_url}/", json=payload, headers=headers
             )
-        except httpx.ConnectError:
-            raise RuntimeError("Pandoc server unreachable after restart") from None
+        except httpx.HTTPError as retry_exc:
+            raise RenderError(f"Pandoc server unreachable after restart: {retry_exc}") from None
     except httpx.ReadTimeout:
-        raise RuntimeError(f"Pandoc rendering timed out after {_RENDER_TIMEOUT}s") from None
+        raise RenderError(f"Pandoc rendering timed out after {_RENDER_TIMEOUT}s") from None
 
     try:
         data = response.json()
     except ValueError:
-        raise RuntimeError(
+        raise RenderError(
             f"Pandoc server returned non-JSON response (HTTP {response.status_code})"
         ) from None
     if "error" in data:
-        raise RuntimeError(f"Pandoc rendering error: {str(data['error'])[:200]}")
+        raise RenderError(f"Pandoc rendering error: {str(data['error'])[:200]}")
 
     output = data.get("output", "")
     sanitized = _sanitize_html(output)

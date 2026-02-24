@@ -57,7 +57,7 @@ def parse_site_config(content_dir: Path) -> SiteConfig:
     try:
         data = tomllib.loads(index_path.read_text(encoding="utf-8"))
     except (tomllib.TOMLDecodeError, UnicodeDecodeError, OSError) as exc:
-        logger.warning("Failed to parse %s, using defaults: %s", index_path, exc)
+        logger.error("Failed to parse %s, using defaults: %s", index_path, exc)
         return SiteConfig()
 
     site_data = data.get("site", {})

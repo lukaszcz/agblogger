@@ -305,6 +305,20 @@ class TestBlueskyCrossPosterOAuth:
         result = await poster.authenticate({"access_token": "at_valid"})
         assert result is False
 
+    async def test_authenticate_corrupted_pem_key_returns_false(self) -> None:
+        creds = _make_oauth_credentials()
+        creds["dpop_private_key_pem"] = "not-a-valid-pem"
+        poster = BlueskyCrossPoster()
+        result = await poster.authenticate(creds)
+        assert result is False
+
+    async def test_authenticate_invalid_dpop_jwk_json_returns_false(self) -> None:
+        creds = _make_oauth_credentials()
+        creds["dpop_jwk"] = "{not valid json"
+        poster = BlueskyCrossPoster()
+        result = await poster.authenticate(creds)
+        assert result is False
+
     async def test_post_uses_dpop(self, monkeypatch: pytest.MonkeyPatch) -> None:
         captured_headers: dict[str, str] = {}
 

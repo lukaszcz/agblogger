@@ -75,6 +75,22 @@ class BackendMutationProfile:
     extra_pytest_add_cli_args: tuple[str, ...] = ()
     do_not_mutate: tuple[str, ...] = ()
 
+    def __post_init__(self) -> None:
+        if not (0 <= self.min_strict_score_percent <= 100):
+            msg = f"min_strict_score_percent must be 0-100, got {self.min_strict_score_percent}"
+            raise ValueError(msg)
+        for field_name in (
+            "max_survived",
+            "max_timeout",
+            "max_suspicious",
+            "max_no_tests",
+            "max_segfault",
+            "max_interrupted",
+        ):
+            if getattr(self, field_name) < 0:
+                msg = f"{field_name} must be >= 0, got {getattr(self, field_name)}"
+                raise ValueError(msg)
+
 
 PROFILE_BACKEND = BackendMutationProfile(
     key="backend",
@@ -161,6 +177,37 @@ class MutationSummary:
     not_checked: int
     segfault: int
     interrupted: int
+
+    def __post_init__(self) -> None:
+        for field_name in (
+            "total",
+            "killed",
+            "survived",
+            "timeout",
+            "suspicious",
+            "no_tests",
+            "skipped",
+            "not_checked",
+            "segfault",
+            "interrupted",
+        ):
+            if getattr(self, field_name) < 0:
+                msg = f"{field_name} must be >= 0, got {getattr(self, field_name)}"
+                raise ValueError(msg)
+        component_sum = (
+            self.killed
+            + self.survived
+            + self.timeout
+            + self.suspicious
+            + self.no_tests
+            + self.skipped
+            + self.not_checked
+            + self.segfault
+            + self.interrupted
+        )
+        if self.total != component_sum:
+            msg = f"total ({self.total}) != sum of components ({component_sum})"
+            raise ValueError(msg)
 
     @property
     def strict_denominator(self) -> int:
@@ -266,14 +313,7 @@ def collect_summary(meta_paths: list[Path]) -> tuple[MutationSummary, list[dict[
 
 def evaluate_gate(
     summary: MutationSummary,
-    *,
-    min_strict_score_percent: float,
-    max_survived: int,
-    max_timeout: int,
-    max_suspicious: int,
-    max_no_tests: int,
-    max_segfault: int,
-    max_interrupted: int,
+    profile: BackendMutationProfile,
 ) -> list[str]:
     """Evaluate mutation quality budgets and return failing conditions."""
 
@@ -282,19 +322,20 @@ def evaluate_gate(
     if summary.strict_denominator <= 0:
         failures.append("no actionable mutants produced; strict score cannot be evaluated")
 
-    if summary.strict_score_percent < min_strict_score_percent:
+    if summary.strict_score_percent < profile.min_strict_score_percent:
         failures.append(
             "strict score "
-            f"{summary.strict_score_percent:.2f}% is below required {min_strict_score_percent:.2f}%"
+            f"{summary.strict_score_percent:.2f}% is below "
+            f"required {profile.min_strict_score_percent:.2f}%"
         )
 
     budgets = (
-        ("survived", summary.survived, max_survived),
-        ("timeout", summary.timeout, max_timeout),
-        ("suspicious", summary.suspicious, max_suspicious),
-        ("no tests", summary.no_tests, max_no_tests),
-        ("segfault", summary.segfault, max_segfault),
-        ("interrupted", summary.interrupted, max_interrupted),
+        ("survived", summary.survived, profile.max_survived),
+        ("timeout", summary.timeout, profile.max_timeout),
+        ("suspicious", summary.suspicious, profile.max_suspicious),
+        ("no tests", summary.no_tests, profile.max_no_tests),
+        ("segfault", summary.segfault, profile.max_segfault),
+        ("interrupted", summary.interrupted, profile.max_interrupted),
     )
     for name, actual, maximum in budgets:
         if actual > maximum:
@@ -469,18 +510,7 @@ def run_profile(
         gate_failures: list[str] = []
         if mutmut_returncode != 0:
             gate_failures.append(f"mutmut exited with code {mutmut_returncode}")
-        gate_failures.extend(
-            evaluate_gate(
-                summary,
-                min_strict_score_percent=profile.min_strict_score_percent,
-                max_survived=profile.max_survived,
-                max_timeout=profile.max_timeout,
-                max_suspicious=profile.max_suspicious,
-                max_no_tests=profile.max_no_tests,
-                max_segfault=profile.max_segfault,
-                max_interrupted=profile.max_interrupted,
-            )
-        )
+        gate_failures.extend(evaluate_gate(summary, profile))
 
         _write_report(
             report_path=report_path,

@@ -30,6 +30,18 @@ class TestPandocServerInit:
         server = PandocServer()
         assert server.is_running is False
 
+    def test_port_zero_raises_value_error(self) -> None:
+        with pytest.raises(ValueError, match="port"):
+            PandocServer(port=0)
+
+    def test_port_too_large_raises_value_error(self) -> None:
+        with pytest.raises(ValueError, match="port"):
+            PandocServer(port=70000)
+
+    def test_timeout_zero_raises_value_error(self) -> None:
+        with pytest.raises(ValueError, match="timeout"):
+            PandocServer(timeout=0)
+
 
 class TestCheckServerSupport:
     async def test_raises_when_server_not_supported(self) -> None:
@@ -412,6 +424,63 @@ class TestIntegration:
             await server.stop()
 
 
+class TestRendererLifecycle:
+    """Tests for init_renderer() and close_renderer() lifecycle."""
+
+    def test_init_renderer_sets_state(self) -> None:
+        from backend.pandoc import renderer
+
+        mock_server = MagicMock(spec=PandocServer)
+        old_server = renderer._server
+        old_client = renderer._http_client
+        try:
+            renderer.init_renderer(mock_server)
+            assert renderer._server is mock_server
+            assert renderer._http_client is not None
+            assert isinstance(renderer._http_client, httpx.AsyncClient)
+        finally:
+            renderer._server = old_server
+            renderer._http_client = old_client
+
+    async def test_close_renderer_calls_aclose_and_resets(self) -> None:
+        from backend.pandoc import renderer
+
+        mock_server = MagicMock(spec=PandocServer)
+        mock_client = AsyncMock()
+        old_server = renderer._server
+        old_client = renderer._http_client
+        try:
+            renderer._server = mock_server
+            renderer._http_client = mock_client
+            await renderer.close_renderer()
+            mock_client.aclose.assert_awaited_once()
+            # close_renderer() sets globals to None; read via vars() to
+            # bypass mypy type-narrowing from the earlier assignment above
+            state = {k: vars(renderer)[k] for k in ("_server", "_http_client")}
+            assert state["_server"] is None
+            assert state["_http_client"] is None
+        finally:
+            renderer._server = old_server
+            renderer._http_client = old_client
+
+    async def test_close_renderer_idempotent(self) -> None:
+        from backend.pandoc import renderer
+
+        old_server = renderer._server
+        old_client = renderer._http_client
+        try:
+            renderer._server = None
+            renderer._http_client = None
+            # Should not raise when called twice with None state
+            await renderer.close_renderer()
+            await renderer.close_renderer()
+            assert renderer._server is None
+            assert renderer._http_client is None
+        finally:
+            renderer._server = old_server
+            renderer._http_client = old_client
+
+
 class TestRenderViaServer:
     """Tests for render_markdown() using the pandoc server HTTP API."""
 
@@ -533,8 +602,9 @@ class TestRenderViaServer:
         mock_server.ensure_running.assert_called_once()
 
     async def test_render_non_json_response_raises(self) -> None:
-        """Non-JSON response from pandoc server should raise RuntimeError."""
+        """Non-JSON response from pandoc server should raise RenderError."""
         from backend.pandoc import renderer
+        from backend.pandoc.renderer import RenderError
 
         mock_server = AsyncMock(spec=PandocServer)
         mock_server.base_url = "http://127.0.0.1:3031"
@@ -549,6 +619,111 @@ class TestRenderViaServer:
         with (
             patch.object(renderer, "_server", mock_server),
             patch.object(renderer, "_http_client", mock_client),
-            pytest.raises(RuntimeError, match="non-JSON response"),
+            pytest.raises(RenderError, match="non-JSON response"),
         ):
             await renderer.render_markdown("test")
+
+
+class TestRenderError:
+    """Tests for the RenderError exception type."""
+
+    def test_render_error_is_runtime_error_subclass(self) -> None:
+        from backend.pandoc.renderer import RenderError
+
+        assert issubclass(RenderError, RuntimeError)
+
+    async def test_timeout_raises_render_error(self) -> None:
+        from backend.pandoc import renderer
+        from backend.pandoc.renderer import RenderError
+
+        mock_server = MagicMock(spec=PandocServer)
+        mock_server.base_url = "http://127.0.0.1:3031"
+
+        mock_client = AsyncMock()
+        mock_client.post.side_effect = httpx.ReadTimeout("timed out")
+
+        with (
+            patch.object(renderer, "_server", mock_server),
+            patch.object(renderer, "_http_client", mock_client),
+            pytest.raises(RenderError, match="timed out"),
+        ):
+            await renderer.render_markdown("# slow")
+
+    async def test_double_connect_error_raises_render_error(self) -> None:
+        from backend.pandoc import renderer
+        from backend.pandoc.renderer import RenderError
+
+        mock_server = AsyncMock(spec=PandocServer)
+        mock_server.base_url = "http://127.0.0.1:3031"
+
+        mock_client = AsyncMock()
+        mock_client.post.side_effect = httpx.ConnectError("refused")
+
+        with (
+            patch.object(renderer, "_server", mock_server),
+            patch.object(renderer, "_http_client", mock_client),
+            pytest.raises(RenderError, match="unreachable after restart"),
+        ):
+            await renderer.render_markdown("test")
+
+    async def test_retry_catches_read_timeout(self) -> None:
+        """ReadTimeout on retry after restart should raise RenderError."""
+        from backend.pandoc import renderer
+        from backend.pandoc.renderer import RenderError
+
+        mock_server = AsyncMock(spec=PandocServer)
+        mock_server.base_url = "http://127.0.0.1:3031"
+
+        mock_client = AsyncMock()
+        mock_client.post.side_effect = [
+            httpx.ConnectError("initial failure"),
+            httpx.ReadTimeout("retry timeout"),
+        ]
+
+        with (
+            patch.object(renderer, "_server", mock_server),
+            patch.object(renderer, "_http_client", mock_client),
+            pytest.raises(RenderError, match="unreachable after restart"),
+        ):
+            await renderer.render_markdown("test")
+
+    async def test_retry_catches_generic_http_error(self) -> None:
+        """Generic httpx.HTTPError on retry after restart should raise RenderError."""
+        from backend.pandoc import renderer
+        from backend.pandoc.renderer import RenderError
+
+        mock_server = AsyncMock(spec=PandocServer)
+        mock_server.base_url = "http://127.0.0.1:3031"
+
+        mock_client = AsyncMock()
+        mock_client.post.side_effect = [
+            httpx.ConnectError("initial failure"),
+            httpx.ReadError("connection reset on retry"),
+        ]
+
+        with (
+            patch.object(renderer, "_server", mock_server),
+            patch.object(renderer, "_http_client", mock_client),
+            pytest.raises(RenderError, match="unreachable after restart"),
+        ):
+            await renderer.render_markdown("test")
+
+    async def test_pandoc_error_response_raises_render_error(self) -> None:
+        from backend.pandoc import renderer
+        from backend.pandoc.renderer import RenderError
+
+        mock_server = MagicMock(spec=PandocServer)
+        mock_server.base_url = "http://127.0.0.1:3031"
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"error": "parse error"}
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+
+        with (
+            patch.object(renderer, "_server", mock_server),
+            patch.object(renderer, "_http_client", mock_client),
+            pytest.raises(RenderError, match="parse error"),
+        ):
+            await renderer.render_markdown("bad")

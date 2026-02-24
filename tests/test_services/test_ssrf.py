@@ -51,6 +51,15 @@ class TestIsPublicIp:
     def test_unspecified_ipv6(self) -> None:
         assert _is_public_ip("::") is False
 
+    def test_ipv4_mapped_ipv6_loopback(self) -> None:
+        assert _is_public_ip("::ffff:127.0.0.1") is False
+
+    def test_ipv4_mapped_ipv6_private(self) -> None:
+        assert _is_public_ip("::ffff:10.0.0.1") is False
+
+    def test_ipv4_mapped_ipv6_public(self) -> None:
+        assert _is_public_ip("::ffff:93.184.216.34") is True
+
 
 class TestSSRFSafeBackend:
     async def test_connect_tcp_blocks_private_ip(self) -> None:

@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import pytest
+
 from cli.mutation_backend import (
     PROFILE_BACKEND,
     PROFILE_BACKEND_FULL,
+    BackendMutationProfile,
     MutationSummary,
     collect_summary,
     evaluate_gate,
@@ -104,8 +107,11 @@ def test_evaluate_gate_reports_threshold_and_budget_failures() -> None:
         interrupted=0,
     )
 
-    failures = evaluate_gate(
-        summary,
+    profile = BackendMutationProfile(
+        key="test",
+        description="test profile",
+        paths_to_mutate=("backend",),
+        tests=("tests",),
         min_strict_score_percent=90.0,
         max_survived=0,
         max_timeout=0,
@@ -114,6 +120,8 @@ def test_evaluate_gate_reports_threshold_and_budget_failures() -> None:
         max_segfault=0,
         max_interrupted=0,
     )
+
+    failures = evaluate_gate(summary, profile)
 
     assert any("strict score" in message for message in failures)
     assert any("survived" in message for message in failures)
@@ -135,8 +143,11 @@ def test_evaluate_gate_accepts_clean_summary() -> None:
         interrupted=0,
     )
 
-    failures = evaluate_gate(
-        summary,
+    profile = BackendMutationProfile(
+        key="test",
+        description="test profile",
+        paths_to_mutate=("backend",),
+        tests=("tests",),
         min_strict_score_percent=90.0,
         max_survived=0,
         max_timeout=0,
@@ -146,4 +157,72 @@ def test_evaluate_gate_accepts_clean_summary() -> None:
         max_interrupted=0,
     )
 
+    failures = evaluate_gate(summary, profile)
+
     assert failures == []
+
+
+class TestBackendMutationProfileValidation:
+    def test_min_strict_score_percent_out_of_range(self) -> None:
+        with pytest.raises(ValueError, match="min_strict_score_percent"):
+            BackendMutationProfile(
+                key="test",
+                description="test",
+                paths_to_mutate=("backend",),
+                tests=("tests",),
+                min_strict_score_percent=150.0,
+                max_survived=0,
+                max_timeout=0,
+                max_suspicious=0,
+                max_no_tests=0,
+                max_segfault=0,
+                max_interrupted=0,
+            )
+
+    def test_max_survived_negative(self) -> None:
+        with pytest.raises(ValueError, match="max_survived"):
+            BackendMutationProfile(
+                key="test",
+                description="test",
+                paths_to_mutate=("backend",),
+                tests=("tests",),
+                min_strict_score_percent=90.0,
+                max_survived=-1,
+                max_timeout=0,
+                max_suspicious=0,
+                max_no_tests=0,
+                max_segfault=0,
+                max_interrupted=0,
+            )
+
+
+class TestMutationSummaryValidation:
+    def test_total_does_not_equal_sum(self) -> None:
+        with pytest.raises(ValueError, match="total"):
+            MutationSummary(
+                total=5,
+                killed=10,
+                survived=0,
+                timeout=0,
+                suspicious=0,
+                no_tests=0,
+                skipped=0,
+                not_checked=0,
+                segfault=0,
+                interrupted=0,
+            )
+
+    def test_negative_count(self) -> None:
+        with pytest.raises(ValueError, match="killed"):
+            MutationSummary(
+                total=0,
+                killed=-1,
+                survived=0,
+                timeout=0,
+                suspicious=0,
+                no_tests=0,
+                skipped=0,
+                not_checked=0,
+                segfault=0,
+                interrupted=0,
+            )

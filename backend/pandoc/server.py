@@ -27,6 +27,12 @@ class PandocServer:
     """
 
     def __init__(self, port: int = 3031, timeout: int = 10) -> None:
+        if not (1 <= port <= 65535):
+            msg = f"port must be between 1 and 65535, got {port}"
+            raise ValueError(msg)
+        if timeout < 1:
+            msg = f"timeout must be >= 1, got {timeout}"
+            raise ValueError(msg)
         self._port = port
         self._timeout = timeout
         self._process: asyncio.subprocess.Process | None = None

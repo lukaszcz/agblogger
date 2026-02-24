@@ -480,7 +480,7 @@ def normalize_post_frontmatter(
                         post[ts_field] = format_datetime(raw_value)
                     else:
                         post[ts_field] = format_datetime(parse_datetime(str(raw_value)))
-                except Exception as exc:
+                except (ValueError, TypeError, OverflowError) as exc:
                     logger.warning(
                         "Invalid %s value in %s (%r): %s",
                         ts_field,

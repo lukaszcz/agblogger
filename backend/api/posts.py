@@ -207,13 +207,13 @@ async def upload_post(
     )
     md_filename, md_bytes = md_file
 
-    # M1: Validate UTF-8 encoding
+    # Validate UTF-8 encoding
     try:
         raw_content = md_bytes.decode("utf-8")
     except UnicodeDecodeError as exc:
         raise HTTPException(status_code=422, detail="File is not valid UTF-8 encoded text") from exc
 
-    # M2: Validate YAML front matter
+    # Validate YAML front matter
     try:
         post_data = content_manager.read_post_from_string(raw_content, title_override=title)
     except (ValueError, yaml.YAMLError) as exc:
@@ -244,7 +244,7 @@ async def upload_post(
         dest.write_bytes(data)
         written_assets.append(dest)
 
-    # H1: Catch pandoc rendering failures and clean up assets
+    # Catch pandoc rendering failures and clean up assets
     try:
         md_excerpt = generate_markdown_excerpt(post_data.content)
         rendered_excerpt = await render_markdown(md_excerpt) if md_excerpt else ""
@@ -364,7 +364,7 @@ async def upload_assets(
         if not filename or filename.startswith("."):
             raise HTTPException(status_code=400, detail=f"Invalid filename: {upload_file.filename}")
         dest = post_dir / filename
-        # M3: Handle filesystem errors during asset write
+        # Handle filesystem errors during asset write
         try:
             dest.write_bytes(content)
         except OSError as exc:
@@ -431,7 +431,7 @@ async def create_post_endpoint(
         file_path=file_path,
     )
 
-    # H1: Catch pandoc rendering failures
+    # Catch pandoc rendering failures
     try:
         md_excerpt = generate_markdown_excerpt(post_data.content)
         rendered_excerpt = await render_markdown(md_excerpt) if md_excerpt else ""
@@ -536,7 +536,7 @@ async def update_post_endpoint(
     serialized = serialize_post(post_data)
     md_excerpt = generate_markdown_excerpt(post_data.content)
 
-    # H1: Catch pandoc rendering failures — render once, reuse for URL rewriting
+    # Catch pandoc rendering failures — render once, reuse for URL rewriting
     try:
         raw_rendered_excerpt = await render_markdown(md_excerpt) if md_excerpt else ""
         raw_rendered_html = await render_markdown(post_data.content)
@@ -546,8 +546,8 @@ async def update_post_endpoint(
     rendered_excerpt = rewrite_relative_urls(raw_rendered_excerpt, file_path)
     rendered_html = rewrite_relative_urls(raw_rendered_html, file_path)
 
-    # C1: Determine if rename is needed and rewrite URLs with new path BEFORE any
-    # filesystem changes. This ensures that if rendering fails, nothing is moved.
+    # Determine if rename is needed and rewrite URLs with new path BEFORE any
+    # filesystem changes, so rename only happens after successful rendering.
     new_file_path = file_path
     new_rendered_excerpt = rendered_excerpt
     new_rendered_html = rendered_html
@@ -621,7 +621,7 @@ async def update_post_endpoint(
     # from disk will reconcile the state, but until then the post may appear
     # missing.  Both failure paths are logged for manual recovery.
     if needs_rename and old_dir is not None and new_dir is not None:
-        # H2: Handle OSError during shutil.move
+        # Handle OSError during shutil.move
         try:
             shutil.move(str(old_dir), str(new_dir))
         except OSError as exc:
@@ -629,7 +629,7 @@ async def update_post_endpoint(
             await session.rollback()
             raise HTTPException(status_code=500, detail="Failed to rename post directory") from exc
 
-        # H2: Handle OSError during os.symlink; rollback move on failure
+        # Handle OSError during os.symlink; rollback move on failure
         try:
             os.symlink(new_dir.name, str(old_dir))
         except OSError as exc:

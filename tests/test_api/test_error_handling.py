@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from backend.config import Settings
+from backend.pandoc.renderer import RenderError
 from tests.conftest import create_test_client
 
 if TYPE_CHECKING:
@@ -77,7 +78,7 @@ class TestRenderEndpointPandocFailure:
         with patch(
             "backend.api.render.render_markdown",
             new_callable=AsyncMock,
-            side_effect=RuntimeError("pandoc not found"),
+            side_effect=RenderError("pandoc not found"),
         ):
             resp = await client.post(
                 "/api/render/preview",
@@ -89,19 +90,58 @@ class TestRenderEndpointPandocFailure:
 
 
 class TestPagePandocFailure:
-    """H1: page service handles pandoc failure gracefully."""
+    """Page service propagates RenderError to global handler (502)."""
 
     @pytest.mark.asyncio
-    async def test_page_pandoc_failure_returns_empty_html(self, client: AsyncClient) -> None:
+    async def test_page_pandoc_failure_returns_502(self, client: AsyncClient) -> None:
         with patch(
             "backend.services.page_service.render_markdown",
             new_callable=AsyncMock,
-            side_effect=RuntimeError("pandoc broken"),
+            side_effect=RenderError("pandoc broken"),
         ):
             resp = await client.get("/api/pages/about")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["rendered_html"] == ""
+        assert resp.status_code == 502
+        assert "render" in resp.json()["detail"].lower()
+
+
+class TestRuntimeErrorHandler:
+    """Non-render RuntimeError returns 500 'Internal processing error'."""
+
+    @pytest.mark.asyncio
+    async def test_non_render_runtime_error_returns_500(self, client: AsyncClient) -> None:
+        token = await login(client)
+        with patch(
+            "backend.api.render.render_markdown",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("unexpected internal issue"),
+        ):
+            resp = await client.post(
+                "/api/render/preview",
+                json={"markdown": "# Hello"},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert resp.status_code == 500
+        assert "internal processing error" in resp.json()["detail"].lower()
+
+
+class TestRenderErrorHandler:
+    """RenderError returns 502 via endpoint-level handler."""
+
+    @pytest.mark.asyncio
+    async def test_render_error_returns_502(self, client: AsyncClient) -> None:
+        token = await login(client)
+        with patch(
+            "backend.api.render.render_markdown",
+            new_callable=AsyncMock,
+            side_effect=RenderError("pandoc server down"),
+        ):
+            resp = await client.post(
+                "/api/render/preview",
+                json={"markdown": "# Hello"},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert resp.status_code == 502
+        assert "render" in resp.json()["detail"].lower()
 
 
 class TestUploadPostValidation:
@@ -144,7 +184,7 @@ class TestPostCreatePandocFailure:
         with patch(
             "backend.api.posts.render_markdown",
             new_callable=AsyncMock,
-            side_effect=RuntimeError("pandoc crashed"),
+            side_effect=RenderError("pandoc crashed"),
         ):
             resp = await client.post(
                 "/api/posts",
@@ -169,7 +209,7 @@ class TestPostUpdatePandocFailure:
         with patch(
             "backend.api.posts.render_markdown",
             new_callable=AsyncMock,
-            side_effect=RuntimeError("pandoc crashed"),
+            side_effect=RenderError("pandoc crashed"),
         ):
             resp = await client.put(
                 "/api/posts/posts/hello.md",
@@ -194,7 +234,7 @@ class TestUploadPostPandocFailure:
         with patch(
             "backend.api.posts.render_markdown",
             new_callable=AsyncMock,
-            side_effect=RuntimeError("pandoc crashed"),
+            side_effect=RenderError("pandoc crashed"),
         ):
             md_content = "---\ntitle: Upload Test\n---\n\nContent.\n"
             resp = await client.post(
@@ -212,7 +252,7 @@ class TestUploadPostPandocFailure:
         with patch(
             "backend.api.posts.render_markdown",
             new_callable=AsyncMock,
-            side_effect=RuntimeError("pandoc crashed"),
+            side_effect=RenderError("pandoc crashed"),
         ):
             md_content = "---\ntitle: Upload Cleanup Test\n---\n\nContent.\n"
             png_bytes = b"\x89PNG\r\n\x1a\n" + b"\x00" * 50
@@ -255,7 +295,7 @@ class TestUpdatePostRenderBeforeRename:
         with patch(
             "backend.api.posts.render_markdown",
             new_callable=AsyncMock,
-            side_effect=RuntimeError("pandoc crashed"),
+            side_effect=RenderError("pandoc crashed"),
         ):
             resp = await client.put(
                 f"/api/posts/{original_path}",
@@ -376,7 +416,7 @@ class TestSyncCacheRebuildFailure:
         with patch(
             "backend.services.cache_service.rebuild_cache",
             new_callable=AsyncMock,
-            side_effect=Exception("cache rebuild exploded"),
+            side_effect=RuntimeError("cache rebuild exploded"),
         ):
             resp = await client.post(
                 "/api/sync/commit",
@@ -386,6 +426,27 @@ class TestSyncCacheRebuildFailure:
         assert resp.status_code == 200
         data = resp.json()
         assert any("cache" in w.lower() for w in data["warnings"])
+
+
+class TestSyncManifestNarrowedExceptions:
+    """Sync manifest update uses narrowed exception handling."""
+
+    @pytest.mark.asyncio
+    async def test_sync_manifest_type_error_propagates(self, client: AsyncClient) -> None:
+        """TypeError is not caught by (OSError, OperationalError, RuntimeError)."""
+        token = await login(client)
+        with (
+            patch(
+                "backend.api.sync.scan_content_files",
+                side_effect=TypeError("programming bug"),
+            ),
+            pytest.raises(TypeError, match="programming bug"),
+        ):
+            await client.post(
+                "/api/sync/commit",
+                data={"metadata": '{"deleted_files": [], "last_sync_commit": null}'},
+                headers={"Authorization": f"Bearer {token}"},
+            )
 
 
 class TestLabelCommitRecovery:

@@ -10,6 +10,7 @@ from typing import Any
 
 import grapheme
 import httpx
+from cryptography.exceptions import UnsupportedAlgorithm
 from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePrivateKey
 from cryptography.hazmat.primitives.serialization import (
     Encoding,
@@ -156,11 +157,18 @@ class BlueskyCrossPoster:
         if not REQUIRED_CREDENTIAL_FIELDS.issubset(credentials):
             return False
         pds_url = credentials["pds_url"].rstrip("/")
-        key = load_pem_private_key(
-            credentials["dpop_private_key_pem"].encode(),
-            password=None,
-        )
+        try:
+            key = load_pem_private_key(
+                credentials["dpop_private_key_pem"].encode(),
+                password=None,
+            )
+        except (ValueError, TypeError, UnsupportedAlgorithm):  # fmt: skip
+            return False
         if not isinstance(key, EllipticCurvePrivateKey):
+            return False
+        try:
+            dpop_jwk = json.loads(credentials["dpop_jwk"])
+        except (json.JSONDecodeError, TypeError):  # fmt: skip
             return False
         self._auth = _AuthState(
             access_token=credentials["access_token"],
@@ -168,7 +176,7 @@ class BlueskyCrossPoster:
             handle=credentials["handle"],
             pds_url=pds_url,
             dpop_private_key=key,
-            dpop_jwk=json.loads(credentials["dpop_jwk"]),
+            dpop_jwk=dpop_jwk,
             dpop_nonce=credentials["dpop_nonce"],
             auth_server_issuer=credentials["auth_server_issuer"],
             token_endpoint=credentials["token_endpoint"],

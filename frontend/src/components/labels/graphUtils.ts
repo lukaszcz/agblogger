@@ -1,5 +1,26 @@
 import type { LabelGraphResponse, LabelResponse } from '@/api/client'
 
+/**
+ * Build a map from parent label ID to its children IDs based on graph edges.
+ * Edges point from child (source) to parent (target).
+ */
+function buildChildrenMap(edges: LabelGraphResponse['edges']): Map<string, string[]> {
+  const children = new Map<string, string[]>()
+  for (const edge of edges) {
+    const existing = children.get(edge.target)
+    if (existing === undefined) {
+      children.set(edge.target, [edge.source])
+    } else {
+      existing.push(edge.source)
+    }
+  }
+  return children
+}
+
+/**
+ * Compute all descendant label IDs of a given label using BFS.
+ * Traverses the children relationships in the label DAG.
+ */
 export function computeDescendants(
   labelId: string,
   labelsById: ReadonlyMap<string, Pick<LabelResponse, 'children'>>,
@@ -29,19 +50,16 @@ export function computeDescendants(
   return descendants
 }
 
+/**
+ * Compute the depth of each node in the label DAG using breadth-first traversal.
+ * Root nodes (those with no parents) start at depth 0. Unreachable nodes default to depth 0.
+ */
 export function computeDepths(graphData: LabelGraphResponse): Map<string, number> {
-  const children = new Map<string, string[]>()
+  const children = buildChildrenMap(graphData.edges)
   const allIds = new Set(graphData.nodes.map((node) => node.id))
   const parentOf = new Map<string, string[]>()
 
   for (const edge of graphData.edges) {
-    const existingChildren = children.get(edge.target)
-    if (existingChildren === undefined) {
-      children.set(edge.target, [edge.source])
-    } else {
-      existingChildren.push(edge.source)
-    }
-
     const existingParents = parentOf.get(edge.source)
     if (existingParents === undefined) {
       parentOf.set(edge.source, [edge.target])
@@ -80,6 +98,10 @@ export function computeDepths(graphData: LabelGraphResponse): Map<string, number
   return depthMap
 }
 
+/**
+ * Check if adding an edge from childId to proposedParentId would create a cycle.
+ * Uses BFS from childId through existing children to detect if proposedParentId is reachable.
+ */
 export function wouldCreateCycle(
   graphData: LabelGraphResponse,
   childId: string,
@@ -89,15 +111,7 @@ export function wouldCreateCycle(
     return true
   }
 
-  const children = new Map<string, string[]>()
-  for (const edge of graphData.edges) {
-    const existingChildren = children.get(edge.target)
-    if (existingChildren === undefined) {
-      children.set(edge.target, [edge.source])
-    } else {
-      existingChildren.push(edge.source)
-    }
-  }
+  const children = buildChildrenMap(graphData.edges)
 
   const visited = new Set<string>()
   const queue = [childId]

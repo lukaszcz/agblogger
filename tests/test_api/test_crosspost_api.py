@@ -150,6 +150,63 @@ class TestMastodonCallback:
             assert "incomplete account info" in resp.json()["detail"]
 
 
+class TestBlueskyCallbackTokenValidation:
+    async def test_bluesky_callback_missing_access_token_returns_502(
+        self, test_settings: Settings
+    ) -> None:
+        from unittest.mock import MagicMock
+
+        test_settings.bluesky_client_url = "https://myblog.example.com"
+        test_settings.admin_password = "admin"
+        async with create_test_client(test_settings) as client:
+            transport = client._transport
+            app = transport.app  # type: ignore[attr-defined]
+            state_store = app.state.bluesky_oauth_state
+            state_store.set(
+                "test-state",
+                {
+                    "did": "did:plc:abc123",
+                    "handle": "user.bsky.social",
+                    "auth_server_meta": {
+                        "issuer": "https://bsky.social",
+                        "token_endpoint": "https://bsky.social/oauth/token",
+                        "pds_url": "https://pds.bsky.social",
+                    },
+                    "dpop_nonce": "nonce",
+                    "pkce_verifier": "verifier",
+                    "user_id": 1,
+                },
+            )
+            # Set the DPoP key/JWK on app state (normally set during startup)
+            mock_key = MagicMock()
+            mock_key.private_bytes.return_value = b"fake-pem"
+            app.state.atproto_oauth_key = mock_key
+            app.state.atproto_oauth_jwk = {"kty": "EC"}
+
+            # Mock token exchange to return data missing access_token
+            mock_token_data = {
+                "sub": "did:plc:abc123",
+                "refresh_token": "rt",
+                "dpop_nonce": "new-nonce",
+            }
+            with patch(
+                "backend.crosspost.atproto_oauth.exchange_code_for_tokens",
+                new_callable=AsyncMock,
+                return_value=mock_token_data,
+            ):
+                resp = await client.get(
+                    "/api/crosspost/bluesky/callback",
+                    params={
+                        "code": "test-code",
+                        "state": "test-state",
+                        "iss": "https://bsky.social",
+                    },
+                    follow_redirects=False,
+                )
+            assert resp.status_code == 502
+            assert "access_token" in resp.json()["detail"].lower()
+
+
 class TestXAuthorize:
     async def test_x_authorize_requires_auth(self, test_settings: Settings) -> None:
         test_settings.bluesky_client_url = "https://myblog.example.com"
@@ -257,6 +314,48 @@ class TestXCallback:
             location = resp.headers.get("location", "")
             assert "/admin" in location
             assert "oauth_error" in location
+
+
+class TestXCallbackTokenValidation:
+    async def test_x_callback_missing_token_fields_returns_502(
+        self, test_settings: Settings
+    ) -> None:
+        test_settings.bluesky_client_url = "https://myblog.example.com"
+        test_settings.x_client_id = "test_client_id"
+        test_settings.x_client_secret = "test_client_secret"
+        test_settings.admin_password = "admin"
+        async with create_test_client(test_settings) as client:
+            transport = client._transport
+            state_store = transport.app.state.x_oauth_state  # type: ignore[attr-defined]
+            state_store.set(
+                "test-state",
+                {
+                    "client_id": "test_client_id",
+                    "client_secret": "test_client_secret",
+                    "redirect_uri": "https://myblog.example.com/api/crosspost/x/callback",
+                    "pkce_verifier": "verifier",
+                    "user_id": 1,
+                },
+            )
+
+            # Mock token exchange to return incomplete data (missing username)
+            mock_token_result = {
+                "access_token": "at",
+                "refresh_token": "rt",
+                # username missing
+            }
+            with patch(
+                "backend.crosspost.x.exchange_x_oauth_token",
+                new_callable=AsyncMock,
+                return_value=mock_token_result,
+            ):
+                resp = await client.get(
+                    "/api/crosspost/x/callback",
+                    params={"code": "test-code", "state": "test-state"},
+                    follow_redirects=False,
+                )
+            assert resp.status_code == 502
+            assert "incomplete" in resp.json()["detail"].lower()
 
 
 class TestFacebookAuthorize:

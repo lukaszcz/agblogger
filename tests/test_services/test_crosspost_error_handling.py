@@ -30,7 +30,7 @@ class TestAsyncDNS:
         backend._inner = MagicMock()
         backend._inner.connect_tcp = AsyncMock(return_value=mock_stream)
 
-        with patch("asyncio.get_event_loop") as mock_get_loop:
+        with patch("asyncio.get_running_loop") as mock_get_loop:
             mock_loop = MagicMock()
             mock_loop.getaddrinfo = AsyncMock(return_value=fake_addr_info)
             mock_get_loop.return_value = mock_loop
@@ -53,7 +53,7 @@ class TestAsyncDNS:
         backend._inner.connect_tcp = AsyncMock(return_value=mock_stream)
 
         with (
-            patch("asyncio.get_event_loop") as mock_get_loop,
+            patch("asyncio.get_running_loop") as mock_get_loop,
             patch("socket.getaddrinfo") as mock_blocking,
         ):
             mock_loop = MagicMock()
@@ -68,7 +68,7 @@ class TestAsyncDNS:
         """Verify that DNS failure raises httpcore.ConnectError."""
         backend = SSRFSafeBackend()
 
-        with patch("asyncio.get_event_loop") as mock_get_loop:
+        with patch("asyncio.get_running_loop") as mock_get_loop:
             mock_loop = MagicMock()
             mock_loop.getaddrinfo = AsyncMock(side_effect=socket.gaierror("Name resolution failed"))
             mock_get_loop.return_value = mock_loop

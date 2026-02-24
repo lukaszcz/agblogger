@@ -226,11 +226,10 @@ class ATProtoOAuthError(Exception):
 
 
 async def _is_safe_url(url: str) -> bool:
-    """Check that a URL is safe (HTTPS, non-private IP, not localhost).
+    """Validate URL format: HTTPS scheme, non-localhost hostname, valid structure.
 
-    Returns True if the URL passes format checks, False otherwise.
-    Actual DNS resolution and IP validation is handled at the transport level
-    by SSRFSafeBackend, so this function only performs URL format validation.
+    DNS resolution and IP validation are handled at the transport level by
+    SSRFSafeBackend; this function only checks URL format.
     """
     parsed = urllib.parse.urlparse(url)
     if parsed.scheme != "https":

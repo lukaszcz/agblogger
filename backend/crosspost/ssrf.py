@@ -16,7 +16,6 @@ if TYPE_CHECKING:
 
 _BLOCKED_HOSTNAMES = frozenset({"localhost", "localhost.localdomain"})
 
-# Re-use httpcore's socket option type
 _SocketOption = (
     tuple[int, int, int] | tuple[int, int, bytes | bytearray] | tuple[int, int, None, int]
 )
@@ -59,7 +58,7 @@ class SSRFSafeBackend(httpcore.AsyncNetworkBackend):
             raise httpcore.ConnectError(msg)
 
         # Resolve DNS asynchronously and validate all returned IPs
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         try:
             addr_infos = await loop.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)
         except socket.gaierror as exc:
@@ -106,11 +105,10 @@ async def ssrf_safe_client(
 ) -> AsyncIterator[httpx.AsyncClient]:
     """Create an httpx.AsyncClient that validates IPs at connection time."""
     transport = httpx.AsyncHTTPTransport()
+    # Inject our SSRF-safe network backend into the transport's connection pool.
+    # Uses httpx internal _pool attribute (tested against httpx 0.28.x).
     transport._pool = httpcore.AsyncConnectionPool(
         network_backend=SSRFSafeBackend(),
     )
-    client_kwargs: dict[str, object] = {"transport": transport}
-    if timeout is not None:
-        client_kwargs["timeout"] = timeout
-    async with httpx.AsyncClient(**client_kwargs) as client:  # type: ignore[arg-type]
+    async with httpx.AsyncClient(transport=transport, timeout=timeout) as client:
         yield client

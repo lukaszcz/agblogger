@@ -42,11 +42,7 @@ async def get_page(content_manager: ContentManager, page_id: str) -> PageRespons
     if raw_content is None:
         return None
 
-    try:
-        rendered_html = await render_markdown(raw_content)
-    except RuntimeError as exc:
-        logger.error("Pandoc rendering failed for page %s: %s", page_id, exc)
-        rendered_html = ""
+    rendered_html = await render_markdown(raw_content)
 
     return PageResponse(
         id=page_id,

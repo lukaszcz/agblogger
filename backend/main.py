@@ -344,6 +344,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(crosspost_router)
 
     # Global exception handlers — safety net for unhandled exceptions
+    from backend.pandoc.renderer import RenderError
+
+    @app.exception_handler(RenderError)
+    async def render_error_handler(request: Request, exc: RenderError) -> JSONResponse:
+        logger.error(
+            "RenderError in %s %s: %s", request.method, request.url.path, exc, exc_info=exc
+        )
+        return JSONResponse(
+            status_code=502,
+            content={"detail": "Rendering service unavailable"},
+        )
+
     @app.exception_handler(RuntimeError)
     async def runtime_error_handler(request: Request, exc: RuntimeError) -> JSONResponse:
         if isinstance(exc, (NotImplementedError, RecursionError)):
@@ -352,8 +364,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "RuntimeError in %s %s: %s", request.method, request.url.path, exc, exc_info=exc
         )
         return JSONResponse(
-            status_code=502,
-            content={"detail": "Rendering service unavailable"},
+            status_code=500,
+            content={"detail": "Internal processing error"},
         )
 
     @app.exception_handler(OSError)
