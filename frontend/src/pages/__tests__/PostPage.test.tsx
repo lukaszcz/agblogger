@@ -263,6 +263,42 @@ describe('PostPage', () => {
     expect(screen.getByRole('button', { name: 'Copy link' })).toBeInTheDocument()
   })
 
+  it('renders definition list elements in prose content', async () => {
+    const postWithDl = {
+      ...postDetail,
+      rendered_html: '<dl><dt>Term</dt><dd>Definition text</dd></dl>',
+    }
+    mockFetchPost.mockResolvedValue(postWithDl)
+    renderPostPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Hello World')).toBeInTheDocument()
+    })
+    const dl = document.querySelector('.prose dl')
+    expect(dl).toBeInTheDocument()
+    expect(document.querySelector('.prose dt')).toHaveTextContent('Term')
+    expect(document.querySelector('.prose dd')).toHaveTextContent('Definition text')
+  })
+
+  it('renders task list checkbox items in prose content', async () => {
+    const postWithTaskList = {
+      ...postDetail,
+      rendered_html:
+        '<ul><li><input type="checkbox" disabled>Unchecked</li>' +
+        '<li><input type="checkbox" checked disabled>Checked</li></ul>',
+    }
+    mockFetchPost.mockResolvedValue(postWithTaskList)
+    renderPostPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Hello World')).toBeInTheDocument()
+    })
+    const checkboxes = document.querySelectorAll('.prose input[type="checkbox"]')
+    expect(checkboxes).toHaveLength(2)
+    expect(checkboxes[0]).not.toBeChecked()
+    expect(checkboxes[1]).toBeChecked()
+  })
+
   it('renders share UI and cross-posting section for admin users', async () => {
     mockUser = { id: 1, username: 'admin', email: 'a@b.com', display_name: null, is_admin: true }
     mockFetchPost.mockResolvedValue(postDetail)

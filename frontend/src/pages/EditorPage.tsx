@@ -115,8 +115,12 @@ export default function EditorPage() {
     const requestId = ++previewRequestRef.current
     const timer = setTimeout(async () => {
       try {
+        const payload: { markdown: string; file_path?: string } = { markdown: body }
+        if (!isNew && filePath) {
+          payload.file_path = filePath
+        }
         const resp = await api
-          .post('render/preview', { json: { markdown: body } })
+          .post('render/preview', { json: payload })
           .json<{ html: string }>()
         if (previewRequestRef.current === requestId) {
           setPreview(resp.html)
@@ -126,7 +130,7 @@ export default function EditorPage() {
       }
     }, 500)
     return () => clearTimeout(timer)
-  }, [body])
+  }, [body, isNew, filePath])
 
   async function handleSave() {
     setSaving(true)

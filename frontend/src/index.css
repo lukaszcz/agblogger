@@ -91,6 +91,26 @@ html {
   font-style: italic;
 }
 
+.prose dl {
+  margin: 1.5rem 0;
+}
+
+.prose dt {
+  font-weight: 600;
+  margin-top: 0.75rem;
+}
+
+.prose dd {
+  margin-left: 1.5rem;
+  margin-bottom: 0.5rem;
+  line-height: 1.7;
+}
+
+.prose li:has(> input[type="checkbox"]) {
+  list-style: none;
+  margin-left: -1.5rem;
+}
+
 .prose pre {
   background: #1e1e2e;
   color: #cdd6f4;

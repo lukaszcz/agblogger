@@ -1,0 +1,171 @@
+"""Tests for HTML sanitizer in pandoc renderer."""
+
+from __future__ import annotations
+
+from backend.pandoc.renderer import _sanitize_html
+
+
+class TestSanitizeAllowedTags:
+    """Tests for tag allowlisting."""
+
+    def test_allowed_tag_passes(self) -> None:
+        result = _sanitize_html("<p>Hello</p>")
+        assert result == "<p>Hello</p>"
+
+    def test_script_tag_stripped(self) -> None:
+        result = _sanitize_html("<script>alert('xss')</script>")
+        assert "<script>" not in result
+        assert "</script>" not in result
+
+    def test_disallowed_tag_stripped(self) -> None:
+        result = _sanitize_html("<iframe src='evil.com'></iframe>")
+        assert "<iframe" not in result
+
+    def test_void_tags_preserved(self) -> None:
+        result = _sanitize_html("<br><hr><img src='photo.png'>")
+        assert "<br>" in result
+        assert "<hr>" in result
+        assert "<img" in result
+
+
+class TestTaskListCheckboxes:
+    """Regression tests for task list checkbox rendering (Bug 3)."""
+
+    def test_unchecked_checkbox_preserved(self) -> None:
+        html = '<input type="checkbox" disabled>'
+        result = _sanitize_html(html)
+        assert '<input type="checkbox" disabled="disabled">' in result
+
+    def test_checked_checkbox_preserved(self) -> None:
+        html = '<input type="checkbox" checked disabled>'
+        result = _sanitize_html(html)
+        assert 'type="checkbox"' in result
+        assert 'checked="checked"' in result
+        assert 'disabled="disabled"' in result
+
+    def test_input_is_void_tag(self) -> None:
+        """Input tags should not generate closing tags."""
+        html = '<input type="checkbox" disabled>'
+        result = _sanitize_html(html)
+        assert "</input>" not in result
+
+    def test_dangerous_input_type_stripped(self) -> None:
+        """Only type, checked, disabled are allowed on input."""
+        html = '<input type="checkbox" onclick="alert(1)" name="evil">'
+        result = _sanitize_html(html)
+        assert "onclick" not in result
+        assert "name" not in result
+
+
+class TestTableAlignment:
+    """Regression tests for table column alignment (Bug 7)."""
+
+    def test_text_align_left_preserved(self) -> None:
+        html = '<td style="text-align: left;">cell</td>'
+        result = _sanitize_html(html)
+        assert 'style="text-align: left;"' in result
+
+    def test_text_align_center_preserved(self) -> None:
+        html = '<th style="text-align: center;">header</th>'
+        result = _sanitize_html(html)
+        assert 'style="text-align: center;"' in result
+
+    def test_text_align_right_preserved(self) -> None:
+        html = '<td style="text-align: right;">cell</td>'
+        result = _sanitize_html(html)
+        assert 'style="text-align: right;"' in result
+
+    def test_text_align_justify_preserved(self) -> None:
+        html = '<td style="text-align: justify;">cell</td>'
+        result = _sanitize_html(html)
+        assert 'style="text-align: justify;"' in result
+
+    def test_dangerous_style_stripped(self) -> None:
+        html = '<td style="background: url(evil)">cell</td>'
+        result = _sanitize_html(html)
+        assert "style" not in result
+
+    def test_style_on_non_table_stripped(self) -> None:
+        """style is only allowed on td/th, not arbitrary tags."""
+        html = '<p style="text-align: center;">text</p>'
+        result = _sanitize_html(html)
+        assert "style" not in result
+
+
+class TestSafeUrls:
+    """Tests for URL safety validation in href/src attributes."""
+
+    def test_javascript_href_stripped(self) -> None:
+        html = '<a href="javascript:alert(1)">click</a>'
+        result = _sanitize_html(html)
+        assert "javascript" not in result
+
+    def test_data_src_stripped(self) -> None:
+        html = '<img src="data:text/html,<script>alert(1)</script>">'
+        result = _sanitize_html(html)
+        assert "data:" not in result
+
+    def test_https_href_preserved(self) -> None:
+        html = '<a href="https://example.com">link</a>'
+        result = _sanitize_html(html)
+        assert 'href="https://example.com"' in result
+
+    def test_mailto_href_preserved(self) -> None:
+        html = '<a href="mailto:user@example.com">email</a>'
+        result = _sanitize_html(html)
+        assert 'href="mailto:user@example.com"' in result
+
+
+class TestIdAttribute:
+    """Tests for id attribute validation."""
+
+    def test_safe_id_preserved(self) -> None:
+        html = '<h2 id="my-heading">Title</h2>'
+        result = _sanitize_html(html)
+        assert 'id="my-heading"' in result
+
+    def test_unsafe_id_stripped(self) -> None:
+        html = '<h2 id="has spaces">Title</h2>'
+        result = _sanitize_html(html)
+        assert "id=" not in result
+
+
+class TestDetailsTag:
+    """Tests for details/summary tag support."""
+
+    def test_details_tag_preserved(self) -> None:
+        html = "<details><summary>Click me</summary><p>Hidden content</p></details>"
+        result = _sanitize_html(html)
+        assert "<details>" in result
+        assert "<summary>" in result
+        assert "</details>" in result
+        assert "</summary>" in result
+        assert "Hidden content" in result
+
+    def test_details_open_attribute_preserved(self) -> None:
+        html = "<details open><summary>Open</summary><p>Visible</p></details>"
+        result = _sanitize_html(html)
+        assert 'open="open"' in result
+
+    def test_details_disallowed_attribute_stripped(self) -> None:
+        html = '<details onclick="alert(1)"><summary>Click</summary></details>'
+        result = _sanitize_html(html)
+        assert "onclick" not in result
+        assert "<details>" in result
+
+
+class TestEntityHandling:
+    """Tests for HTML entity handling."""
+
+    def test_entity_ref_preserved(self) -> None:
+        result = _sanitize_html("&amp;")
+        assert result == "&amp;"
+
+    def test_char_ref_preserved(self) -> None:
+        result = _sanitize_html("&#60;")
+        assert result == "&#60;"
+
+    def test_data_escaped(self) -> None:
+        result = _sanitize_html("<p><script></p>")
+        # The <script> tag is stripped, not its text content
+        assert "<script>" not in result

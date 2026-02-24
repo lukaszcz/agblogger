@@ -26,7 +26,9 @@ _server: PandocServer | None = None
 _http_client: httpx.AsyncClient | None = None
 
 _SAFE_ID_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9:_-]*$")
-_VOID_TAGS: frozenset[str] = frozenset({"br", "hr", "img"})
+_SAFE_STYLE_RE = re.compile(r"^text-align:\s*(left|center|right|justify)\s*;?\s*$")
+_BOOLEAN_ATTRS: frozenset[str] = frozenset({"checked", "disabled", "open"})
+_VOID_TAGS: frozenset[str] = frozenset({"br", "hr", "img", "input"})
 _ALLOWED_TAGS: frozenset[str] = frozenset(
     {
         "a",
@@ -35,6 +37,7 @@ _ALLOWED_TAGS: frozenset[str] = frozenset(
         "code",
         "dd",
         "del",
+        "details",
         "div",
         "dl",
         "dt",
@@ -49,6 +52,7 @@ _ALLOWED_TAGS: frozenset[str] = frozenset(
         "h6",
         "hr",
         "img",
+        "input",
         "kbd",
         "li",
         "ol",
@@ -74,9 +78,11 @@ _ALLOWED_TAGS: frozenset[str] = frozenset(
 _GLOBAL_ALLOWED_ATTRS: frozenset[str] = frozenset({"class", "id"})
 _TAG_ALLOWED_ATTRS: dict[str, frozenset[str]] = {
     "a": frozenset({"href", "title"}),
+    "details": frozenset({"open"}),
     "img": frozenset({"alt", "src", "title"}),
-    "td": frozenset({"colspan", "rowspan"}),
-    "th": frozenset({"colspan", "rowspan"}),
+    "input": frozenset({"type", "checked", "disabled"}),
+    "td": frozenset({"colspan", "rowspan", "style"}),
+    "th": frozenset({"colspan", "rowspan", "style"}),
 }
 
 
@@ -161,7 +167,11 @@ class _HtmlSanitizer(HTMLParser):
 
         for raw_name, raw_value in attrs:
             name = raw_name.lower()
-            if raw_value is None or name not in allowed_attrs:
+            if name not in allowed_attrs:
+                continue
+            if raw_value is None:
+                if name in _BOOLEAN_ATTRS:
+                    sanitized.append((name, name))
                 continue
 
             value = raw_value.strip()
@@ -170,6 +180,8 @@ class _HtmlSanitizer(HTMLParser):
             if name == "src" and not _is_safe_url(value, allow_non_http=False):
                 continue
             if name == "id" and not _SAFE_ID_RE.fullmatch(value):
+                continue
+            if name == "style" and not _SAFE_STYLE_RE.fullmatch(value):
                 continue
 
             sanitized.append((name, value))
@@ -216,7 +228,10 @@ async def render_markdown(markdown: str) -> str:
 
     payload = {
         "text": markdown,
-        "from": "gfm+tex_math_dollars+footnotes+raw_html",
+        "from": (
+            "gfm+tex_math_dollars+footnotes+raw_html"
+            "+attributes+definition_lists+superscript+subscript"
+        ),
         "to": "html5",
         "html-math-method": {"method": "katex"},
         "highlight-style": "pygments",

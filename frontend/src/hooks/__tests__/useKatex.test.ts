@@ -58,4 +58,28 @@ describe('useRenderedHtml', () => {
     const { result } = renderHook(() => useRenderedHtml(html))
     expect(result.current).toContain('<rendered-inline>x + 1</rendered-inline>')
   })
+
+  it('decodes HTML entities in math content', () => {
+    // Regression: matrix &amp; was passed literally to KaTeX instead of &
+    const html =
+      '<span class="math display">\\begin{pmatrix} a &amp; b \\\\ c &amp; d \\end{pmatrix}</span>'
+    const { result } = renderHook(() => useRenderedHtml(html))
+    // The mock renders tex directly, so we can check & is decoded
+    expect(result.current).toContain(
+      '\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}',
+    )
+    expect(result.current).not.toContain('&amp;')
+  })
+
+  it('decodes &lt; and &gt; in math content', () => {
+    const html = '<span class="math inline">a &lt; b &gt; c</span>'
+    const { result } = renderHook(() => useRenderedHtml(html))
+    expect(result.current).toContain('a < b > c')
+  })
+
+  it('decodes &quot; in math content', () => {
+    const html = '<span class="math inline">&quot;text&quot;</span>'
+    const { result } = renderHook(() => useRenderedHtml(html))
+    expect(result.current).toContain('"text"')
+  })
 })

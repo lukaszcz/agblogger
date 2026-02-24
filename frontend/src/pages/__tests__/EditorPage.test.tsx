@@ -540,6 +540,54 @@ describe('EditorPage', () => {
     })
   })
 
+  it('sends file_path in preview request for existing post', async () => {
+    const mockApi = (await import('@/api/client')).default
+    const mockPost = vi.mocked(mockApi.post)
+    mockPost.mockReturnValue({ json: () => Promise.resolve({ html: '<p>preview</p>' }) } as ReturnType<typeof mockApi.post>)
+    mockFetchPostForEdit.mockResolvedValue(editResponse)
+
+    renderEditor('/editor/posts/existing.md')
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Title')).toHaveValue('Existing Post')
+    })
+
+    // Wait for debounced preview to fire (body is non-empty from loaded post)
+    await waitFor(() => {
+      const calls = mockPost.mock.calls
+      const previewCall = calls.find(([url]) => url === 'render/preview')
+      expect(previewCall).toBeDefined()
+      const payload = (previewCall![1] as { json: { file_path?: string } }).json
+      expect(payload.file_path).toBe('posts/existing.md')
+    })
+  })
+
+  it('does not send file_path in preview request for new post', async () => {
+    const user = userEvent.setup()
+    const mockApi = (await import('@/api/client')).default
+    const mockPost = vi.mocked(mockApi.post)
+    mockPost.mockClear()
+    mockPost.mockReturnValue({ json: () => Promise.resolve({ html: '<p>preview</p>' }) } as ReturnType<typeof mockApi.post>)
+
+    renderEditor('/editor/new')
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Title')).toBeInTheDocument()
+    })
+
+    // Type some body text to trigger preview
+    const textareas = document.querySelectorAll('textarea')
+    await user.type(textareas[0]!, 'Hello world')
+
+    await waitFor(() => {
+      const calls = mockPost.mock.calls
+      const previewCall = calls.find(([url]) => url === 'render/preview')
+      expect(previewCall).toBeDefined()
+      const payload = (previewCall![1] as { json: { markdown: string; file_path?: string } }).json
+      expect(payload.file_path).toBeUndefined()
+    })
+  })
+
   it('shows 422 with empty detail string as generic validation error', async () => {
     const mockCreatePost = vi.mocked(createPost)
     mockCreatePost.mockRejectedValue(
