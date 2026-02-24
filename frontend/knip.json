@@ -9,6 +9,9 @@
     "@stryker-mutator/core",
     "@stryker-mutator/typescript-checker",
     "@stryker-mutator/vitest-runner",
-    "tailwindcss"
+    "tailwindcss",
+    "@fontsource/instrument-serif",
+    "@fontsource-variable/dm-sans",
+    "@fontsource-variable/jetbrains-mono"
   ]
 }

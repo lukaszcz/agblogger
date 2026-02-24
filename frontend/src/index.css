@@ -1,5 +1,9 @@
 @import "tailwindcss";
-@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap');
+@import "@fontsource/instrument-serif/400.css";
+@import "@fontsource/instrument-serif/400-italic.css";
+@import "@fontsource-variable/dm-sans/wght.css";
+@import "@fontsource-variable/dm-sans/wght-italic.css";
+@import "@fontsource-variable/jetbrains-mono/wght.css";
 
 @theme {
   --color-ink: #1a1a1a;
@@ -13,8 +17,8 @@
   --color-tag-bg: #ede8e1;
   --color-tag-text: #5a554e;
   --font-display: 'Instrument Serif', Georgia, serif;
-  --font-body: 'DM Sans', system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --font-body: 'DM Sans Variable', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', 'Fira Code', monospace;
 }
 
 /* Base styles */

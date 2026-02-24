@@ -11,6 +11,7 @@ AgBlogger is a markdown-first blogging platform where markdown files with YAML f
 ```bash
 just start            # Start backend (:8000) + frontend (:5173) in the background
 just stop             # Stop the running dev server
+just health           # Check if dev server is healthy (backend + frontend)
 just start backend_port=9000 frontend_port=9173  # Custom ports
 just check            # Full gate: static checks first, then tests
 just check-static     # Static-only gate: backend + frontend + Semgrep + Vulture + Trivy
@@ -87,6 +88,16 @@ Always start a dev server with `just start`. Remember to stop a running dev serv
 - For file-serving or path logic changes, maintain traversal protections and draft asset access controls in `/api/content`; add regression tests for traversal and unauthorized draft access.
 - For markdown/rendering changes, keep HTML sanitization and safe URL-scheme filtering in place before content is stored or served.
 - Any security-sensitive bug fix or feature change must include failing-first regression tests that cover abuse paths, not only happy paths.
+
+### Content Security Policy (CSP)
+
+The backend enforces a strict CSP that only allows same-origin resources (`default-src 'self'`). This means:
+
+- **All fonts, scripts, and stylesheets must be self-hosted.** Do not add CDN `@import` or `<link>` tags pointing to third-party domains (e.g., Google Fonts, cdnjs, unpkg). These will be silently blocked in production.
+- **Images** are an exception: `img-src 'self' https: data:` allows external HTTPS images.
+- **Inline styles** are allowed (`'unsafe-inline'`) for Tailwind and KaTeX.
+- If a new third-party resource is genuinely needed, self-host it (e.g., use fontsource for fonts, npm packages for libraries) rather than relaxing the CSP.
+- The CSP is configured in `backend/config.py` via the `content_security_policy` setting.
 
 ## Instructions
 

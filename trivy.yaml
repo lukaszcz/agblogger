@@ -6,6 +6,10 @@ severity:
   - "HIGH"
   - "CRITICAL"
 
+license:
+  ignored:
+    - "OFL-1.1"
+
 scan:
   skip-dirs:
     - ".claude"
