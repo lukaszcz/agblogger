@@ -137,5 +137,6 @@ Descendant queries use recursive CTEs in SQLite, enabling a "show me all posts i
 - **Bidirectional sync**: docs/arch/sync.md
 - **Cross-posting and post sharing**: docs/arch/cross-posting.md
 - **Data flow**: docs/arch/data-flow.md
+- **Security**: docs/arch/security.md
 - **Testing**: docs/arch/testing.md
 - **Deployment**: docs/arch/deployment.md
