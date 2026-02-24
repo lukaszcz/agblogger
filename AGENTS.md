@@ -75,8 +75,11 @@ Always start a dev server with `just start`. Remember to stop a running dev serv
 
 ## Security Guidelines
 
+**IMPORTANT** Read @docs/guidelines/security.md for the full security guidelines. Read @docs/arch/security.md for the security architecture. **ALWAYS** read these before making changes related to authentication, authorization, input validation, error handling, or infrastructure.
+
 - All exceptions need to be handled gracefully, especially errors originating from interaction with external services (network, database, pandoc, git, filesystem). Never silently ignore exceptions.
 - Never expose internal server error details to clients. Return a generic error message to clients while keeping detailed logging server-side.
+- Any security-sensitive bug fix or feature change must include failing-first regression tests that cover abuse paths, not only happy paths.
 - Treat authentication as a coupled system. If you touch login/refresh/logout or cookies, update backend token logic, CSRF middleware, and frontend CSRF header persistence together; do not change one side in isolation.
 - Preserve production fail-fast guards in `Settings.validate_runtime_security()` (`SECRET_KEY`, `ADMIN_PASSWORD`, `TRUSTED_HOSTS`). Do not bypass them outside explicit debug/test scenarios.
 - Keep auth abuse protections intact: login origin enforcement, failed-attempt rate limiting, hashed refresh token storage, and refresh-token rotation with old-token revocation.
@@ -87,7 +90,6 @@ Always start a dev server with `just start`. Remember to stop a running dev serv
 - Preserve trust-boundary controls (`TrustedHostMiddleware`, strict CORS origins, trusted proxy IP handling). Do not introduce wildcard-style permissive production defaults.
 - For file-serving or path logic changes, maintain traversal protections and draft asset access controls in `/api/content`; add regression tests for traversal and unauthorized draft access.
 - For markdown/rendering changes, keep HTML sanitization and safe URL-scheme filtering in place before content is stored or served.
-- Any security-sensitive bug fix or feature change must include failing-first regression tests that cover abuse paths, not only happy paths.
 
 ### Content Security Policy (CSP)
 
