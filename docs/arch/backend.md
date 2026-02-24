@@ -89,7 +89,7 @@ Rendering happens at publish time (during cache rebuild and post create/update),
 
 Pandoc output is sanitized through an allowlist HTML sanitizer before storage and before heading-anchor injection. Unsafe tags/attributes and unsafe URL schemes (for example `javascript:`) are stripped.
 
-Pandoc conversion settings: GFM with `tex_math_dollars`, `footnotes`, and `raw_html` extensions, output as `html5` with KaTeX math rendering and Pygments syntax highlighting.
+Pandoc conversion settings: Pandoc Markdown with `alerts`, `emoji`, `lists_without_preceding_blankline` and `mark` extensions, output as `html5` with KaTeX math rendering and Pygments syntax highlighting.
 
 Features: GitHub Flavored Markdown (tables, task lists, strikethrough), KaTeX math, syntax highlighting (140+ languages), and heading anchor injection.
 

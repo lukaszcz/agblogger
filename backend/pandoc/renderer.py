@@ -218,7 +218,7 @@ async def close_renderer() -> None:
 async def render_markdown(markdown: str) -> str:
     """Render markdown to HTML using the pandoc server HTTP API.
 
-    Uses GFM + KaTeX math + syntax highlighting.
+    Uses Pandoc Markdown + KaTeX math + syntax highlighting.
     Raises RuntimeError if the renderer is not initialized or pandoc fails.
     """
     # Capture module globals into locals to prevent race with close_renderer()
@@ -231,10 +231,7 @@ async def render_markdown(markdown: str) -> str:
 
     payload = {
         "text": markdown,
-        "from": (
-            "gfm+tex_math_dollars+footnotes+raw_html"
-            "+attributes+definition_lists+superscript+subscript"
-        ),
+        "from": "markdown+alerts+emoji+lists_without_preceding_blankline+mark",
         "to": "html5",
         "html-math-method": {"method": "katex"},
         "highlight-style": "pygments",

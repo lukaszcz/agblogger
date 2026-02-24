@@ -91,7 +91,7 @@ def _install_subprocess_fallback() -> None:
             [
                 "pandoc",
                 "-f",
-                "gfm+tex_math_dollars+footnotes+raw_html",
+                "markdown+alerts+emoji+lists_without_preceding_blankline+mark",
                 "-t",
                 "html5",
                 "--katex",
