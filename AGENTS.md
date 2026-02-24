@@ -74,12 +74,18 @@ Always start a dev server with `just start`. Remember to stop a running dev serv
 - Keep commits focused; avoid mixing unrelated changes.
 - Use `git add`, `git commit`, `git merge`, etc. Do NOT use the `-C` option with `git`.
 
+## Reliability Guidelines
+
+- The server may NEVER crash. We are aiming for a production-grade high-reliability server with 100% uptime.
+- No exceptions may crash the server. All errors should be handled and logged server-side.
+- Check for race conditions: missing or incorrect locking, non-atomic compound operations, check-ten-act patterns, improper initialization.
+
 ## Security Guidelines
 
 - All exceptions need to be handled gracefully, especially errors originating from interaction with external services (network, database, pandoc, git, filesystem). Never silently ignore exceptions.
 - Never expose internal server error details to clients. Return a generic error message to clients while keeping detailed logging server-side.
 - Any security-sensitive bug fix or feature change must include failing-first regression tests that cover abuse paths, not only happy paths.
-- Read docs/guidelines/security.md for the full security guidelines.
+- Read docs/guidelines/security.md for the full security guidelines. Read docs/arch/security.md for security architecture.
 - **IMPORTANT**: Read docs/guidelines/security.md before making any changes related to authentication, authorization, input validation, sanitization, error handling, or infrastructure security.
 
 ## Instructions
