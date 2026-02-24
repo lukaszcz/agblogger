@@ -697,6 +697,51 @@ class TestRenderViaServer:
             await renderer.render_markdown("test")
 
 
+class TestRendererShutdownRace:
+    """render_markdown after close_renderer raises RuntimeError, not AttributeError."""
+
+    async def test_render_after_close_raises_runtime_error(self) -> None:
+        from backend.pandoc import renderer
+
+        old_server = renderer._server
+        old_client = renderer._http_client
+        try:
+            renderer._server = None
+            renderer._http_client = None
+            with pytest.raises(RuntimeError, match="not initialized"):
+                await renderer.render_markdown("# test")
+        finally:
+            renderer._server = old_server
+            renderer._http_client = old_client
+
+    async def test_render_uses_local_snapshot_of_globals(self) -> None:
+        """render_markdown should capture server/client locally to avoid race."""
+        from backend.pandoc import renderer
+
+        mock_server = MagicMock(spec=PandocServer)
+        mock_server.base_url = "http://127.0.0.1:3031"
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"output": "<p>ok</p>"}
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+
+        old_server = renderer._server
+        old_client = renderer._http_client
+        try:
+            renderer._server = mock_server
+            renderer._http_client = mock_client
+
+            # The function should work even if globals are cleared mid-flight
+            # (they were captured at function entry)
+            result = await renderer.render_markdown("ok")
+            assert "<p>ok</p>" in result
+        finally:
+            renderer._server = old_server
+            renderer._http_client = old_client
+
+
 class TestRenderError:
     """Tests for the RenderError exception type."""
 

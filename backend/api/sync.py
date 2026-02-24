@@ -371,7 +371,11 @@ async def _sync_commit_inner(
         logger.error("Manifest update failed during sync commit: %s", exc)
         sync_warnings.append("Server manifest update failed; next sync may show stale data.")
 
-    content_manager.reload_config()
+    try:
+        content_manager.reload_config()
+    except Exception as exc:
+        logger.warning("Config reload failed during sync: %s", exc)
+        sync_warnings.append("Config reload failed; site settings may be stale until restart.")
 
     cache_warnings: list[str] = []
     try:

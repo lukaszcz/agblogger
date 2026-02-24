@@ -23,6 +23,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+_MAX_POST_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
+
 
 @dataclass
 class ContentIndex:
@@ -83,7 +85,19 @@ class ContentManager:
         for post_path in post_files:
             rel_path = str(post_path.relative_to(self.content_dir))
             try:
+                file_size = post_path.stat().st_size
+                if file_size > _MAX_POST_FILE_SIZE:
+                    logger.warning(
+                        "Skipping post %s: file size %d exceeds limit %d",
+                        rel_path,
+                        file_size,
+                        _MAX_POST_FILE_SIZE,
+                    )
+                    continue
                 raw_content = post_path.read_text(encoding="utf-8")
+                if "\x00" in raw_content:
+                    logger.warning("Skipping post %s: contains null bytes", rel_path)
+                    continue
                 post_data = parse_post(
                     raw_content,
                     file_path=rel_path,
@@ -126,9 +140,21 @@ class ContentManager:
         if not full_path.exists() or not full_path.is_file():
             return None
         try:
+            file_size = full_path.stat().st_size
+            if file_size > _MAX_POST_FILE_SIZE:
+                logger.warning(
+                    "Post file %s exceeds size limit (%d > %d)",
+                    rel_path,
+                    file_size,
+                    _MAX_POST_FILE_SIZE,
+                )
+                return None
             raw_content = full_path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError) as exc:
             logger.error("Failed to read post file %s: %s", rel_path, exc)
+            return None
+        if "\x00" in raw_content:
+            logger.warning("Post file %s contains null bytes", rel_path)
             return None
         try:
             post_data = parse_post(
@@ -170,9 +196,15 @@ class ContentManager:
             resolved_dir = post_dir.resolve()
             parent = post_dir.parent
             # Remove symlinks in the parent directory pointing to this directory
-            for item in parent.iterdir():
-                if item.is_symlink() and item.resolve() == resolved_dir:
-                    item.unlink()
+            try:
+                for item in parent.iterdir():
+                    try:
+                        if item.is_symlink() and item.resolve() == resolved_dir:
+                            item.unlink()
+                    except OSError as exc:
+                        logger.warning("Failed to clean up symlink %s: %s", item, exc)
+            except OSError as exc:
+                logger.warning("Failed to iterate parent directory %s: %s", parent, exc)
             shutil.rmtree(post_dir)
         else:
             full_path.unlink()

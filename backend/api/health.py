@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
@@ -10,6 +11,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.deps import get_session
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["health"])
 
@@ -29,6 +32,7 @@ async def health_check(
     try:
         await session.execute(text("SELECT 1"))
     except Exception:
+        logger.warning("Health check database query failed", exc_info=True)
         db_status = "error"
 
     return HealthResponse(

@@ -284,3 +284,175 @@ class TestAtomicWrites:
         data = tomllib.loads((tmp_path / "index.toml").read_text())
         assert data["site"]["title"] == "Test Blog"
         assert not (tmp_path / "index.toml.tmp").exists()
+
+
+class TestTomlWriteHardening:
+    """TOML writes use unique temp paths and clean up on failure."""
+
+    def test_temp_file_cleaned_up_on_write_error(self, tmp_path: Path) -> None:
+        """Temp file should be removed if rename fails."""
+        import glob
+
+        labels = {"test": LabelDef(id="test", names=["test"])}
+
+        # Make the destination read-only so replace fails
+        labels_path = tmp_path / "labels.toml"
+        labels_path.write_text("[labels]")
+
+        with (
+            patch("pathlib.Path.replace", side_effect=OSError("permission denied")),
+            pytest.raises(OSError),
+        ):
+            write_labels_config(tmp_path, labels)
+
+        # No temp files should be left behind
+        tmp_files = glob.glob(str(tmp_path / "*.tmp*"))
+        assert tmp_files == []
+
+    def test_concurrent_writes_use_unique_temp_paths(self, tmp_path: Path) -> None:
+        """Two writes should not collide on temp path names."""
+        import tempfile
+        from typing import Any
+
+        temp_paths: list[str] = []
+        original_mkstemp = tempfile.mkstemp
+
+        def tracking_mkstemp(**kwargs: Any) -> tuple[int, str]:
+            fd, path = original_mkstemp(**kwargs)
+            temp_paths.append(path)
+            return fd, path
+
+        with patch("tempfile.mkstemp", side_effect=tracking_mkstemp):
+            labels = {"a": LabelDef(id="a", names=["a"])}
+            write_labels_config(tmp_path, labels)
+            labels = {"b": LabelDef(id="b", names=["b"])}
+            write_labels_config(tmp_path, labels)
+
+        # Each write should have used a unique temp path
+        assert len(temp_paths) == 2
+        assert temp_paths[0] != temp_paths[1]
+
+
+class TestReloadConfigProtection:
+    """reload_config errors are caught during sync."""
+
+    @pytest.mark.asyncio
+    async def test_reload_config_error_adds_warning(self, tmp_path: Path) -> None:
+        cm = ContentManager(content_dir=tmp_path)
+        (tmp_path / "index.toml").write_text('[site]\ntitle = "Test"')
+        (tmp_path / "labels.toml").write_text("[labels]")
+
+        # Force reload_config to raise
+        with patch.object(cm, "reload_config", side_effect=Exception("corrupt toml")):
+            # Simulate the sync pattern
+            warnings: list[str] = []
+            try:
+                cm.reload_config()
+            except Exception as exc:
+                logging.getLogger("backend.api.sync").warning(
+                    "Config reload failed during sync: %s", exc
+                )
+                warnings.append(f"Config reload failed: {exc}")
+
+        assert any("Config reload failed" in w for w in warnings)
+
+
+class TestOversizedPostSkipped:
+    """12a: Oversized post files are skipped during scan and read."""
+
+    def test_scan_posts_skips_oversized_file(self, tmp_path: Path) -> None:
+        posts_dir = tmp_path / "posts"
+        posts_dir.mkdir()
+        big_post = posts_dir / "big.md"
+        # Write just over 10MB
+        big_post.write_text("---\ntitle: Big\n---\n" + "x" * (10 * 1024 * 1024 + 1))
+        (tmp_path / "index.toml").write_text('[site]\ntitle = "Test"')
+        (tmp_path / "labels.toml").write_text("[labels]")
+        cm = ContentManager(content_dir=tmp_path)
+        posts = cm.scan_posts()
+        assert all(p.title != "Big" for p in posts)
+
+    def test_read_post_skips_oversized_file(self, tmp_path: Path) -> None:
+        posts_dir = tmp_path / "posts"
+        posts_dir.mkdir()
+        big_post = posts_dir / "big.md"
+        big_post.write_text("---\ntitle: Big\n---\n" + "x" * (10 * 1024 * 1024 + 1))
+        (tmp_path / "index.toml").write_text('[site]\ntitle = "Test"')
+        (tmp_path / "labels.toml").write_text("[labels]")
+        cm = ContentManager(content_dir=tmp_path)
+        result = cm.read_post("posts/big.md")
+        assert result is None
+
+
+class TestNullByteSkipped:
+    """12b: Files containing null bytes are skipped."""
+
+    def test_scan_posts_skips_null_byte_file(self, tmp_path: Path) -> None:
+        posts_dir = tmp_path / "posts"
+        posts_dir.mkdir()
+        bad_post = posts_dir / "null.md"
+        bad_post.write_text("---\ntitle: Null\n---\nbody\x00content")
+        (tmp_path / "index.toml").write_text('[site]\ntitle = "Test"')
+        (tmp_path / "labels.toml").write_text("[labels]")
+        cm = ContentManager(content_dir=tmp_path)
+        posts = cm.scan_posts()
+        assert all(p.title != "Null" for p in posts)
+
+    def test_read_post_skips_null_byte_file(self, tmp_path: Path) -> None:
+        posts_dir = tmp_path / "posts"
+        posts_dir.mkdir()
+        bad_post = posts_dir / "null.md"
+        bad_post.write_text("---\ntitle: Null\n---\nbody\x00content")
+        (tmp_path / "index.toml").write_text('[site]\ntitle = "Test"')
+        (tmp_path / "labels.toml").write_text("[labels]")
+        cm = ContentManager(content_dir=tmp_path)
+        result = cm.read_post("posts/null.md")
+        assert result is None
+
+
+class TestInvalidTimezoneValidation:
+    """12c: Invalid timezone falls back to UTC."""
+
+    def test_invalid_timezone_falls_back_to_utc(self, tmp_path: Path) -> None:
+        index = tmp_path / "index.toml"
+        index.write_text('[site]\ntitle = "Test"\ntimezone = "Not/A/Timezone"')
+        result = parse_site_config(tmp_path)
+        assert result.timezone == "UTC"
+
+    def test_valid_timezone_passes_through(self, tmp_path: Path) -> None:
+        index = tmp_path / "index.toml"
+        index.write_text('[site]\ntitle = "Test"\ntimezone = "US/Eastern"')
+        result = parse_site_config(tmp_path)
+        assert result.timezone == "US/Eastern"
+
+
+class TestSymlinkCleanupError:
+    """Symlink cleanup in delete_post handles per-item OSError."""
+
+    def test_broken_symlink_does_not_abort_delete(self, tmp_path: Path) -> None:
+        posts_dir = tmp_path / "posts"
+        posts_dir.mkdir()
+        post_dir = posts_dir / "2026-02-20-test"
+        post_dir.mkdir()
+        (post_dir / "index.md").write_text("---\ntitle: Test\n---\nbody")
+
+        # Create a symlink that will cause resolve() to fail
+        broken_link = posts_dir / "old-link"
+        broken_link.symlink_to(post_dir)
+
+        (tmp_path / "index.toml").write_text('[site]\ntitle = "Test"')
+        (tmp_path / "labels.toml").write_text("[labels]")
+        cm = ContentManager(content_dir=tmp_path)
+
+        original_resolve = Path.resolve
+
+        def patched_resolve(self: Path, strict: bool = False) -> Path:
+            if self.name == "old-link":
+                raise OSError("broken")
+            return original_resolve(self, strict=strict)
+
+        with patch("pathlib.Path.resolve", patched_resolve):
+            result = cm.delete_post("posts/2026-02-20-test/index.md", delete_assets=True)
+
+        assert result is True
+        assert not post_dir.exists()

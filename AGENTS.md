@@ -34,8 +34,9 @@ Always start a dev server with `just start`. Remember to stop a running dev serv
 - Formatting: ruff (line length 100)
 - Linting: ruff + import-linter
 - Typing: strict discipline (`mypy` strict + `basedpyright`); modern union syntax (`str | None`, `dict[str, Any]`, `list[str]`)
-- Do NOT use `type: ignore` comments. If ignoring a type rule is necessary, ALWAYS ask the user for permission and explain why it is necessary.
-- Do NOT use `noqa` comment. If ignoring a lint rule is necessary, ALWAYS ask the user for permission and explain why it is necessary.
+- Do NOT use `type: ignore` comments. If ignoring a type rule is necessary, ALWAYS ask the user for permission and explain why.
+- Do NOT use `noqa` comment. If ignoring a lint rule is necessary, ALWAYS ask the user for permission and explain why.
+- Do not use `fmt: skip` or `fmt: off` comments. If ignoring the formatter is necessart, ask the user for permission and explain why.
 - Naming & style: `snake_case` files/functions/variables, `PascalCase` classes; `from __future__ import annotations` everywhere; `async def` for all I/O; follow existing Pydantic/SQLAlchemy/FastAPI patterns in the codebase
 
 ### TypeScript (frontend/src/)

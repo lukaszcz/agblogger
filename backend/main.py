@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import secrets
+import subprocess
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -17,6 +18,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
+from sqlalchemy.exc import OperationalError
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from backend.api.admin import router as admin_router
@@ -93,16 +95,20 @@ def ensure_content_dir(content_dir: Path) -> None:
 
 async def _ensure_crosspost_user_id_column(app: FastAPI) -> None:
     """Backfill schema for cross_posts.user_id on pre-existing databases."""
-    engine = app.state.engine
-    async with engine.begin() as conn:
-        result = await conn.execute(text("PRAGMA table_info(cross_posts)"))
-        columns = {str(row[1]) for row in result}
-        if "user_id" in columns:
-            return
-        await conn.execute(text("ALTER TABLE cross_posts ADD COLUMN user_id INTEGER"))
-        logger.warning(
-            "Added missing cross_posts.user_id column. Existing history rows remain unscoped."
-        )
+    try:
+        engine = app.state.engine
+        async with engine.begin() as conn:
+            result = await conn.execute(text("PRAGMA table_info(cross_posts)"))
+            columns = {str(row[1]) for row in result}
+            if "user_id" in columns:
+                return
+            await conn.execute(text("ALTER TABLE cross_posts ADD COLUMN user_id INTEGER"))
+            logger.warning(
+                "Added missing cross_posts.user_id column. Existing history rows remain unscoped."
+            )
+    except Exception as exc:
+        logger.error("Failed to ensure crosspost user_id column: %s", exc)
+        raise
 
 
 @asynccontextmanager
@@ -240,9 +246,21 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
     yield
 
-    await close_renderer()
-    await pandoc_server.stop()
-    await engine.dispose()
+    try:
+        await close_renderer()
+    except Exception as exc:
+        logger.error("Error during renderer shutdown: %s", exc)
+
+    try:
+        await pandoc_server.stop()
+    except Exception as exc:
+        logger.error("Error during pandoc server shutdown: %s", exc)
+
+    try:
+        await engine.dispose()
+    except Exception as exc:
+        logger.error("Error during engine disposal: %s", exc)
+
     logger.info("AgBlogger stopped")
 
 
@@ -394,6 +412,59 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return JSONResponse(
             status_code=500,
             content={"detail": "Data integrity error"},
+        )
+
+    @app.exception_handler(ValueError)
+    async def value_error_handler(request: Request, exc: ValueError) -> JSONResponse:
+        logger.error("ValueError in %s %s: %s", request.method, request.url.path, exc, exc_info=exc)
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "Invalid value"},
+        )
+
+    @app.exception_handler(TypeError)
+    async def type_error_handler(request: Request, exc: TypeError) -> JSONResponse:
+        logger.error("TypeError in %s %s: %s", request.method, request.url.path, exc, exc_info=exc)
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "Invalid value"},
+        )
+
+    @app.exception_handler(subprocess.CalledProcessError)
+    async def subprocess_error_handler(
+        request: Request, exc: subprocess.CalledProcessError
+    ) -> JSONResponse:
+        logger.error(
+            "CalledProcessError in %s %s: cmd=%s exit=%d",
+            request.method,
+            request.url.path,
+            exc.cmd,
+            exc.returncode,
+            exc_info=exc,
+        )
+        return JSONResponse(
+            status_code=502,
+            content={"detail": "External process failed"},
+        )
+
+    @app.exception_handler(UnicodeDecodeError)
+    async def unicode_error_handler(request: Request, exc: UnicodeDecodeError) -> JSONResponse:
+        logger.error(
+            "UnicodeDecodeError in %s %s: %s", request.method, request.url.path, exc, exc_info=exc
+        )
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "Invalid content encoding"},
+        )
+
+    @app.exception_handler(OperationalError)
+    async def operational_error_handler(request: Request, exc: OperationalError) -> JSONResponse:
+        logger.error(
+            "OperationalError in %s %s: %s", request.method, request.url.path, exc, exc_info=exc
+        )
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "Database temporarily unavailable"},
         )
 
     # Serve frontend static files in production

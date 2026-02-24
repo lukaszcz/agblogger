@@ -91,13 +91,16 @@ def scan_content_files(content_dir: Path) -> dict[str, FileEntry]:
                 continue
             full = Path(root) / filename
             rel = str(full.relative_to(content_dir))
-            stat = full.stat()
-            entries[rel] = FileEntry(
-                file_path=rel,
-                content_hash=hash_file(full),
-                file_size=stat.st_size,
-                file_mtime=str(stat.st_mtime),
-            )
+            try:
+                stat = full.stat()
+                entries[rel] = FileEntry(
+                    file_path=rel,
+                    content_hash=hash_file(full),
+                    file_size=stat.st_size,
+                    file_mtime=str(stat.st_mtime),
+                )
+            except OSError as exc:
+                logger.warning("Skipping file %s during content scan: %s", rel, exc)
     return entries
 
 

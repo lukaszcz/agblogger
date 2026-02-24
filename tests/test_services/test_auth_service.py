@@ -80,6 +80,19 @@ class TestPasswordHashing:
         assert verify_password("wrong", hashed) is False
 
 
+class TestVerifyPasswordSafety:
+    """verify_password returns False on malformed hashes instead of crashing."""
+
+    def test_empty_hash_returns_false(self) -> None:
+        assert verify_password("password", "") is False
+
+    def test_malformed_hash_returns_false(self) -> None:
+        assert verify_password("password", "not-a-bcrypt-hash") is False
+
+    def test_none_like_hash_returns_false(self) -> None:
+        assert verify_password("password", "None") is False
+
+
 class TestAccessTokens:
     def test_create_access_token_contains_claims(self, test_settings: Settings) -> None:
         token = create_access_token(

@@ -432,21 +432,20 @@ class TestSyncManifestNarrowedExceptions:
     """Sync manifest update uses narrowed exception handling."""
 
     @pytest.mark.asyncio
-    async def test_sync_manifest_type_error_propagates(self, client: AsyncClient) -> None:
-        """TypeError is not caught by (OSError, OperationalError, RuntimeError)."""
+    async def test_sync_manifest_type_error_returns_422(self, client: AsyncClient) -> None:
+        """TypeError is caught by the global TypeError handler and returns 422."""
         token = await login(client)
-        with (
-            patch(
-                "backend.api.sync.scan_content_files",
-                side_effect=TypeError("programming bug"),
-            ),
-            pytest.raises(TypeError, match="programming bug"),
+        with patch(
+            "backend.api.sync.scan_content_files",
+            side_effect=TypeError("programming bug"),
         ):
-            await client.post(
+            resp = await client.post(
                 "/api/sync/commit",
                 data={"metadata": '{"deleted_files": [], "last_sync_commit": null}'},
                 headers={"Authorization": f"Bearer {token}"},
             )
+        assert resp.status_code == 422
+        assert resp.json()["detail"] == "Invalid value"
 
 
 class TestLabelCommitRecovery:

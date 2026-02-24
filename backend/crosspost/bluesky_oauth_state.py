@@ -7,7 +7,13 @@ from typing import Any
 
 
 class OAuthStateStore:
-    """Store pending OAuth authorization state with automatic expiry."""
+    """Store pending OAuth authorization state with automatic expiry.
+
+    Thread-safety: safe under asyncio's single-threaded cooperative model.
+    All methods (set, get, pop, cleanup) are synchronous with no await points,
+    so no interleaving can occur between check-and-act sequences.
+    Do NOT use from multiple OS threads without external synchronization.
+    """
 
     def __init__(self, ttl_seconds: int = 600, max_entries: int = 100) -> None:
         self._ttl = ttl_seconds

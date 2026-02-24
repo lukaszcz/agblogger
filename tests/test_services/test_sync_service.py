@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
+from unittest.mock import patch
 
 from backend.services.sync_service import (
     ChangeType,
@@ -12,7 +14,7 @@ from backend.services.sync_service import (
 )
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    import os
 
 
 def _entry(path: str, hash_: str = "abc", size: int = 100) -> FileEntry:
@@ -180,3 +182,24 @@ class TestScanContentFiles:
         entries = scan_content_files(tmp_path)
         assert "posts/post.md" in entries
         assert "posts/.hidden" not in entries
+
+
+class TestScanContentFilesPerFileError:
+    """Scan skips files that fail with OSError and continues."""
+
+    def test_stat_error_skips_file_and_returns_others(self, tmp_path: Path) -> None:
+        (tmp_path / "good.md").write_text("hello")
+        (tmp_path / "bad.md").write_text("world")
+
+        original_stat = Path.stat
+
+        def mock_stat(self: Path, **kwargs: object) -> os.stat_result:
+            if self.name == "bad.md":
+                raise PermissionError("denied")
+            return original_stat(self)
+
+        with patch("pathlib.Path.stat", mock_stat):
+            entries = scan_content_files(tmp_path)
+
+        assert "good.md" in entries
+        assert "bad.md" not in entries

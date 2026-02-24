@@ -7,7 +7,13 @@ from datetime import UTC, datetime
 
 
 class InMemoryRateLimiter:
-    """Track failed attempts in an in-memory sliding window."""
+    """Track failed attempts in an in-memory sliding window.
+
+    Thread-safety: safe under asyncio's single-threaded cooperative model.
+    All check-and-act sequences (is_limited, add_failure) are synchronous with
+    no await points between read and mutation, so no interleaving can occur.
+    Do NOT use from multiple OS threads without external synchronization.
+    """
 
     def __init__(self) -> None:
         self._attempts: dict[str, deque[float]] = {}

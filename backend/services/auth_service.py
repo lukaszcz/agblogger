@@ -34,7 +34,14 @@ def hash_password(password: str) -> str:
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against its hash."""
-    return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
+    try:
+        return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
+    except ValueError:
+        logger.debug("Malformed password hash encountered during verification")
+        return False
+    except TypeError:
+        logger.debug("Malformed password hash encountered during verification")
+        return False
 
 
 def create_access_token(data: dict[str, Any], secret_key: str, expires_minutes: int = 15) -> str:

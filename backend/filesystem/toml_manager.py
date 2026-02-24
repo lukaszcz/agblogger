@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import logging
+import os
+import tempfile
 import tomllib
+import zoneinfo
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from pathlib import Path
+from typing import Any
 
 import tomli_w
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -79,11 +80,19 @@ def parse_site_config(content_dir: Path) -> SiteConfig:
         logger.warning("Invalid page config in %s, using defaults: %s", index_path, exc)
         return SiteConfig()
 
+    raw_timezone = site_data.get("timezone", "UTC")
+    try:
+        zoneinfo.ZoneInfo(raw_timezone)
+        timezone = raw_timezone
+    except KeyError:
+        logger.warning("Invalid timezone %r in %s, falling back to UTC", raw_timezone, index_path)
+        timezone = "UTC"
+
     return SiteConfig(
         title=site_data.get("title", "My Blog"),
         description=site_data.get("description", ""),
         default_author=site_data.get("default_author", ""),
-        timezone=site_data.get("timezone", "UTC"),
+        timezone=timezone,
         pages=pages,
     )
 
@@ -141,9 +150,15 @@ def write_labels_config(content_dir: Path, labels: dict[str, LabelDef]) -> None:
         labels_data[label_id] = entry
 
     labels_path = content_dir / "labels.toml"
-    tmp_path = labels_path.with_suffix(".toml.tmp")
-    tmp_path.write_bytes(tomli_w.dumps({"labels": labels_data}).encode("utf-8"))
-    tmp_path.replace(labels_path)
+    fd, tmp_path_str = tempfile.mkstemp(dir=content_dir, suffix=".tmp")
+    tmp_path = Path(tmp_path_str)
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(tomli_w.dumps({"labels": labels_data}).encode("utf-8"))
+        tmp_path.replace(labels_path)
+    except BaseException:
+        tmp_path.unlink(missing_ok=True)
+        raise
 
 
 def write_site_config(content_dir: Path, config: SiteConfig) -> None:
@@ -163,6 +178,12 @@ def write_site_config(content_dir: Path, config: SiteConfig) -> None:
         pages_data.append(entry)
 
     index_path = content_dir / "index.toml"
-    tmp_path = index_path.with_suffix(".toml.tmp")
-    tmp_path.write_bytes(tomli_w.dumps({"site": site_data, "pages": pages_data}).encode("utf-8"))
-    tmp_path.replace(index_path)
+    fd, tmp_path_str = tempfile.mkstemp(dir=content_dir, suffix=".tmp")
+    tmp_path = Path(tmp_path_str)
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(tomli_w.dumps({"site": site_data, "pages": pages_data}).encode("utf-8"))
+        tmp_path.replace(index_path)
+    except BaseException:
+        tmp_path.unlink(missing_ok=True)
+        raise

@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from unittest.mock import patch
 
-from backend.services.git_service import GitService
+from backend.services.git_service import _GIT_TIMEOUT_SECONDS, GitService
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -155,3 +156,35 @@ class TestHeadCommitEmptyRepo:
         fresh_gs = GitService(fresh_dir)
         fresh_gs._run("init")
         assert fresh_gs.head_commit() is None
+
+
+class TestGitTimeout:
+    """subprocess.run is called with timeout kwarg."""
+
+    def test_run_passes_timeout(self, tmp_path: Path) -> None:
+        gs = GitService(tmp_path)
+        (tmp_path / "file.txt").write_text("hello")
+        gs.init_repo()
+
+        with patch("subprocess.run", wraps=__import__("subprocess").run) as mock_run:
+            gs.head_commit()
+        # Verify timeout was passed
+        call_kwargs = mock_run.call_args.kwargs
+        assert "timeout" in call_kwargs
+        assert call_kwargs["timeout"] == _GIT_TIMEOUT_SECONDS
+
+    def test_merge_file_passes_timeout(self, tmp_path: Path) -> None:
+        gs = GitService(tmp_path)
+        (tmp_path / "file.txt").write_text("hello")
+        gs.init_repo()
+
+        with patch("subprocess.run", wraps=__import__("subprocess").run) as mock_run:
+            gs.merge_file_content("base", "ours", "theirs")
+        # The merge_file subprocess.run call should include timeout
+        for call in mock_run.call_args_list:
+            if "merge-file" in str(call):
+                assert "timeout" in call.kwargs
+                assert call.kwargs["timeout"] == _GIT_TIMEOUT_SECONDS
+
+    def test_timeout_constant_is_positive(self) -> None:
+        assert _GIT_TIMEOUT_SECONDS > 0

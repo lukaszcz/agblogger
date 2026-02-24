@@ -221,7 +221,10 @@ async def render_markdown(markdown: str) -> str:
     Uses GFM + KaTeX math + syntax highlighting.
     Raises RuntimeError if the renderer is not initialized or pandoc fails.
     """
-    if _server is None or _http_client is None:
+    # Capture module globals into locals to prevent race with close_renderer()
+    server = _server
+    client = _http_client
+    if server is None or client is None:
         raise RuntimeError(
             "Pandoc renderer not initialized. Call init_renderer() during app startup."
         )
@@ -240,14 +243,12 @@ async def render_markdown(markdown: str) -> str:
     headers = {"Accept": "application/json"}
 
     try:
-        response = await _http_client.post(f"{_server.base_url}/", json=payload, headers=headers)
+        response = await client.post(f"{server.base_url}/", json=payload, headers=headers)
     except httpx.NetworkError:
         logger.warning("Pandoc server network error, attempting restart")
-        await _server.ensure_running()
+        await server.ensure_running()
         try:
-            response = await _http_client.post(
-                f"{_server.base_url}/", json=payload, headers=headers
-            )
+            response = await client.post(f"{server.base_url}/", json=payload, headers=headers)
         except httpx.HTTPError as retry_exc:
             raise RenderError(f"Pandoc server unreachable after restart: {retry_exc}") from None
     except httpx.ReadTimeout:
