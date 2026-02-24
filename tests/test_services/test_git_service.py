@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
-from backend.services.git_service import _GIT_TIMEOUT_SECONDS, GitService
+from backend.services.git_service import GIT_TIMEOUT_SECONDS, GitService
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -171,7 +171,7 @@ class TestGitTimeout:
         # Verify timeout was passed
         call_kwargs = mock_run.call_args.kwargs
         assert "timeout" in call_kwargs
-        assert call_kwargs["timeout"] == _GIT_TIMEOUT_SECONDS
+        assert call_kwargs["timeout"] == GIT_TIMEOUT_SECONDS
 
     def test_merge_file_passes_timeout(self, tmp_path: Path) -> None:
         gs = GitService(tmp_path)
@@ -184,7 +184,7 @@ class TestGitTimeout:
         for call in mock_run.call_args_list:
             if "merge-file" in str(call):
                 assert "timeout" in call.kwargs
-                assert call.kwargs["timeout"] == _GIT_TIMEOUT_SECONDS
+                assert call.kwargs["timeout"] == GIT_TIMEOUT_SECONDS
 
     def test_timeout_constant_is_positive(self) -> None:
-        assert _GIT_TIMEOUT_SECONDS > 0
+        assert GIT_TIMEOUT_SECONDS > 0

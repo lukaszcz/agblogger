@@ -11,7 +11,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 _COMMIT_RE = re.compile(r"^[0-9a-f]{4,40}$")
-_GIT_TIMEOUT_SECONDS = 30
+GIT_TIMEOUT_SECONDS = 30
 
 
 class GitService:
@@ -33,7 +33,7 @@ class GitService:
             check=check,
             capture_output=capture_output,
             text=True,
-            timeout=_GIT_TIMEOUT_SECONDS,
+            timeout=GIT_TIMEOUT_SECONDS,
         )
 
     def init_repo(self) -> None:
@@ -146,7 +146,7 @@ class GitService:
                 text=True,
                 encoding="utf-8",
                 check=False,
-                timeout=_GIT_TIMEOUT_SECONDS,
+                timeout=GIT_TIMEOUT_SECONDS,
             )
             # exit 0 = clean merge, positive exit = number of conflicts (capped at 127),
             # negative exit = signal, exit >= 128 = git error

@@ -249,17 +249,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     try:
         await close_renderer()
     except Exception as exc:
-        logger.error("Error during renderer shutdown: %s", exc)
+        logger.error("Error during renderer shutdown: %s", exc, exc_info=True)
 
     try:
         await pandoc_server.stop()
     except Exception as exc:
-        logger.error("Error during pandoc server shutdown: %s", exc)
+        logger.error("Error during pandoc server shutdown: %s", exc, exc_info=True)
 
     try:
         await engine.dispose()
     except Exception as exc:
-        logger.error("Error during engine disposal: %s", exc)
+        logger.error("Error during engine disposal: %s", exc, exc_info=True)
 
     logger.info("AgBlogger stopped")
 

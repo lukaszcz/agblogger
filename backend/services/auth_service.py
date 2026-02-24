@@ -37,10 +37,10 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     try:
         return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
     except ValueError:
-        logger.debug("Malformed password hash encountered during verification")
+        logger.warning("Malformed password hash encountered during verification")
         return False
     except TypeError:
-        logger.debug("Malformed password hash encountered during verification")
+        logger.warning("Malformed password hash encountered during verification")
         return False
 
 
