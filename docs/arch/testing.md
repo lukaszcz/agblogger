@@ -170,7 +170,7 @@ Mutation testing is implemented in three production phases with dedicated `just`
 ### Frontend mutation profiles
 
 - Engine: StrykerJS with Vitest runner
-- Tooling is pinned in `frontend/package.json` devDependencies (`@stryker-mutator/*` v`9.3.0`) and run via local `stryker` binaries
+- Tooling is pinned in `frontend/package.json` devDependencies (`@stryker-mutator/*` v`9.5.1`) and run via local `stryker` binaries
 - Targeted config: `frontend/stryker.mutation.config.mjs`
 - Broad full-run config: `frontend/stryker.mutation-full.config.mjs`
 - Commands:

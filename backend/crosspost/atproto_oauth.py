@@ -106,7 +106,7 @@ def load_or_create_keypair(
             return _load_existing()
         except (json.JSONDecodeError, KeyError, TypeError, ValueError, UnicodeDecodeError) as exc:
             logger.warning("Corrupted keypair file %s, regenerating: %s", path, exc)
-            path.unlink()
+            path.unlink(missing_ok=True)
             # Fall through to create a new keypair
 
     lock_path = path.with_name(f".{path.name}.lock")

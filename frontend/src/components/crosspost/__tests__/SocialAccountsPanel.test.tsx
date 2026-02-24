@@ -281,8 +281,7 @@ describe('SocialAccountsPanel', () => {
     await user.type(screen.getByPlaceholderText('alice.bsky.social'), 'test.bsky.social')
 
     // Click Connect button in the form
-    const connectButtons = screen.getAllByText('Connect')
-    await user.click(connectButtons[0]!)
+    await user.click(screen.getByRole('button', { name: 'Connect' }))
 
     await waitFor(() => {
       expect(mockAuthorizeBluesky).toHaveBeenCalledWith('test.bsky.social')
@@ -306,8 +305,7 @@ describe('SocialAccountsPanel', () => {
     await user.click(screen.getByText('Connect Mastodon'))
     await user.type(screen.getByPlaceholderText('https://mastodon.social'), 'https://infosec.exchange')
 
-    const connectButtons = screen.getAllByText('Connect')
-    await user.click(connectButtons[0]!)
+    await user.click(screen.getByRole('button', { name: 'Connect' }))
 
     await waitFor(() => {
       expect(mockAuthorizeMastodon).toHaveBeenCalledWith('https://infosec.exchange')
@@ -329,8 +327,7 @@ describe('SocialAccountsPanel', () => {
 
     await user.click(screen.getByText('Connect X'))
 
-    const connectButtons = screen.getAllByText('Connect')
-    await user.click(connectButtons[0]!)
+    await user.click(screen.getByRole('button', { name: 'Connect' }))
 
     await waitFor(() => {
       expect(mockAuthorizeX).toHaveBeenCalled()
@@ -352,8 +349,7 @@ describe('SocialAccountsPanel', () => {
 
     await user.click(screen.getByText('Connect Facebook'))
 
-    const connectButtons = screen.getAllByText('Connect')
-    await user.click(connectButtons[0]!)
+    await user.click(screen.getByRole('button', { name: 'Connect' }))
 
     await waitFor(() => {
       expect(mockAuthorizeFacebook).toHaveBeenCalled()

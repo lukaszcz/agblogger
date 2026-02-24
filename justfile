@@ -320,6 +320,8 @@ start:
         wait
     ) &
     echo "$!" > "{{ pidfile }}"
+    echo "$selected_backend_port" > "{{ localdir }}/backend.port"
+    echo "$selected_frontend_port" > "{{ localdir }}/frontend.port"
     echo "Dev server started (PID $!) — backend :$selected_backend_port, frontend :$selected_frontend_port"
 
 # Stop the running dev server
@@ -336,22 +338,33 @@ stop:
     else
         echo "Dev server was not running (stale pidfile)"
     fi
-    rm -f "{{ pidfile }}"
+    rm -f "{{ pidfile }}" "{{ localdir }}/backend.port" "{{ localdir }}/frontend.port"
 
 # Check if the dev server is healthy (backend API responds, frontend serves pages)
 health:
     #!/usr/bin/env bash
     set -euo pipefail
+    # Read actual ports from state files written by `start`, fall back to defaults
+    if [ -f "{{ localdir }}/backend.port" ]; then
+        bp=$(cat "{{ localdir }}/backend.port")
+    else
+        bp="{{ backend_port }}"
+    fi
+    if [ -f "{{ localdir }}/frontend.port" ]; then
+        fp=$(cat "{{ localdir }}/frontend.port")
+    else
+        fp="{{ frontend_port }}"
+    fi
     ok=true
-    printf "Backend  (:%s): " "{{ backend_port }}"
-    if curl -sf "http://localhost:{{ backend_port }}/api/health" >/dev/null 2>&1; then
+    printf "Backend  (:%s): " "$bp"
+    if curl -sf "http://localhost:$bp/api/health" >/dev/null 2>&1; then
         echo "✓ healthy"
     else
         echo "✗ unreachable"
         ok=false
     fi
-    printf "Frontend (:%s): " "{{ frontend_port }}"
-    if curl -sf "http://localhost:{{ frontend_port }}/" >/dev/null 2>&1; then
+    printf "Frontend (:%s): " "$fp"
+    if curl -sf "http://localhost:$fp/" >/dev/null 2>&1; then
         echo "✓ healthy"
     else
         echo "✗ unreachable"

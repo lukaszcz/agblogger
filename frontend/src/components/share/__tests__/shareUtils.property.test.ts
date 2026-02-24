@@ -157,11 +157,13 @@ describe('shareUtils property tests', () => {
         const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
         const platform = `unknown-${suffix}`
 
-        const result = getShareUrl(platform, text, url, title)
-        expect(result).toBe('')
-        expect(warnSpy).toHaveBeenCalledOnce()
-
-        warnSpy.mockRestore()
+        try {
+          const result = getShareUrl(platform, text, url, title)
+          expect(result).toBe('')
+          expect(warnSpy).toHaveBeenCalledOnce()
+        } finally {
+          warnSpy.mockRestore()
+        }
       }),
       { numRuns: 150 },
     )

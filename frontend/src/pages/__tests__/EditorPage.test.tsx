@@ -512,8 +512,8 @@ describe('EditorPage', () => {
 
     await waitFor(() => {
       expect(screen.getByText(/Created/)).toBeInTheDocument()
+      expect(screen.getByText(/Modified/)).toBeInTheDocument()
     })
-    expect(screen.getByText(/Modified/)).toBeInTheDocument()
   })
 
   it('shows preview placeholder initially', async () => {
@@ -543,6 +543,7 @@ describe('EditorPage', () => {
   it('sends file_path in preview request for existing post', async () => {
     const mockApi = (await import('@/api/client')).default
     const mockPost = vi.mocked(mockApi.post)
+    mockPost.mockClear()
     mockPost.mockReturnValue({ json: () => Promise.resolve({ html: '<p>preview</p>' }) } as ReturnType<typeof mockApi.post>)
     mockFetchPostForEdit.mockResolvedValue(editResponse)
 

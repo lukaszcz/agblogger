@@ -156,7 +156,7 @@ describe('LabelInput', () => {
       expect(screen.getByText('#swe')).toBeInTheDocument()
     })
 
-    await user.keyboard('{Enter}')
+    await user.keyboard('{ArrowDown}{Enter}')
 
     expect(onChange).toHaveBeenCalledWith(['swe'])
   })

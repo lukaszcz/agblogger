@@ -69,8 +69,13 @@ describe('wrapSelection property tests', () => {
           const [selectionStart, selectionEnd] = normalizedSelection(value.length, startRaw, endRaw)
           const result = wrapSelection(value, selectionStart, selectionEnd, action)
 
-          expect(result.newValue.startsWith(value.slice(0, selectionStart))).toBe(true)
-          expect(result.newValue.endsWith(value.slice(selectionEnd))).toBe(true)
+          const prefix = value.slice(0, selectionStart)
+          expect(result.newValue.slice(0, prefix.length)).toBe(prefix)
+
+          const suffix = value.slice(selectionEnd)
+          if (suffix.length > 0) {
+            expect(result.newValue.slice(-suffix.length)).toBe(suffix)
+          }
         },
       ),
       { numRuns: 400 },

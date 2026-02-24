@@ -181,6 +181,7 @@ describe('Header', () => {
     await userEvent.click(screen.getByLabelText('Search'))
 
     const input = screen.getByPlaceholderText('Search posts...')
+    await userEvent.click(input)
     await userEvent.keyboard('{Enter}')
 
     // Search should still be open since query was empty

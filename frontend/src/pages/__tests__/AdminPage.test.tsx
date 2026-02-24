@@ -14,7 +14,13 @@ vi.mock('@/api/client', () => {
       this.response = {
         status,
         text: () => Promise.resolve(bodyStr),
-        json: () => Promise.resolve(JSON.parse(bodyStr || '{}')),
+        json: () => {
+          try {
+            return Promise.resolve(JSON.parse(bodyStr || '{}'))
+          } catch {
+            return Promise.reject(new SyntaxError('Failed to parse response body as JSON'))
+          }
+        },
       }
     }
   }

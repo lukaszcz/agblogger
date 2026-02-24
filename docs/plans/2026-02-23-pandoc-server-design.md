@@ -63,8 +63,8 @@ Replace `apt-get install pandoc` with a pinned download from GitHub releases to 
 | Pandoc missing `+server` | Fail fast at startup with clear error message |
 | Server not responding on startup | Retry with backoff (5 attempts, 0.5s intervals), then fail startup |
 | Connection refused during render | Acquire restart lock, restart process, retry once |
-| HTTP error from pandoc-server | Raise `RuntimeError` (same as current behavior) |
-| 10s per-request timeout | `httpx.ReadTimeout` → `RuntimeError` |
+| HTTP error from pandoc-server | Raise `RenderError` (same as current behavior) |
+| 10s per-request timeout | `httpx.ReadTimeout` → `RenderError` |
 | Process crash mid-operation | Same as connection refused — auto-restart + retry |
 
 No subprocess fallback. If pandoc-server can't start, the application fails fast — same as today when `pandoc` is missing entirely.

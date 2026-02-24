@@ -113,6 +113,25 @@ class TestES256Keypair:
         _private_key, jwk = load_or_create_keypair(path)
         assert jwk["kty"] == "EC"
 
+    def test_corrupted_file_removed_concurrently_does_not_crash(self, tmp_path) -> None:
+        """If another process removes the corrupted file between exists() and unlink(), no crash."""
+        from unittest.mock import patch
+
+        path = tmp_path / "key.json"
+        path.write_text("this is not json {{{", encoding="utf-8")
+
+        original_unlink = type(path).unlink
+
+        def unlink_that_removes_first(self_path, *, missing_ok=False):
+            """Simulate another process removing the file before our unlink()."""
+            if self_path == path and self_path.exists():
+                original_unlink(self_path)
+            original_unlink(self_path, missing_ok=missing_ok)
+
+        with patch.object(type(path), "unlink", unlink_that_removes_first):
+            _private_key, jwk = load_or_create_keypair(path)
+        assert jwk["kty"] == "EC"
+
 
 class TestDPoPProof:
     def test_create_dpop_proof_for_auth_server(self) -> None:

@@ -85,8 +85,9 @@ const paginatedResponse: PostListResponse = {
 }
 
 async function simulateFileUpload(file: File) {
-  const fileInput = document.querySelector('input[type="file"][accept=".md,.markdown"]') as HTMLInputElement
-  Object.defineProperty(fileInput, 'files', { value: [file] })
+  const fileInput = document.querySelector<HTMLInputElement>('input[type="file"][accept=".md,.markdown"]')
+  if (!fileInput) throw new Error('File input not found — is the upload UI rendered?')
+  Object.defineProperty(fileInput, 'files', { value: [file], configurable: true })
   await act(async () => {
     fileInput.dispatchEvent(new Event('change', { bubbles: true }))
     await Promise.resolve()
