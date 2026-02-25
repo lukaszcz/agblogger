@@ -185,3 +185,117 @@ class TestEntityHandling:
         result = _sanitize_html("<p><script></p>")
         # The <script> tag is stripped, not its text content
         assert "<script>" not in result
+
+
+class TestYouTubeIframe:
+    """Tests for YouTube iframe embed support."""
+
+    def test_youtube_embed_allowed(self) -> None:
+        html = '<iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ"></iframe>'
+        result = _sanitize_html(html)
+        assert "<iframe" in result
+        assert 'src="https://www.youtube.com/embed/dQw4w9WgXcQ"' in result
+        assert "</iframe>" in result
+
+    def test_youtube_nocookie_allowed(self) -> None:
+        html = '<iframe src="https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"></iframe>'
+        result = _sanitize_html(html)
+        assert "<iframe" in result
+        assert 'src="https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"' in result
+
+    def test_youtube_shorts_allowed(self) -> None:
+        html = '<iframe src="https://www.youtube.com/shorts/dQw4w9WgXcQ"></iframe>'
+        result = _sanitize_html(html)
+        assert "<iframe" in result
+        assert 'src="https://www.youtube.com/shorts/dQw4w9WgXcQ"' in result
+
+    def test_youtube_without_www_allowed(self) -> None:
+        html = '<iframe src="https://youtube.com/embed/dQw4w9WgXcQ"></iframe>'
+        result = _sanitize_html(html)
+        assert "<iframe" in result
+
+    def test_youtube_with_query_params_allowed(self) -> None:
+        html = '<iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ?start=30&autoplay=1"></iframe>'
+        result = _sanitize_html(html)
+        assert "<iframe" in result
+        assert "start=30" in result
+
+    def test_non_youtube_iframe_stripped(self) -> None:
+        html = '<iframe src="https://evil.com/page"></iframe>'
+        result = _sanitize_html(html)
+        assert "<iframe" not in result
+        assert "</iframe>" not in result
+
+    def test_iframe_without_src_stripped(self) -> None:
+        html = "<iframe></iframe>"
+        result = _sanitize_html(html)
+        assert "<iframe" not in result
+
+    def test_iframe_javascript_src_stripped(self) -> None:
+        html = '<iframe src="javascript:alert(1)"></iframe>'
+        result = _sanitize_html(html)
+        assert "<iframe" not in result
+
+    def test_iframe_data_src_stripped(self) -> None:
+        html = '<iframe src="data:text/html,<script>alert(1)</script>"></iframe>'
+        result = _sanitize_html(html)
+        assert "<iframe" not in result
+
+    def test_youtube_http_stripped(self) -> None:
+        """Only HTTPS allowed, not HTTP."""
+        html = '<iframe src="http://www.youtube.com/embed/dQw4w9WgXcQ"></iframe>'
+        result = _sanitize_html(html)
+        assert "<iframe" not in result
+
+    def test_sandbox_attribute_forced(self) -> None:
+        html = '<iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ"></iframe>'
+        result = _sanitize_html(html)
+        assert 'sandbox="allow-scripts allow-same-origin allow-popups"' in result
+
+    def test_allowfullscreen_forced(self) -> None:
+        html = '<iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ"></iframe>'
+        result = _sanitize_html(html)
+        assert "allowfullscreen" in result
+
+    def test_referrerpolicy_forced(self) -> None:
+        html = '<iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ"></iframe>'
+        result = _sanitize_html(html)
+        assert 'referrerpolicy="no-referrer"' in result
+
+    def test_loading_lazy_forced(self) -> None:
+        html = '<iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ"></iframe>'
+        result = _sanitize_html(html)
+        assert 'loading="lazy"' in result
+
+    def test_width_height_stripped(self) -> None:
+        html = '<iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ" width="560" height="315"></iframe>'
+        result = _sanitize_html(html)
+        assert "<iframe" in result
+        assert "width" not in result
+        assert "height" not in result
+
+    def test_onload_stripped(self) -> None:
+        html = '<iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ" onload="alert(1)"></iframe>'
+        result = _sanitize_html(html)
+        assert "<iframe" in result
+        assert "onload" not in result
+
+    def test_youtube_path_traversal_stripped(self) -> None:
+        html = '<iframe src="https://www.youtube.com/embed/../evil"></iframe>'
+        result = _sanitize_html(html)
+        assert "<iframe" not in result
+
+    def test_youtube_extra_path_stripped(self) -> None:
+        html = '<iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ/evil"></iframe>'
+        result = _sanitize_html(html)
+        assert "<iframe" not in result
+
+    def test_youtube_subdomain_attack_stripped(self) -> None:
+        html = '<iframe src="https://evil.youtube.com/embed/dQw4w9WgXcQ"></iframe>'
+        result = _sanitize_html(html)
+        assert "<iframe" not in result
+
+    def test_existing_iframe_test_still_passes(self) -> None:
+        """Non-YouTube iframes are still stripped (regression for existing test)."""
+        result = _sanitize_html("<iframe src='evil.com'></iframe>")
+        assert "<iframe" not in result
