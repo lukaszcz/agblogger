@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { format, parseISO } from 'date-fns'
 import type { PostSummary } from '@/api/client'
+import { useRenderedHtml } from '@/hooks/useKatex'
 import LabelChip from '@/components/labels/LabelChip'
 
 interface PostCardProps {
@@ -11,7 +12,7 @@ interface PostCardProps {
 export default function PostCard({ post, index = 0 }: PostCardProps) {
   const postUrl = `/post/${post.file_path}`
   const staggerClass = `stagger-${Math.min(index + 1, 8)}`
-  const excerptText = extractExcerptText(post.rendered_excerpt)
+  const renderedExcerpt = useRenderedHtml(post.rendered_excerpt)
 
   let dateStr = ''
   try {
@@ -32,10 +33,11 @@ export default function PostCard({ post, index = 0 }: PostCardProps) {
               {post.title}
             </h2>
 
-            {excerptText !== '' && (
-              <p className="mt-2 text-sm text-muted leading-relaxed line-clamp-2 prose-excerpt">
-                {excerptText}
-              </p>
+            {renderedExcerpt !== '' && (
+              <div
+                className="mt-2 text-sm text-muted leading-relaxed line-clamp-2 prose-excerpt"
+                dangerouslySetInnerHTML={{ __html: renderedExcerpt }}
+              />
             )}
 
             <div className="mt-3 flex items-center gap-3 flex-wrap">
@@ -74,16 +76,4 @@ export default function PostCard({ post, index = 0 }: PostCardProps) {
       </Link>
     </article>
   )
-}
-
-function extractExcerptText(renderedExcerpt: string | null): string {
-  if (renderedExcerpt === null || renderedExcerpt.trim() === '') {
-    return ''
-  }
-  if (typeof window === 'undefined') {
-    return renderedExcerpt.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
-  }
-  const parser = new DOMParser()
-  const parsed = parser.parseFromString(renderedExcerpt, 'text/html')
-  return parsed.body.textContent.replace(/\s+/g, ' ').trim()
 }

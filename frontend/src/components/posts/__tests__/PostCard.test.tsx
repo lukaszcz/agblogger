@@ -1,6 +1,10 @@
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
+
+vi.mock('@/hooks/useKatex', () => ({
+  useRenderedHtml: (html: string | null) => html ?? '',
+}))
 
 import type { PostSummary } from '@/api/client'
 import PostCard from '../PostCard'
@@ -51,7 +55,14 @@ describe('PostCard', () => {
     expect(screen.queryByText('·')).not.toBeInTheDocument()
   })
 
-  it('renders excerpt', () => {
+  it('renders excerpt as HTML not plain text', () => {
+    renderCard(makePost({ rendered_excerpt: '<p>Hello <strong>bold</strong> world</p>' }))
+    // The excerpt should be rendered as HTML, so <strong> should produce a real element
+    const bold = screen.getByText('bold')
+    expect(bold.tagName).toBe('STRONG')
+  })
+
+  it('renders excerpt text content', () => {
     renderCard(makePost())
     expect(screen.getByText('This is the excerpt.')).toBeInTheDocument()
   })

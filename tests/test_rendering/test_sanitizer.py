@@ -154,6 +154,22 @@ class TestDetailsTag:
         assert "<details>" in result
 
 
+class TestMarkTag:
+    """Regression: <mark> tag must pass through sanitizer for ==highlight== syntax."""
+
+    def test_mark_tag_preserved(self) -> None:
+        result = _sanitize_html("<p>This is <mark>highlighted</mark> text.</p>")
+        assert "<mark>" in result
+        assert "</mark>" in result
+        assert "highlighted" in result
+
+    def test_mark_tag_no_attributes_allowed(self) -> None:
+        """mark tag should only allow global attrs (class, id), not arbitrary ones."""
+        result = _sanitize_html('<mark onclick="alert(1)">text</mark>')
+        assert "onclick" not in result
+        assert "<mark>" in result
+
+
 class TestEntityHandling:
     """Tests for HTML entity handling."""
 

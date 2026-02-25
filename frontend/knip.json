@@ -10,7 +10,7 @@
     "@stryker-mutator/typescript-checker",
     "@stryker-mutator/vitest-runner",
     "tailwindcss",
-    "@fontsource/instrument-serif",
+    "@fontsource-variable/lora",
     "@fontsource-variable/dm-sans",
     "@fontsource-variable/jetbrains-mono"
   ]

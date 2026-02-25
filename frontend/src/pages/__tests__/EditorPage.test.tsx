@@ -635,6 +635,44 @@ describe('EditorPage', () => {
     })
   })
 
+  it('inserts image markdown with blank line separator after upload', async () => {
+    const { uploadAssets } = await import('@/api/posts')
+    const mockUpload = vi.mocked(uploadAssets)
+    mockUpload.mockResolvedValue({ uploaded: ['photo.png'] })
+    mockFetchPostForEdit.mockResolvedValue(editResponse)
+
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      renderEditor('/editor/posts/existing.md')
+
+      await waitFor(() => {
+        expect(screen.getByLabelText('Title')).toHaveValue('Existing Post')
+      })
+
+      // Find the hidden file input and trigger upload
+      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+      expect(fileInput).toBeTruthy()
+
+      const file = new File(['test'], 'photo.png', { type: 'image/png' })
+      Object.defineProperty(fileInput, 'files', { value: [file], writable: false })
+      fileInput.dispatchEvent(new Event('change', { bubbles: true }))
+
+      await waitFor(() => {
+        expect(mockUpload).toHaveBeenCalled()
+      })
+
+      // Verify the inserted text uses double newline for blank line separation
+      await waitFor(() => {
+        const textareas = document.querySelectorAll('textarea')
+        const bodyTextarea = textareas[0]!
+        // The inserted markdown should have \n\n (blank line) after the image
+        expect(bodyTextarea.value).toContain('![photo.png](photo.png)\n\n')
+      })
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
   it('shows 422 with unparseable body as generic validation error', async () => {
     const mockCreatePost = vi.mocked(createPost)
     mockCreatePost.mockRejectedValue(

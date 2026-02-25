@@ -55,6 +55,7 @@ _ALLOWED_TAGS: frozenset[str] = frozenset(
         "input",
         "kbd",
         "li",
+        "mark",
         "ol",
         "p",
         "pre",

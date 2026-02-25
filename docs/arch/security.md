@@ -234,3 +234,14 @@ The quality gate (`just check`) includes multiple security-focused tools:
 | mypy + basedpyright | Python | Strict type checking reduces type-confusion bugs |
 
 Custom Semgrep rules (`.semgrep.yml`) block `eval()` and `new Function()` in JavaScript/TypeScript. Ruff's bandit rules are selectively relaxed only for pandoc/git subprocess invocations and test fixtures.
+
+### Semgrep Rule Exclusions
+
+The following Semgrep rules are excluded in the quality gate (`justfile:check-semgrep`) with documented justification:
+
+| Excluded Rule | Justification |
+|---------------|---------------|
+| `react-dangerouslysetinnerhtml` (security.audit variant) | All `dangerouslySetInnerHTML` usages render Pandoc HTML that is sanitized server-side through the allowlist sanitizer (`_HtmlSanitizer` in `backend/pandoc/renderer.py`). The sanitizer strips all unsafe tags, validates URL schemes, and escapes attribute values. See [HTML Sanitization](#html-sanitization) above. |
+| `react-dangerouslysetinnerhtml-prop` (prop variant) | Same justification as above — different Semgrep rule ID for the same pattern. |
+
+**Affected files:** `PostCard.tsx`, `PostPage.tsx`, `SearchPage.tsx`, `EditorPage.tsx`, `AdminPage.tsx`, `PageViewPage.tsx`. These components render post content, excerpts, and page content that originates from the Pandoc rendering pipeline, which sanitizes all output before storage.

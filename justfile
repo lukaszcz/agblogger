@@ -161,6 +161,14 @@ check-vulture:
     uv run vulture backend cli --exclude "backend/migrations" --min-confidence 80
 
 # Runtime security-focused static analysis (Semgrep)
+#
+# Excluded rules:
+#   react-dangerouslysetinnerhtml (security.audit + prop variants):
+#     All dangerouslySetInnerHTML usages render Pandoc HTML that is sanitized
+#     server-side through the allowlist sanitizer in backend/pandoc/renderer.py.
+#     Affected files: PostCard.tsx, PostPage.tsx, SearchPage.tsx, EditorPage.tsx,
+#     AdminPage.tsx, PageViewPage.tsx.
+#     See docs/arch/security.md for sanitization details.
 check-semgrep:
     @echo "── Runtime static security analysis (Semgrep) ──"
     uv run semgrep scan \
@@ -176,6 +184,7 @@ check-semgrep:
         --config p/trailofbits \
         --config .semgrep.yml \
         --exclude-rule typescript.react.security.audit.react-dangerouslysetinnerhtml.react-dangerouslysetinnerhtml \
+        --exclude-rule typescript.react.react-dangerouslysetinnerhtml-prop.react-dangerouslysetinnerhtml-prop \
         --error \
         --quiet \
         backend/ cli/ frontend/src/ Dockerfile docker-compose.yml \

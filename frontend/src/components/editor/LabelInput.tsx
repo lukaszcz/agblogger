@@ -17,6 +17,7 @@ export default function LabelInput({ value, onChange, disabled }: LabelInputProp
   const [open, setOpen] = useState(false)
   const [creating, setCreating] = useState(false)
   const [loadError, setLoadError] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
   const [activeIndex, setActiveIndex] = useState(-1)
   const inputRef = useRef<HTMLInputElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -77,6 +78,8 @@ export default function LabelInput({ value, onChange, disabled }: LabelInputProp
     } catch (err) {
       if (err instanceof HTTPError && err.response.status === 409) {
         addLabel(trimmed)
+      } else if (err instanceof HTTPError && err.response.status === 422) {
+        setCreateError('Invalid label')
       } else {
         setLoadError(true)
       }
@@ -131,9 +134,10 @@ export default function LabelInput({ value, onChange, disabled }: LabelInputProp
     }
   }
 
-  // Reset active index when query changes
+  // Reset active index and clear validation errors when query changes
   useEffect(() => {
     setActiveIndex(-1)
+    setCreateError(null)
   }, [query])
 
   return (
@@ -187,6 +191,12 @@ export default function LabelInput({ value, onChange, disabled }: LabelInputProp
       {loadError && (
         <p className="mt-1 text-xs text-red-600">
           Failed to load labels. Type to create new ones.
+        </p>
+      )}
+
+      {createError !== null && (
+        <p className="mt-1 text-xs text-red-600">
+          {createError}
         </p>
       )}
 

@@ -69,7 +69,7 @@ On startup, the lifespan handler:
 The database serves as a **cache**, not the source of truth:
 
 - **`PostCache`** — Cached post metadata: file path, title, author, timestamps (`DateTime(timezone=True)`, stored as UTC), draft status, content hash (SHA-256), rendered excerpt (Pandoc HTML), rendered HTML.
-- **`PostsFTS`** — SQLite FTS5 virtual table for full-text search over title and content.
+- **`PostsFTS`** — SQLite FTS5 virtual table for full-text search over title and content. **Limitation:** FTS5's default tokenizer does not segment CJK (Chinese, Japanese, Korean) text, so CJK queries may not return expected results. A custom tokenizer (e.g., `unicode61` with ICU) would be needed for CJK support.
 - **`LabelCache`** — Label with ID, display names (JSON array), and implicit flag.
 - **`LabelParentCache`** — DAG edge table (label_id → parent_id).
 - **`PostLabelCache`** — Many-to-many association between posts and labels.
@@ -85,11 +85,11 @@ The database serves as a **cache**, not the source of truth:
 
 Markdown is rendered to HTML via a long-lived `pandoc server` process managed by `PandocServer` in `backend/pandoc/server.py`. The server binds to `127.0.0.1` on an internal port and accepts JSON POST requests. `render_markdown()` in `renderer.py` sends async HTTP requests via `httpx` with a 10-second per-request timeout. If the server crashes, it is automatically restarted on the next render attempt.
 
-Rendering happens at publish time (during cache rebuild and post create/update), not per-request. The rendered HTML is stored in `PostCache.rendered_html`. A rendered excerpt is also generated from a markdown-preserving truncation (`generate_markdown_excerpt()`) and stored in `PostCache.rendered_excerpt`. Search results render excerpt HTML client-side (including KaTeX via `useRenderedHtml`), while timeline cards render excerpts as plain text extracted from sanitized HTML.
+Rendering happens at publish time (during cache rebuild and post create/update), not per-request. The rendered HTML is stored in `PostCache.rendered_html`. A rendered excerpt is also generated from a markdown-preserving truncation (`generate_markdown_excerpt()`) and stored in `PostCache.rendered_excerpt`. Both timeline cards and search results render excerpt HTML client-side with KaTeX math processing via `useRenderedHtml`.
 
 Pandoc output is sanitized through an allowlist HTML sanitizer before storage and before heading-anchor injection. Unsafe tags/attributes and unsafe URL schemes (for example `javascript:`) are stripped.
 
-Pandoc conversion settings: Pandoc Markdown with `alerts`, `emoji`, `lists_without_preceding_blankline` and `mark` extensions, output as `html5` with KaTeX math rendering and Pygments syntax highlighting.
+Pandoc conversion settings: Pandoc Markdown with `emoji`, `lists_without_preceding_blankline` and `mark` extensions, output as `html5` with KaTeX math rendering and Pygments syntax highlighting. Note: GitHub-style alerts (`[!NOTE]`, `[!WARNING]`, etc.) are not supported by Pandoc — a Lua filter would be needed to implement them.
 
 Features: GitHub Flavored Markdown (tables, task lists, strikethrough), KaTeX math, syntax highlighting (140+ languages), and heading anchor injection.
 

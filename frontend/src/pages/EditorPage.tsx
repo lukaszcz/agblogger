@@ -212,7 +212,7 @@ export default function EditorPage() {
           const isImage = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'avif'].includes(ext)
           return isImage ? `![${name}](${name})` : `[${name}](${name})`
         })
-        const insertText = insertions.join('\n') + '\n'
+        const insertText = insertions.join('\n') + '\n\n'
         const before = body.slice(0, pos)
         const after = body.slice(pos)
         setBody(before + insertText + after)

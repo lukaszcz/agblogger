@@ -13,10 +13,14 @@ vi.mock('@/api/labels', () => ({
 
 vi.mock('@/api/client', () => {
   class MockHTTPError extends Error {
-    response: { status: number }
-    constructor(status: number) {
+    response: { status: number; text: () => Promise<string> }
+    constructor(status: number, body?: string) {
       super(`HTTP ${status}`)
-      this.response = { status }
+      const bodyStr = body ?? ''
+      this.response = {
+        status,
+        text: () => Promise.resolve(bodyStr),
+      }
     }
   }
   return { default: {}, HTTPError: MockHTTPError }
@@ -309,6 +313,48 @@ describe('LabelInput', () => {
     await waitFor(() => {
       expect(screen.getByText('software engineering')).toBeInTheDocument()
     })
+  })
+
+  it('shows validation error on 422 create failure', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    const body = JSON.stringify({ detail: [{ msg: "String should match pattern '^[a-z0-9][a-z0-9-]*'" }] })
+    mockCreateLabel.mockRejectedValueOnce(
+      new (HTTPError as unknown as new (s: number, b: string) => Error)(422, body),
+    )
+    await renderLabelInput({ onChange })
+
+    const input = screen.getByRole('combobox')
+    await user.type(input, 'BAD LABEL')
+    await user.keyboard('{Enter}')
+
+    await waitFor(() => {
+      expect(screen.getByText('Invalid label')).toBeInTheDocument()
+    })
+    // Should NOT show the generic load error
+    expect(screen.queryByText('Failed to load labels. Type to create new ones.')).not.toBeInTheDocument()
+  })
+
+  it('clears validation error when typing new query', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    const body = JSON.stringify({ detail: [{ msg: 'validation error' }] })
+    mockCreateLabel.mockRejectedValueOnce(
+      new (HTTPError as unknown as new (s: number, b: string) => Error)(422, body),
+    )
+    await renderLabelInput({ onChange })
+
+    const input = screen.getByRole('combobox')
+    await user.type(input, 'badlabel')
+    await user.keyboard('{Enter}')
+
+    await waitFor(() => {
+      expect(screen.getByText('Invalid label')).toBeInTheDocument()
+    })
+
+    // Typing again should clear the validation error
+    await user.type(input, 'x')
+    expect(screen.queryByText('Invalid label')).not.toBeInTheDocument()
   })
 
   it('ArrowUp wraps around to last item', async () => {
