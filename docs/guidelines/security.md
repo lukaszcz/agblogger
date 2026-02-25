@@ -105,7 +105,8 @@ All Pandoc-rendered HTML passes through the allowlist-based sanitizer (`backend/
 - Escapes all text content and attribute values
 
 When modifying the sanitizer:
-- Never add `script`, `iframe`, `object`, `embed`, `style`, `form`, `input`, or `button` to the allowed tags
+- Never add `script`, `object`, `embed`, `style`, `form`, `input`, or `button` to the allowed tags
+- `iframe` is conditionally allowed only for YouTube embed/shorts URLs (`_YOUTUBE_SRC_RE`). The sanitizer forces sandbox, referrerpolicy, and loading attributes. Never extend iframe support to other domains without updating CSP `frame-src`.
 - Never allow `on*` event handler attributes
 - Never allow `javascript:` or `data:` URL schemes in `href`/`src`
 - Test with XSS payloads: `<script>alert(1)</script>`, `<img onerror=alert(1) src=x>`, `<a href="javascript:alert(1)">`, `<div style="background:url(javascript:alert(1))">`
