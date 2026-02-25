@@ -130,7 +130,7 @@ Pandoc-rendered HTML passes through an allowlist-based sanitizer (`backend/pando
 
 - Allows a fixed set of semantic tags (headings, paragraphs, lists, tables, code blocks, links, images)
 - Strips all tags not in the allowlist (script, object, embed, style, form, etc.)
-- Conditionally allows `<iframe>` only when `src` matches YouTube embed/shorts URLs; forces `sandbox="allow-scripts allow-same-origin allow-popups"`, `allowfullscreen`, `referrerpolicy="no-referrer"`, and `loading="lazy"` on all iframes
+- Conditionally allows `<iframe>` only when `src` matches YouTube embed/shorts URLs; forces `sandbox="allow-scripts allow-same-origin allow-popups"`, `allowfullscreen`, `referrerpolicy="no-referrer"`, and `loading="lazy"` on all allowed iframes; rejected iframes are replaced with a user-visible notification
 - Allows only `class` and `id` as global attributes, plus tag-specific attributes (`href`/`title` on `<a>`, `alt`/`src`/`title` on `<img>`, `colspan`/`rowspan` on `<td>`/`<th>`)
 - Validates URLs: allows relative paths, `http`, `https`, `mailto`, `tel` schemes; blocks `javascript:`, `data:`, and protocol-relative URLs
 - Validates `id` values against `^[a-zA-Z][a-zA-Z0-9:_-]*$`

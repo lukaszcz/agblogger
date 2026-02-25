@@ -21,19 +21,18 @@ The iframe renders as a responsive 16:9 embedded player, full content width. Use
 ## Allowed URL Patterns
 
 ```
-^https://(?:www\.)?(?:youtube\.com/(?:embed|shorts)/|youtube-nocookie\.com/embed/)[a-zA-Z0-9_-]{11}(?:\?[a-zA-Z0-9_=&%-]*)?$
+^https://www\.(?:youtube\.com/(?:embed|shorts)/|youtube-nocookie\.com/embed/)[a-zA-Z0-9_-]{11}(?:\?[a-zA-Z0-9_=&%-]*)?$
 ```
 
 Matches:
 - `https://www.youtube.com/embed/VIDEO_ID`
-- `https://youtube.com/embed/VIDEO_ID`
 - `https://www.youtube-nocookie.com/embed/VIDEO_ID`
-- `https://youtube-nocookie.com/embed/VIDEO_ID`
 - `https://www.youtube.com/shorts/VIDEO_ID`
-- `https://youtube.com/shorts/VIDEO_ID`
 - Optional query parameters (start time, etc.)
 
-Non-matching URLs cause the entire `<iframe>` to be stripped.
+Note: `www.` prefix is required to match the CSP `frame-src` domains. Bare domains (e.g., `youtube.com`) are rejected. `youtube-nocookie.com` only supports `/embed/`, not `/shorts/`, matching YouTube's own URL structure.
+
+Non-matching URLs cause the `<iframe>` to be replaced with a user-visible notification.
 
 ## Sanitizer Changes (`backend/pandoc/renderer.py`)
 
@@ -42,7 +41,7 @@ The existing `_HtmlSanitizer` strips unknown tags. Rather than adding `iframe` t
 1. Extract `src` attribute from iframe
 2. Validate against YouTube URL regex
 3. If valid: emit iframe with only `src` plus forced security attributes
-4. If invalid: strip the tag (existing behavior for unknown tags)
+4. If invalid: replace with a user-visible notification message
 
 **Forced security attributes** (injected by sanitizer, not user-controllable):
 - `sandbox="allow-scripts allow-same-origin allow-popups"` — minimal permissions for YouTube player
@@ -54,7 +53,7 @@ The existing `_HtmlSanitizer` strips unknown tags. Rather than adding `iframe` t
 - `allow-scripts` — YouTube player is a JS app, won't work without it
 - `allow-same-origin` — needed for YouTube's own cookies/storage; safe because YouTube is cross-origin
 - `allow-popups` — needed for "Watch on YouTube" link
-- Blocked: top-navigation, forms, modals, pointer-lock, downloads
+- Key capabilities blocked: top-navigation, forms, modals, pointer-lock, downloads
 
 **Stripped attributes:** width, height, onload, style, and everything else — only `src` passes through from user input.
 

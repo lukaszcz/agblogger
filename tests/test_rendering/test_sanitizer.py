@@ -210,10 +210,11 @@ class TestYouTubeIframe:
         assert "<iframe" in result
         assert 'src="https://www.youtube.com/shorts/dQw4w9WgXcQ"' in result
 
-    def test_youtube_without_www_allowed(self) -> None:
+    def test_youtube_without_www_stripped(self) -> None:
+        """Bare youtube.com (without www.) is stripped to match CSP frame-src."""
         html = '<iframe src="https://youtube.com/embed/dQw4w9WgXcQ"></iframe>'
         result = _sanitize_html(html)
-        assert "<iframe" in result
+        assert "<iframe" not in result
 
     def test_youtube_with_query_params_allowed(self) -> None:
         html = (
@@ -304,6 +305,94 @@ class TestYouTubeIframe:
     def test_existing_iframe_test_still_passes(self) -> None:
         """Non-YouTube iframes are still stripped (regression for existing test)."""
         result = _sanitize_html("<iframe src='evil.com'></iframe>")
+        assert "<iframe" not in result
+
+    def test_stripped_iframe_shows_notification(self) -> None:
+        """Stripped iframes emit a user-visible notification instead of silent removal."""
+        html = '<iframe src="https://evil.com/page"></iframe>'
+        result = _sanitize_html(html)
+        assert "Iframe not allowed" in result
+        assert "<em>" in result
+
+    def test_stripped_iframe_without_src_shows_notification(self) -> None:
+        html = "<iframe></iframe>"
+        result = _sanitize_html(html)
+        assert "Iframe not allowed" in result
+
+    def test_user_sandbox_cannot_override_forced(self) -> None:
+        """User-supplied sandbox cannot widen permissions."""
+        html = (
+            '<iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ"'
+            ' sandbox="allow-top-navigation allow-forms"></iframe>'
+        )
+        result = _sanitize_html(html)
+        assert "allow-top-navigation" not in result
+        assert "allow-forms" not in result
+        assert 'sandbox="allow-scripts allow-same-origin allow-popups"' in result
+
+    def test_mixed_valid_and_invalid_iframes(self) -> None:
+        """Valid YouTube iframe preserved, non-YouTube stripped with notification."""
+        html = (
+            '<iframe src="https://evil.com/page"></iframe>'
+            '<iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ"></iframe>'
+        )
+        result = _sanitize_html(html)
+        assert result.count("<iframe") == 1
+        assert result.count("</iframe>") == 1
+        assert "evil.com" not in result
+        assert "youtube.com" in result
+        assert "Iframe not allowed" in result
+
+    def test_multiple_valid_iframes(self) -> None:
+        html = (
+            '<iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ"></iframe>'
+            '<iframe src="https://www.youtube.com/embed/abcdefghijk"></iframe>'
+        )
+        result = _sanitize_html(html)
+        assert result.count("<iframe") == 2
+        assert result.count("</iframe>") == 2
+
+    def test_self_closing_youtube_iframe_allowed(self) -> None:
+        """XHTML-style self-closing iframe should be handled like a regular iframe."""
+        html = '<iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ" />'
+        result = _sanitize_html(html)
+        assert "<iframe" in result
+        assert 'src="https://www.youtube.com/embed/dQw4w9WgXcQ"' in result
+
+    def test_self_closing_non_youtube_iframe_shows_notification(self) -> None:
+        html = '<iframe src="https://evil.com/page" />'
+        result = _sanitize_html(html)
+        assert "<iframe" not in result
+        assert "Iframe not allowed" in result
+
+    def test_youtube_nocookie_shorts_stripped(self) -> None:
+        """youtube-nocookie.com only supports /embed/, not /shorts/."""
+        html = '<iframe src="https://www.youtube-nocookie.com/shorts/dQw4w9WgXcQ"></iframe>'
+        result = _sanitize_html(html)
+        assert "<iframe" not in result
+
+    def test_youtube_url_with_fragment_stripped(self) -> None:
+        """URL fragments are not matched by the regex."""
+        html = '<iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ#t=30"></iframe>'
+        result = _sanitize_html(html)
+        assert "<iframe" not in result
+
+    def test_youtube_short_video_id_stripped(self) -> None:
+        """Video ID must be exactly 11 characters."""
+        html = '<iframe src="https://www.youtube.com/embed/dQw4w9WgXc"></iframe>'
+        result = _sanitize_html(html)
+        assert "<iframe" not in result
+
+    def test_youtube_long_video_id_stripped(self) -> None:
+        """Video ID must be exactly 11 characters."""
+        html = '<iframe src="https://www.youtube.com/embed/dQw4w9WgXcQx"></iframe>'
+        result = _sanitize_html(html)
+        assert "<iframe" not in result
+
+    def test_youtube_nocookie_without_www_stripped(self) -> None:
+        """Bare youtube-nocookie.com (without www.) is stripped to match CSP."""
+        html = '<iframe src="https://youtube-nocookie.com/embed/dQw4w9WgXcQ"></iframe>'
+        result = _sanitize_html(html)
         assert "<iframe" not in result
 
 

@@ -151,6 +151,7 @@ The backend enforces a strict CSP via `backend/config.py:content_security_policy
 ```
 default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';
 img-src 'self' https: data:; font-src 'self' data:; connect-src 'self';
+frame-src https://www.youtube.com https://www.youtube-nocookie.com;
 base-uri 'self'; form-action 'self'; frame-ancestors 'none'
 ```
 

@@ -30,7 +30,7 @@ _SAFE_STYLE_RE = re.compile(r"^text-align:\s*(left|center|right|justify)\s*;?\s*
 _BOOLEAN_ATTRS: frozenset[str] = frozenset({"checked", "disabled", "open"})
 _VOID_TAGS: frozenset[str] = frozenset({"br", "hr", "img", "input"})
 _YOUTUBE_SRC_RE = re.compile(
-    r"^https://(?:www\.)?(?:youtube\.com/(?:embed|shorts)/|youtube-nocookie\.com/embed/)"
+    r"^https://www\.(?:youtube\.com/(?:embed|shorts)/|youtube-nocookie\.com/embed/)"
     r"[a-zA-Z0-9_-]{11}(?:\?[a-zA-Z0-9_=&%-]*)?$"
 )
 _ALLOWED_TAGS: frozenset[str] = frozenset(
@@ -145,6 +145,9 @@ class _HtmlSanitizer(HTMLParser):
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag_name = tag.lower()
+        if tag_name == "iframe":
+            self._handle_iframe(attrs)
+            return
         if tag_name not in _ALLOWED_TAGS:
             return
         rendered_attrs = self._sanitize_attrs(tag_name, attrs)
@@ -196,7 +199,10 @@ class _HtmlSanitizer(HTMLParser):
         return sanitized
 
     def _handle_iframe(self, attrs: list[tuple[str, str | None]]) -> None:
-        """Allow YouTube iframes with forced security attributes; strip all others."""
+        """Allow YouTube iframes with forced security attributes; strip all others.
+
+        The src value is HTML-escaped before emission.
+        """
         src = None
         for raw_name, raw_value in attrs:
             if raw_name.lower() == "src" and raw_value is not None:
@@ -204,6 +210,10 @@ class _HtmlSanitizer(HTMLParser):
                 break
 
         if src is None or not _YOUTUBE_SRC_RE.fullmatch(src):
+            logger.debug("Stripped iframe with non-YouTube src: %s", src[:100] if src else "(none)")
+            self._parts.append(
+                "<p><em>[Iframe not allowed: only YouTube video embeds are supported]</em></p>"
+            )
             self._open_tags.append(None)
             return
 
