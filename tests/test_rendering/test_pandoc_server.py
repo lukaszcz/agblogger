@@ -528,6 +528,37 @@ class TestRenderViaServer:
         assert "<p>Hello <strong>world</strong></p>" in result
         mock_client.post.assert_awaited_once()
 
+    async def test_render_excerpt_uses_excerpt_pipeline(self) -> None:
+        """Excerpt rendering must disable raw HTML and strip media tags."""
+        from backend.pandoc import renderer
+
+        mock_server = MagicMock(spec=PandocServer)
+        mock_server.base_url = "http://127.0.0.1:3031"
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "output": '<p>Hello <strong>world</strong> <img src="https://evil.example/x.png"></p>\n'
+        }
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+
+        with (
+            patch.object(renderer, "_server", mock_server),
+            patch.object(renderer, "_http_client", mock_client),
+        ):
+            result = await renderer.render_markdown_excerpt(
+                "Hello **world** <img src='https://evil.example/x.png'>"
+            )
+
+        assert "<strong>world</strong>" in result
+        assert "<img" not in result
+        call = mock_client.post.await_args
+        assert (
+            call.kwargs["json"]["from"]
+            == "markdown-raw_html+emoji+lists_without_preceding_blankline+mark"
+        )
+
     async def test_render_connection_error_triggers_restart(self) -> None:
         """Mock ConnectError on first call, success on retry."""
         from backend.pandoc import renderer

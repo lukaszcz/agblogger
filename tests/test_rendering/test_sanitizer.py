@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from backend.pandoc.renderer import _sanitize_html
+from backend.pandoc.renderer import _sanitize_excerpt_html, _sanitize_html
 
 
 class TestSanitizeAllowedTags:
@@ -185,3 +185,17 @@ class TestEntityHandling:
         result = _sanitize_html("<p><script></p>")
         # The <script> tag is stripped, not its text content
         assert "<script>" not in result
+
+
+class TestExcerptSanitizer:
+    """Tests for excerpt-specific sanitization policy."""
+
+    def test_excerpt_strips_img_tag(self) -> None:
+        html = '<p>Hello <strong>world</strong> <img src="https://evil.example/a.png" alt="x"></p>'
+        result = _sanitize_excerpt_html(html)
+        assert "<strong>world</strong>" in result
+        assert "<img" not in result
+
+    def test_excerpt_strips_input_tag(self) -> None:
+        result = _sanitize_excerpt_html('<p><input type="checkbox" checked disabled></p>')
+        assert "<input" not in result

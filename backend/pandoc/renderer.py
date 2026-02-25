@@ -13,6 +13,8 @@ from urllib.parse import urlparse as _urlparse
 import httpx
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from backend.pandoc.server import PandocServer
 
 logger = logging.getLogger(__name__)
@@ -85,6 +87,10 @@ _TAG_ALLOWED_ATTRS: dict[str, frozenset[str]] = {
     "td": frozenset({"colspan", "rowspan", "style"}),
     "th": frozenset({"colspan", "rowspan", "style"}),
 }
+_EXCERPT_ALLOWED_TAGS: frozenset[str] = _ALLOWED_TAGS - frozenset({"img", "input"})
+_EXCERPT_TAG_ALLOWED_ATTRS: dict[str, frozenset[str]] = {
+    tag: attrs for tag, attrs in _TAG_ALLOWED_ATTRS.items() if tag in _EXCERPT_ALLOWED_TAGS
+}
 
 
 def _is_safe_url(url_value: str, *, allow_non_http: bool) -> bool:
@@ -110,14 +116,23 @@ def _is_safe_url(url_value: str, *, allow_non_http: bool) -> bool:
 class _HtmlSanitizer(HTMLParser):
     """Allowlist-based HTML sanitizer for Pandoc output."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        allowed_tags: frozenset[str],
+        global_allowed_attrs: frozenset[str],
+        tag_allowed_attrs: dict[str, frozenset[str]],
+    ) -> None:
         super().__init__(convert_charrefs=False)
+        self._allowed_tags = allowed_tags
+        self._global_allowed_attrs = global_allowed_attrs
+        self._tag_allowed_attrs = tag_allowed_attrs
         self._parts: list[str] = []
         self._open_tags: list[str | None] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag_name = tag.lower()
-        if tag_name not in _ALLOWED_TAGS:
+        if tag_name not in self._allowed_tags:
             self._open_tags.append(None)
             return
 
@@ -138,7 +153,7 @@ class _HtmlSanitizer(HTMLParser):
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag_name = tag.lower()
-        if tag_name not in _ALLOWED_TAGS:
+        if tag_name not in self._allowed_tags:
             return
         rendered_attrs = self._sanitize_attrs(tag_name, attrs)
         attrs_text = "".join(
@@ -163,7 +178,9 @@ class _HtmlSanitizer(HTMLParser):
         tag_name: str,
         attrs: list[tuple[str, str | None]],
     ) -> list[tuple[str, str]]:
-        allowed_attrs = _GLOBAL_ALLOWED_ATTRS | _TAG_ALLOWED_ATTRS.get(tag_name, frozenset())
+        allowed_attrs = self._global_allowed_attrs | self._tag_allowed_attrs.get(
+            tag_name, frozenset()
+        )
         sanitized: list[tuple[str, str]] = []
 
         for raw_name, raw_value in attrs:
@@ -191,7 +208,23 @@ class _HtmlSanitizer(HTMLParser):
 
 def _sanitize_html(rendered_html: str) -> str:
     """Sanitize rendered HTML output to prevent script execution."""
-    sanitizer = _HtmlSanitizer()
+    sanitizer = _HtmlSanitizer(
+        allowed_tags=_ALLOWED_TAGS,
+        global_allowed_attrs=_GLOBAL_ALLOWED_ATTRS,
+        tag_allowed_attrs=_TAG_ALLOWED_ATTRS,
+    )
+    sanitizer.feed(rendered_html)
+    sanitizer.close()
+    return sanitizer.get_sanitized_html()
+
+
+def _sanitize_excerpt_html(rendered_html: str) -> str:
+    """Sanitize rendered excerpt HTML with stricter media restrictions."""
+    sanitizer = _HtmlSanitizer(
+        allowed_tags=_EXCERPT_ALLOWED_TAGS,
+        global_allowed_attrs=_GLOBAL_ALLOWED_ATTRS,
+        tag_allowed_attrs=_EXCERPT_TAG_ALLOWED_ATTRS,
+    )
     sanitizer.feed(rendered_html)
     sanitizer.close()
     return sanitizer.get_sanitized_html()
@@ -216,12 +249,13 @@ async def close_renderer() -> None:
     _http_client = None
 
 
-async def render_markdown(markdown: str) -> str:
-    """Render markdown to HTML using the pandoc server HTTP API.
-
-    Uses Pandoc Markdown + KaTeX math + syntax highlighting.
-    Raises RuntimeError if the renderer is not initialized or pandoc fails.
-    """
+async def _render_markdown(
+    markdown: str,
+    *,
+    from_format: str,
+    sanitizer: Callable[[str], str],
+) -> str:
+    """Render markdown to HTML using the pandoc server HTTP API."""
     # Capture module globals into locals to prevent race with close_renderer()
     server = _server
     client = _http_client
@@ -232,7 +266,7 @@ async def render_markdown(markdown: str) -> str:
 
     payload = {
         "text": markdown,
-        "from": "markdown+emoji+lists_without_preceding_blankline+mark",
+        "from": from_format,
         "to": "html5",
         "html-math-method": {"method": "katex"},
         "highlight-style": "pygments",
@@ -262,8 +296,26 @@ async def render_markdown(markdown: str) -> str:
         raise RenderError(f"Pandoc rendering error: {str(data['error'])[:200]}")
 
     output = data.get("output", "")
-    sanitized = _sanitize_html(output)
+    sanitized = sanitizer(output)
     return _add_heading_anchors(sanitized)
+
+
+async def render_markdown(markdown: str) -> str:
+    """Render full post/page markdown with standard sanitization."""
+    return await _render_markdown(
+        markdown,
+        from_format="markdown+emoji+lists_without_preceding_blankline+mark",
+        sanitizer=_sanitize_html,
+    )
+
+
+async def render_markdown_excerpt(markdown: str) -> str:
+    """Render excerpt markdown with stricter sanitization and raw HTML disabled."""
+    return await _render_markdown(
+        markdown,
+        from_format="markdown-raw_html+emoji+lists_without_preceding_blankline+mark",
+        sanitizer=_sanitize_excerpt_html,
+    )
 
 
 def _add_heading_anchors(html: str) -> str:

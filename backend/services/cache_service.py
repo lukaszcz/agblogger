@@ -11,7 +11,7 @@ from sqlalchemy import delete, text
 from backend.filesystem.content_manager import ContentManager, hash_content
 from backend.models.label import LabelCache, LabelParentCache, PostLabelCache
 from backend.models.post import PostCache
-from backend.pandoc.renderer import render_markdown, rewrite_relative_urls
+from backend.pandoc.renderer import render_markdown, render_markdown_excerpt, rewrite_relative_urls
 from backend.services.dag import break_cycles
 from backend.services.label_service import ensure_label_cache_entry
 
@@ -92,7 +92,7 @@ async def rebuild_cache(
         # Render HTML — skip this post if rendering fails
         try:
             rendered_html = await render_markdown(post_data.content)
-            rendered_excerpt = await render_markdown(
+            rendered_excerpt = await render_markdown_excerpt(
                 content_manager.get_markdown_excerpt(post_data)
             )
         except RuntimeError as exc:

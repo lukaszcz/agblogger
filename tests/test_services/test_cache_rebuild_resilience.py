@@ -97,9 +97,15 @@ class TestPandocFailureResilience:
         await ensure_tables(db_session)
         cm = ContentManager(tmp_content_dir)
 
-        with patch(
-            "backend.services.cache_service.render_markdown",
-            side_effect=failing_render,
+        with (
+            patch(
+                "backend.services.cache_service.render_markdown",
+                side_effect=failing_render,
+            ),
+            patch(
+                "backend.services.cache_service.render_markdown_excerpt",
+                side_effect=failing_render,
+            ),
         ):
             post_count, warnings = await rebuild_cache(db_session, cm)
 
@@ -128,7 +134,16 @@ class TestPandocFailureResilience:
         await ensure_tables(db_session)
         cm = ContentManager(tmp_content_dir)
 
-        with patch("backend.services.cache_service.render_markdown", side_effect=always_fail):
+        with (
+            patch(
+                "backend.services.cache_service.render_markdown",
+                side_effect=always_fail,
+            ),
+            patch(
+                "backend.services.cache_service.render_markdown_excerpt",
+                side_effect=always_fail,
+            ),
+        ):
             post_count, warnings = await rebuild_cache(db_session, cm)
 
         assert post_count == 0

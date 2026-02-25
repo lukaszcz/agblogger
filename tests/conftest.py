@@ -44,7 +44,7 @@ _RENDER_MARKDOWN_IMPORT_SITES = (
 
 
 def _restore_original_renderer() -> None:
-    """Restore the original render_markdown function on all patched modules.
+    """Restore the original renderer functions on all patched modules.
 
     Called during fixture teardown so that unit tests for the renderer module
     see the real (HTTP-based) function rather than the subprocess shim.
@@ -54,18 +54,22 @@ def _restore_original_renderer() -> None:
     import backend.pandoc.renderer as _renderer_mod
 
     original = getattr(_renderer_mod, "_original_render_markdown", None)
-    if original is None:
+    original_excerpt = getattr(_renderer_mod, "_original_render_markdown_excerpt", None)
+    if original is None or original_excerpt is None:
         return
 
     _renderer_mod.render_markdown = original
+    _renderer_mod.render_markdown_excerpt = original_excerpt
     for mod_name in _RENDER_MARKDOWN_IMPORT_SITES:
         mod = sys.modules.get(mod_name)
         if mod is not None and hasattr(mod, "render_markdown"):
             mod.render_markdown = original  # type: ignore[attr-defined]
+        if mod is not None and hasattr(mod, "render_markdown_excerpt"):
+            mod.render_markdown_excerpt = original_excerpt  # type: ignore[attr-defined]
 
 
 def _install_subprocess_fallback() -> None:
-    """Monkey-patch render_markdown to use subprocess instead of the HTTP API.
+    """Monkey-patch renderer functions to use subprocess instead of the HTTP API.
 
     Sets the module-level ``_pandoc_server_broken`` flag so that subsequent
     calls to ``create_test_client`` skip the server startup entirely.
@@ -84,14 +88,13 @@ def _install_subprocess_fallback() -> None:
     if getattr(_renderer_mod.render_markdown, "_is_subprocess_fallback", False):
         return
 
-    async def _subprocess_render(markdown: str) -> str:
-        """Fallback renderer using subprocess (for tests when server mode unavailable)."""
+    async def _subprocess_render_common(markdown: str, *, from_format: str, excerpt: bool) -> str:
         result = await asyncio.to_thread(
             subprocess.run,
             [
                 "pandoc",
                 "-f",
-                "markdown+emoji+lists_without_preceding_blankline+mark",
+                from_format,
                 "-t",
                 "html5",
                 "--katex",
@@ -106,22 +109,49 @@ def _install_subprocess_fallback() -> None:
         )
         if result.returncode != 0:
             raise RuntimeError(f"Pandoc failed: {result.stderr[:200]}")
-        sanitized = _renderer_mod._sanitize_html(result.stdout)
+        if excerpt:
+            sanitized = _renderer_mod._sanitize_excerpt_html(result.stdout)
+        else:
+            sanitized = _renderer_mod._sanitize_html(result.stdout)
         return _renderer_mod._add_heading_anchors(sanitized)
 
+    async def _subprocess_render(markdown: str) -> str:
+        """Fallback renderer using subprocess (for tests when server mode unavailable)."""
+        return await _subprocess_render_common(
+            markdown,
+            from_format="markdown+emoji+lists_without_preceding_blankline+mark",
+            excerpt=False,
+        )
+
+    async def _subprocess_render_excerpt(markdown: str) -> str:
+        """Fallback excerpt renderer using subprocess."""
+        return await _subprocess_render_common(
+            markdown,
+            from_format="markdown-raw_html+emoji+lists_without_preceding_blankline+mark",
+            excerpt=True,
+        )
+
     _subprocess_render._is_subprocess_fallback = True  # type: ignore[attr-defined]
+    _subprocess_render_excerpt._is_subprocess_fallback = True  # type: ignore[attr-defined]
 
     # Save original so it can be restored on cleanup.
     if not hasattr(_renderer_mod, "_original_render_markdown"):
         _renderer_mod._original_render_markdown = _renderer_mod.render_markdown  # type: ignore[attr-defined]
+    if not hasattr(_renderer_mod, "_original_render_markdown_excerpt"):
+        _renderer_mod._original_render_markdown_excerpt = (  # type: ignore[attr-defined]
+            _renderer_mod.render_markdown_excerpt
+        )
 
     _renderer_mod.render_markdown = _subprocess_render
+    _renderer_mod.render_markdown_excerpt = _subprocess_render_excerpt
 
     # Patch modules that may have already imported render_markdown by reference.
     for mod_name in _RENDER_MARKDOWN_IMPORT_SITES:
         mod = sys.modules.get(mod_name)
         if mod is not None and hasattr(mod, "render_markdown"):
             mod.render_markdown = _subprocess_render  # type: ignore[attr-defined]
+        if mod is not None and hasattr(mod, "render_markdown_excerpt"):
+            mod.render_markdown_excerpt = _subprocess_render_excerpt  # type: ignore[attr-defined]
 
 
 @asynccontextmanager

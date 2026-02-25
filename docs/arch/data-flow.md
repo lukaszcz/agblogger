@@ -12,7 +12,8 @@ Frontend sends structured data: { title, body, labels, is_draft }
         → Constructs PostData from structured fields
         → serialize_post() assembles YAML front matter + body
         → write to content/ directory (creates directory)
-        → render HTML via Pandoc, rewrite relative URLs, store in PostCache
+        → render full HTML via Pandoc + render excerpt via excerpt-specific Pandoc/sanitizer path
+        → rewrite relative URLs, store in PostCache
 ```
 
 ## Updating a Post (Editor)
@@ -28,7 +29,8 @@ Frontend sends structured data: { title, body, labels, is_draft }
         → serialize_post() assembles YAML front matter + body
         → write to content/ directory
         → If title slug changed: rename directory, create symlink at old path
-        → render HTML via Pandoc, rewrite relative URLs, update PostCache
+        → render full HTML via Pandoc + render excerpt via excerpt-specific Pandoc/sanitizer path
+        → rewrite relative URLs, update PostCache
         → Returns new file_path (may differ from request path after rename)
 ```
 
@@ -40,7 +42,7 @@ Write .md file → ContentManager.write_post()
     → write to content/ directory
     → rebuild_cache()
         → parse all .md files
-        → render HTML via Pandoc
+        → render full HTML via Pandoc + render excerpts via excerpt-specific Pandoc/sanitizer path
         → populate PostCache + PostsFTS
         → parse labels.toml
         → populate LabelCache + PostLabelCache

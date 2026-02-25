@@ -89,6 +89,8 @@ Rendering happens at publish time (during cache rebuild and post create/update),
 
 Pandoc output is sanitized through an allowlist HTML sanitizer before storage and before heading-anchor injection. Unsafe tags/attributes and unsafe URL schemes (for example `javascript:`) are stripped.
 
+Excerpts use a dedicated renderer path (`render_markdown_excerpt()`): Pandoc input disables raw HTML (`markdown-raw_html+...`) and excerpt sanitization is stricter than full-post sanitization. In particular, excerpts strip media-bearing tags such as `<img>` (and task-list `<input>`), preventing list/search pages from triggering remote media fetches while still preserving inline markdown formatting (bold/italic/code/math/links).
+
 Pandoc conversion settings: Pandoc Markdown with `emoji`, `lists_without_preceding_blankline` and `mark` extensions, output as `html5` with KaTeX math rendering and Pygments syntax highlighting. Note: GitHub-style alerts (`[!NOTE]`, `[!WARNING]`, etc.) are not supported by Pandoc — a Lua filter would be needed to implement them.
 
 Features: GitHub Flavored Markdown (tables, task lists, strikethrough), KaTeX math, syntax highlighting (140+ languages), and heading anchor injection.

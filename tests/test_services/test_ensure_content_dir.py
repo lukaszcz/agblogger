@@ -100,6 +100,7 @@ async def test_startup_backfilled_files_are_committed_and_cache_rebuilt(tmp_path
         patch("backend.pandoc.server.PandocServer", return_value=mock_server),
         patch("backend.pandoc.renderer.init_renderer"),
         patch("backend.services.cache_service.render_markdown", side_effect=_stub_render),
+        patch("backend.services.cache_service.render_markdown_excerpt", side_effect=_stub_render),
     ):
         async with app.router.lifespan_context(app):
             assert (content_dir / "index.toml").is_file()

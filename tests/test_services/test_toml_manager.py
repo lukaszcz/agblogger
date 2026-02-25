@@ -83,3 +83,15 @@ class TestInvalidTomlResilience:
         result = parse_site_config(tmp_path)
         assert result.title == "My Blog"
         assert result.pages == []
+
+    def test_empty_timezone_falls_back_to_utc(self, tmp_path: Path) -> None:
+        """Empty timezone values must not raise; fallback to UTC."""
+        (tmp_path / "index.toml").write_text('[site]\ntitle = "Blog"\ntimezone = ""\n')
+        result = parse_site_config(tmp_path)
+        assert result.timezone == "UTC"
+
+    def test_non_string_timezone_falls_back_to_utc(self, tmp_path: Path) -> None:
+        """Non-string timezone values must not raise; fallback to UTC."""
+        (tmp_path / "index.toml").write_text('[site]\ntitle = "Blog"\ntimezone = 42\n')
+        result = parse_site_config(tmp_path)
+        assert result.timezone == "UTC"

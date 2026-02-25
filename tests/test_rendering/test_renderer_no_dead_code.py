@@ -28,8 +28,14 @@ class TestRendererModule:
 
         assert inspect.iscoroutinefunction(render_markdown)
 
+    def test_render_markdown_excerpt_is_async(self) -> None:
+        """render_markdown_excerpt should be an async function."""
+        from backend.pandoc.renderer import render_markdown_excerpt
+
+        assert inspect.iscoroutinefunction(render_markdown_excerpt)
+
     def test_module_public_functions(self) -> None:
-        """Public API: close_renderer, init_renderer, render_markdown, rewrite_relative_urls."""
+        """Public API includes renderer lifecycle, full render, excerpt render, URL rewriting."""
         from backend.pandoc import renderer
 
         public_functions = sorted(
@@ -41,5 +47,6 @@ class TestRendererModule:
             "close_renderer",
             "init_renderer",
             "render_markdown",
+            "render_markdown_excerpt",
             "rewrite_relative_urls",
         ]

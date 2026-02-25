@@ -31,7 +31,7 @@ from backend.filesystem.frontmatter import (
 from backend.models.label import PostLabelCache
 from backend.models.post import PostCache
 from backend.models.user import User
-from backend.pandoc.renderer import render_markdown, rewrite_relative_urls
+from backend.pandoc.renderer import render_markdown, render_markdown_excerpt, rewrite_relative_urls
 from backend.schemas.post import (
     PostCreate,
     PostDetail,
@@ -247,7 +247,7 @@ async def upload_post(
     # Catch pandoc rendering failures and clean up assets
     try:
         md_excerpt = generate_markdown_excerpt(post_data.content)
-        rendered_excerpt = await render_markdown(md_excerpt) if md_excerpt else ""
+        rendered_excerpt = await render_markdown_excerpt(md_excerpt) if md_excerpt else ""
         rendered_html = await render_markdown(post_data.content)
     except RuntimeError as exc:
         logger.error("Pandoc rendering failed during upload of %s: %s", file_path, exc)
@@ -434,7 +434,7 @@ async def create_post_endpoint(
     # Catch pandoc rendering failures
     try:
         md_excerpt = generate_markdown_excerpt(post_data.content)
-        rendered_excerpt = await render_markdown(md_excerpt) if md_excerpt else ""
+        rendered_excerpt = await render_markdown_excerpt(md_excerpt) if md_excerpt else ""
         rendered_html = await render_markdown(post_data.content)
     except RuntimeError as exc:
         logger.error("Pandoc rendering failed for new post %s: %s", file_path, exc)
@@ -538,7 +538,7 @@ async def update_post_endpoint(
 
     # Catch pandoc rendering failures — render once, reuse for URL rewriting
     try:
-        raw_rendered_excerpt = await render_markdown(md_excerpt) if md_excerpt else ""
+        raw_rendered_excerpt = await render_markdown_excerpt(md_excerpt) if md_excerpt else ""
         raw_rendered_html = await render_markdown(post_data.content)
     except RuntimeError as exc:
         logger.error("Pandoc rendering failed for post %s: %s", file_path, exc)

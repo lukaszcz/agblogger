@@ -87,6 +87,12 @@ def parse_site_config(content_dir: Path) -> SiteConfig:
     except KeyError:
         logger.warning("Invalid timezone %r in %s, falling back to UTC", raw_timezone, index_path)
         timezone = "UTC"
+    except TypeError:
+        logger.warning("Invalid timezone %r in %s, falling back to UTC", raw_timezone, index_path)
+        timezone = "UTC"
+    except ValueError:
+        logger.warning("Invalid timezone %r in %s, falling back to UTC", raw_timezone, index_path)
+        timezone = "UTC"
 
     return SiteConfig(
         title=site_data.get("title", "My Blog"),

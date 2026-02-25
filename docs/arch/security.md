@@ -134,6 +134,12 @@ Pandoc-rendered HTML passes through an allowlist-based sanitizer (`backend/pando
 - Validates `id` values against `^[a-zA-Z][a-zA-Z0-9:_-]*$`
 - Escapes all text content and attribute values via `html.escape()`
 
+Excerpts use a stricter pipeline (`render_markdown_excerpt()`):
+
+- Pandoc input format disables raw HTML (`markdown-raw_html+...`)
+- Excerpt sanitization removes media-bearing tags such as `<img>` and task-list `<input>`
+- This prevents timeline/search excerpt cards from triggering remote media fetches while still preserving inline markdown formatting rendered by Pandoc
+
 ### Path Traversal Protection
 
 The content file endpoint (`backend/api/content.py:_validate_path()`) enforces four layers:
