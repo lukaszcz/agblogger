@@ -231,7 +231,7 @@ async def render_markdown(markdown: str) -> str:
 
     payload = {
         "text": markdown,
-        "from": "markdown+alerts+emoji+lists_without_preceding_blankline+mark",
+        "from": "markdown+emoji+lists_without_preceding_blankline+mark",
         "to": "html5",
         "html-math-method": {"method": "katex"},
         "highlight-style": "pygments",

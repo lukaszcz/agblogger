@@ -10,7 +10,7 @@ RUN npm run build
 FROM python:3.13-slim
 
 # Install pandoc from GitHub releases (pinned version with +server support)
-ARG PANDOC_VERSION=3.9
+ARG PANDOC_VERSION=3.8.3
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl git \
     && ARCH=$(dpkg --print-architecture) \
