@@ -216,7 +216,9 @@ class TestYouTubeIframe:
         assert "<iframe" in result
 
     def test_youtube_with_query_params_allowed(self) -> None:
-        html = '<iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ?start=30&autoplay=1"></iframe>'
+        html = (
+            '<iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ?start=30&autoplay=1"></iframe>'
+        )
         result = _sanitize_html(html)
         assert "<iframe" in result
         assert "start=30" in result
@@ -269,7 +271,10 @@ class TestYouTubeIframe:
         assert 'loading="lazy"' in result
 
     def test_width_height_stripped(self) -> None:
-        html = '<iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ" width="560" height="315"></iframe>'
+        html = (
+            '<iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ"'
+            ' width="560" height="315"></iframe>'
+        )
         result = _sanitize_html(html)
         assert "<iframe" in result
         assert "width" not in result
