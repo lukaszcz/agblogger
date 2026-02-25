@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from backend.config import Settings
 from backend.pandoc.renderer import _sanitize_html
 
 
@@ -299,3 +300,13 @@ class TestYouTubeIframe:
         """Non-YouTube iframes are still stripped (regression for existing test)."""
         result = _sanitize_html("<iframe src='evil.com'></iframe>")
         assert "<iframe" not in result
+
+
+class TestContentSecurityPolicy:
+    """Tests for CSP YouTube frame-src directive."""
+
+    def test_csp_includes_frame_src_for_youtube(self) -> None:
+        settings = Settings()
+        assert "frame-src" in settings.content_security_policy
+        assert "https://www.youtube.com" in settings.content_security_policy
+        assert "https://www.youtube-nocookie.com" in settings.content_security_policy

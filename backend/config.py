@@ -76,6 +76,7 @@ class Settings(BaseSettings):
         "img-src 'self' https: data:; "
         "font-src 'self' data:; "
         "connect-src 'self'; "
+        "frame-src https://www.youtube.com https://www.youtube-nocookie.com; "
         "base-uri 'self'; "
         "form-action 'self'; "
         "frame-ancestors 'none'"
