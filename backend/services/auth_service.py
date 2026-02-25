@@ -39,9 +39,6 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     except ValueError:
         logger.warning("Malformed password hash encountered during verification")
         return False
-    except TypeError:
-        logger.warning("Malformed password hash encountered during verification")
-        return False
 
 
 def create_access_token(data: dict[str, Any], secret_key: str, expires_minutes: int = 15) -> str:

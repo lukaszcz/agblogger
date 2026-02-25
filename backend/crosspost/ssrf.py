@@ -107,6 +107,9 @@ async def ssrf_safe_client(
     transport = httpx.AsyncHTTPTransport()
     # Inject our SSRF-safe network backend into the transport's connection pool.
     # Uses httpx internal _pool attribute (tested against httpx 0.28.x).
+    if not hasattr(transport, "_pool"):
+        msg = "httpx internal API changed: AsyncHTTPTransport no longer has _pool attribute"
+        raise RuntimeError(msg)
     transport._pool = httpcore.AsyncConnectionPool(
         network_backend=SSRFSafeBackend(),
     )

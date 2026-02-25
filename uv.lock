@@ -62,7 +62,7 @@ requires-dist = [
     { name = "deptry", marker = "extra == 'dev'", specifier = ">=0.24" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "grapheme", specifier = ">=0.6.0" },
-    { name = "httpcore", specifier = ">=1.0" },
+    { name = "httpcore", specifier = ">=1.0,<2" },
     { name = "httpx", specifier = ">=0.28" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.28" },
     { name = "hypothesis", marker = "extra == 'dev'", specifier = ">=6.151.9" },

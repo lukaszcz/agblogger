@@ -1,8 +1,9 @@
+import DOMPurify from 'dompurify'
 import { Link } from 'react-router-dom'
 import { format, parseISO } from 'date-fns'
 import type { PostSummary } from '@/api/client'
-import { useRenderedHtml } from '@/hooks/useKatex'
 import LabelChip from '@/components/labels/LabelChip'
+import { useRenderedHtml } from '@/hooks/useKatex'
 
 interface PostCardProps {
   post: PostSummary
@@ -12,7 +13,8 @@ interface PostCardProps {
 export default function PostCard({ post, index = 0 }: PostCardProps) {
   const postUrl = `/post/${post.file_path}`
   const staggerClass = `stagger-${Math.min(index + 1, 8)}`
-  const renderedExcerpt = useRenderedHtml(post.rendered_excerpt)
+  const rawExcerpt = useRenderedHtml(post.rendered_excerpt)
+  const sanitizedExcerpt = rawExcerpt !== '' ? DOMPurify.sanitize(rawExcerpt) : ''
 
   let dateStr = ''
   try {
@@ -33,10 +35,10 @@ export default function PostCard({ post, index = 0 }: PostCardProps) {
               {post.title}
             </h2>
 
-            {renderedExcerpt !== '' && (
+            {sanitizedExcerpt !== '' && (
               <div
                 className="mt-2 text-sm text-muted leading-relaxed line-clamp-2 prose-excerpt"
-                dangerouslySetInnerHTML={{ __html: renderedExcerpt }}
+                dangerouslySetInnerHTML={{ __html: sanitizedExcerpt }}
               />
             )}
 

@@ -96,7 +96,7 @@ class PandocServer:
             "--timeout",
             str(self._timeout),
             stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
         )
         logger.info(
             "Spawned pandoc server process (pid=%s, port=%d)",

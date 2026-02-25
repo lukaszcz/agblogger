@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+from dataclasses import fields as dataclass_fields
 from typing import TYPE_CHECKING
 
 import pytest
@@ -11,9 +13,11 @@ from cli.mutation_backend import (
     PROFILE_BACKEND_FULL,
     BackendMutationProfile,
     MutationSummary,
+    _write_report,
     collect_summary,
     evaluate_gate,
     render_setup_cfg,
+    run_profile,
 )
 
 if TYPE_CHECKING:
@@ -226,3 +230,69 @@ class TestMutationSummaryValidation:
                 segfault=0,
                 interrupted=0,
             )
+
+
+class TestRunProfileValidation:
+    def test_invalid_max_children_does_not_create_report_dir(self, tmp_path: Path) -> None:
+        """Validation must happen before any side effects like directory creation."""
+        report_dir = tmp_path / "reports" / "mutation"
+        assert not report_dir.exists()
+        with pytest.raises(ValueError, match="--max-children must be greater than zero"):
+            run_profile(
+                PROFILE_BACKEND,
+                repo_root=tmp_path,
+                max_children=0,
+                keep_artifacts=False,
+            )
+        assert not report_dir.exists(), "reports/mutation/ should not be created for invalid input"
+
+
+class TestWriteReport:
+    def test_report_includes_all_profile_fields(self, tmp_path: Path) -> None:
+        """All BackendMutationProfile fields should appear in the report."""
+        profile = BackendMutationProfile(
+            key="test",
+            description="test profile",
+            paths_to_mutate=("backend/main.py",),
+            tests=("tests/",),
+            min_strict_score_percent=90.0,
+            max_survived=0,
+            max_timeout=0,
+            max_suspicious=0,
+            max_no_tests=0,
+            max_segfault=0,
+            max_interrupted=0,
+            mutate_only_covered_lines=True,
+            max_stack_depth=12,
+            extra_pytest_add_cli_args=("--foo",),
+            do_not_mutate=("backend/migrations",),
+        )
+        summary = MutationSummary(
+            total=10,
+            killed=8,
+            survived=1,
+            timeout=0,
+            suspicious=0,
+            no_tests=1,
+            skipped=0,
+            not_checked=0,
+            segfault=0,
+            interrupted=0,
+        )
+        report_path = tmp_path / "report.json"
+        _write_report(
+            report_path=report_path,
+            profile=profile,
+            command=["test"],
+            returncode=0,
+            summary=summary,
+            gate_failures=[],
+            failing_mutants=[],
+        )
+        data = json.loads(report_path.read_text())
+        profile_data = data["profile"]
+        expected_fields = {f.name for f in dataclass_fields(BackendMutationProfile)}
+        actual_fields = set(profile_data.keys())
+        assert expected_fields == actual_fields, (
+            f"Missing fields: {expected_fields - actual_fields}"
+        )

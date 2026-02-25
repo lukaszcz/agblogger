@@ -141,7 +141,6 @@ class GitService:
 
             result = subprocess.run(
                 ["git", "merge-file", "-p", str(ours_f), str(base_f), str(theirs_f)],
-                cwd=self.content_dir,
                 capture_output=True,
                 text=True,
                 encoding="utf-8",

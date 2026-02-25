@@ -168,6 +168,7 @@ function graphToLabelsById(graph: LabelGraphResponse): Map<string, LabelResponse
 
 function referenceDescendants(labelId: string, labelsById: Map<string, LabelResponse>): Set<string> {
   const descendants = new Set<string>()
+  const visited = new Set<string>([labelId])
   const queue = [labelId]
 
   while (queue.length > 0) {
@@ -181,7 +182,8 @@ function referenceDescendants(labelId: string, labelsById: Map<string, LabelResp
     }
 
     for (const child of label.children) {
-      if (!descendants.has(child)) {
+      if (!visited.has(child)) {
+        visited.add(child)
         descendants.add(child)
         queue.push(child)
       }

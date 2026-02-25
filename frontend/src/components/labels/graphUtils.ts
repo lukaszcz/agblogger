@@ -26,6 +26,7 @@ export function computeDescendants(
   labelsById: ReadonlyMap<string, Pick<LabelResponse, 'children'>>,
 ): Set<string> {
   const descendants = new Set<string>()
+  const visited = new Set<string>([labelId])
   const queue = [labelId]
 
   while (queue.length > 0) {
@@ -40,7 +41,8 @@ export function computeDescendants(
     }
 
     for (const child of label.children) {
-      if (!descendants.has(child)) {
+      if (!visited.has(child)) {
+        visited.add(child)
         descendants.add(child)
         queue.push(child)
       }

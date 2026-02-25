@@ -428,24 +428,25 @@ class TestSyncCacheRebuildFailure:
         assert any("cache" in w.lower() for w in data["warnings"])
 
 
-class TestSyncManifestNarrowedExceptions:
-    """Sync manifest update uses narrowed exception handling."""
+class TestTypeErrorHandler:
+    """TypeError is a programming bug and should return 500, not propagate."""
 
     @pytest.mark.asyncio
-    async def test_sync_manifest_type_error_returns_422(self, client: AsyncClient) -> None:
-        """TypeError is caught by the global TypeError handler and returns 422."""
+    async def test_type_error_returns_500(self, client: AsyncClient) -> None:
+        """TypeError should be caught by global handler and return 500."""
         token = await login(client)
         with patch(
-            "backend.api.sync.scan_content_files",
-            side_effect=TypeError("programming bug"),
+            "backend.api.render.render_markdown",
+            new_callable=AsyncMock,
+            side_effect=TypeError("deliberate test error"),
         ):
             resp = await client.post(
-                "/api/sync/commit",
-                data={"metadata": '{"deleted_files": [], "last_sync_commit": null}'},
+                "/api/render/preview",
+                json={"markdown": "# Hello"},
                 headers={"Authorization": f"Bearer {token}"},
             )
-        assert resp.status_code == 422
-        assert resp.json()["detail"] == "Invalid value"
+        assert resp.status_code == 500
+        assert resp.json()["detail"] == "Internal server error"
 
 
 class TestLabelCommitRecovery:

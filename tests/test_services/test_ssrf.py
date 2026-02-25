@@ -134,3 +134,21 @@ class TestSSRFSafeClient:
         async with ssrf_safe_client() as client:
             assert hasattr(client, "get")
             assert hasattr(client, "post")
+
+    async def test_ssrf_safe_client_fails_loudly_if_pool_missing(self) -> None:
+        """SSRF protection must not silently degrade if httpx internals change."""
+
+        class TransportWithoutPool:
+            """Simulate a future httpx transport that lacks the _pool attribute."""
+
+            pass
+
+        with (
+            patch(
+                "backend.crosspost.ssrf.httpx.AsyncHTTPTransport",
+                return_value=TransportWithoutPool(),
+            ),
+            pytest.raises(RuntimeError, match="httpx internal API changed"),
+        ):
+            async with ssrf_safe_client():
+                pass

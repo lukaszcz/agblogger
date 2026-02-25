@@ -39,7 +39,7 @@ When `last_sync_commit` is provided and valid:
 6. Normalize front matter (set `modified_at` to server time, backfill defaults for new posts).
 7. Git commit, update manifest, rebuild cache.
 
-When `last_sync_commit` is `None` (first sync): no merge base available. Client uploads overwrite server files. If a file exists on both sides with different content, it's reported as a conflict (server version kept).
+When `last_sync_commit` is `None` (first sync): no merge base available. Client-only files are uploaded to the server. If a file exists on both sides with different content, it's reported as a conflict (server version kept).
 
 ### Why `git merge-file` Instead of Branch-and-Merge
 

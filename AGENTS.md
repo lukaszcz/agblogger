@@ -78,7 +78,7 @@ Always start a dev server with `just start`. Remember to stop a running dev serv
 
 - The server may NEVER crash. We are aiming for a production-grade high-reliability server with 100% uptime.
 - No exceptions may crash the server. All errors should be handled and logged server-side.
-- Check for race conditions: missing or incorrect locking, non-atomic compound operations, check-ten-act patterns, improper initialization.
+- Check for race conditions: missing or incorrect locking, non-atomic compound operations, check-then-act patterns, improper initialization.
 
 ## Security Guidelines
 

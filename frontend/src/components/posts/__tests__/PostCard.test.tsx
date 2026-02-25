@@ -55,14 +55,7 @@ describe('PostCard', () => {
     expect(screen.queryByText('·')).not.toBeInTheDocument()
   })
 
-  it('renders excerpt as HTML not plain text', () => {
-    renderCard(makePost({ rendered_excerpt: '<p>Hello <strong>bold</strong> world</p>' }))
-    // The excerpt should be rendered as HTML, so <strong> should produce a real element
-    const bold = screen.getByText('bold')
-    expect(bold.tagName).toBe('STRONG')
-  })
-
-  it('renders excerpt text content', () => {
+  it('renders excerpt', () => {
     renderCard(makePost())
     expect(screen.getByText('This is the excerpt.')).toBeInTheDocument()
   })
@@ -87,5 +80,19 @@ describe('PostCard', () => {
     renderCard(makePost({ created_at: 'not-a-date' }))
     // Falls back to the part before space, which is 'not-a-date'
     expect(screen.getByText('not-a-date')).toBeInTheDocument()
+  })
+
+  it('sanitizes script tags from rendered excerpt', () => {
+    renderCard(makePost({ rendered_excerpt: '<p>Safe</p><script>alert("xss")</script>' }))
+    expect(screen.getByText('Safe')).toBeInTheDocument()
+    const excerptEl = screen.getByText('Safe').closest('div')
+    expect(excerptEl?.innerHTML).not.toContain('<script>')
+  })
+
+  it('sanitizes event handler attributes from rendered excerpt', () => {
+    renderCard(makePost({ rendered_excerpt: '<p>Text</p><img onerror="alert(1)" src="x">' }))
+    expect(screen.getByText('Text')).toBeInTheDocument()
+    const excerptEl = screen.getByText('Text').closest('div')
+    expect(excerptEl?.innerHTML).not.toContain('onerror')
   })
 })

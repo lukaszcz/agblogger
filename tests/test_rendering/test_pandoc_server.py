@@ -108,7 +108,7 @@ class TestSpawn:
                 "--timeout",
                 "10",
                 stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
             )
             assert server._process is mock_proc
 

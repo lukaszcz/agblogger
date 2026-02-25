@@ -424,10 +424,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.exception_handler(TypeError)
     async def type_error_handler(request: Request, exc: TypeError) -> JSONResponse:
-        logger.error("TypeError in %s %s: %s", request.method, request.url.path, exc, exc_info=exc)
+        logger.error(
+            "[BUG] TypeError in %s %s: %s",
+            request.method,
+            request.url.path,
+            exc,
+            exc_info=exc,
+        )
         return JSONResponse(
-            status_code=422,
-            content={"detail": "Invalid value"},
+            status_code=500,
+            content={"detail": "Internal server error"},
         )
 
     @app.exception_handler(subprocess.CalledProcessError)

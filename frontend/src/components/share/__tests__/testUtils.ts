@@ -18,14 +18,14 @@ Object.defineProperty(window, 'localStorage', {
 })
 
 // localStorage mock that throws SecurityError (for restrictive browser testing)
-export const throwingLocalStorage = {
-  getItem: () => {
+export const throwingLocalStorage: Storage = {
+  getItem: (_key: string) => {
     throw new DOMException('Access denied', 'SecurityError')
   },
-  setItem: () => {
+  setItem: (_key: string, _value: string) => {
     throw new DOMException('Access denied', 'SecurityError')
   },
-  removeItem: () => {
+  removeItem: (_key: string) => {
     throw new DOMException('Access denied', 'SecurityError')
   },
   clear: () => {
@@ -34,5 +34,5 @@ export const throwingLocalStorage = {
   get length() {
     return 0
   },
-  key: () => null,
+  key: (_index: number) => null,
 }

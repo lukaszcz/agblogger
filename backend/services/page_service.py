@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
 from backend.pandoc.renderer import render_markdown
@@ -10,8 +9,6 @@ from backend.schemas.page import PageConfig, PageResponse, SiteConfigResponse
 
 if TYPE_CHECKING:
     from backend.filesystem.content_manager import ContentManager
-
-logger = logging.getLogger(__name__)
 
 
 def get_site_config(content_manager: ContentManager) -> SiteConfigResponse:

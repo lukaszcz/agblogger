@@ -41,6 +41,7 @@ Client                                   Server
 | Deleted | Same | Delete on server |
 | Deleted | Changed | Conflict (delete/modify) |
 | Same | Deleted | Delete on client |
+| Changed | Deleted | Conflict (modify/delete) |
 
 ## Front Matter Normalization
 

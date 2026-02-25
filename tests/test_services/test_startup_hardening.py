@@ -121,7 +121,7 @@ class TestGlobalExceptionHandlers:
         assert resp.json()["detail"] == "Invalid value"
 
     @pytest.mark.asyncio
-    async def test_type_error_returns_422(self, tmp_path: Path) -> None:
+    async def test_type_error_returns_500(self, tmp_path: Path) -> None:
         settings = Settings(
             secret_key="test-secret-key-min-32-characters-long",
             admin_password="testpassword",
@@ -136,8 +136,8 @@ class TestGlobalExceptionHandlers:
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.get("/test-type-error")
-        assert resp.status_code == 422
-        assert resp.json()["detail"] == "Invalid value"
+        assert resp.status_code == 500
+        assert resp.json()["detail"] == "Internal server error"
 
     @pytest.mark.asyncio
     async def test_called_process_error_returns_502(self, tmp_path: Path) -> None:

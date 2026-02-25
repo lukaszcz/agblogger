@@ -424,19 +424,7 @@ def _write_report(
 ) -> None:
     payload = {
         "generated_at": datetime.now(tz=UTC).isoformat(),
-        "profile": {
-            "key": profile.key,
-            "description": profile.description,
-            "paths_to_mutate": profile.paths_to_mutate,
-            "tests": profile.tests,
-            "min_strict_score_percent": profile.min_strict_score_percent,
-            "max_survived": profile.max_survived,
-            "max_timeout": profile.max_timeout,
-            "max_suspicious": profile.max_suspicious,
-            "max_no_tests": profile.max_no_tests,
-            "max_segfault": profile.max_segfault,
-            "max_interrupted": profile.max_interrupted,
-        },
+        "profile": asdict(profile),
         "command": command,
         "mutmut_returncode": returncode,
         "summary": asdict(summary),
@@ -471,9 +459,9 @@ def run_profile(
 ) -> int:
     """Run one backend mutation profile and enforce quality gates."""
 
-    report_path = _mutation_report_path(repo_root, profile)
     if max_children is not None and max_children <= 0:
         raise ValueError("--max-children must be greater than zero")
+    report_path = _mutation_report_path(repo_root, profile)
 
     with _workspace(profile.key, keep_artifacts=keep_artifacts, repo_root=repo_root) as workspace:
         _prepare_workspace(repo_root, workspace)

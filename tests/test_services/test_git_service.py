@@ -181,10 +181,11 @@ class TestGitTimeout:
         with patch("subprocess.run", wraps=__import__("subprocess").run) as mock_run:
             gs.merge_file_content("base", "ours", "theirs")
         # The merge_file subprocess.run call should include timeout
-        for call in mock_run.call_args_list:
-            if "merge-file" in str(call):
-                assert "timeout" in call.kwargs
-                assert call.kwargs["timeout"] == GIT_TIMEOUT_SECONDS
+        merge_calls = [c for c in mock_run.call_args_list if "merge-file" in str(c)]
+        assert merge_calls, "Expected at least one subprocess.run call for git merge-file"
+        for call in merge_calls:
+            assert "timeout" in call.kwargs
+            assert call.kwargs["timeout"] == GIT_TIMEOUT_SECONDS
 
     def test_timeout_constant_is_positive(self) -> None:
         assert GIT_TIMEOUT_SECONDS > 0
