@@ -105,7 +105,8 @@ All Pandoc-rendered HTML passes through the allowlist-based sanitizer (`backend/
 - Escapes all text content and attribute values
 
 When modifying the sanitizer:
-- Never add `script`, `iframe`, `object`, `embed`, `style`, `form`, `input`, or `button` to the allowed tags
+- Never add `script`, `object`, `embed`, `style`, `form`, `input`, or `button` to the allowed tags
+- `iframe` is conditionally allowed only for YouTube embed/shorts URLs (`_YOUTUBE_SRC_RE`). The sanitizer forces sandbox, referrerpolicy, and loading attributes. Never extend iframe support to other domains without updating CSP `frame-src`.
 - Never allow `on*` event handler attributes
 - Never allow `javascript:` or `data:` URL schemes in `href`/`src`
 - Test with XSS payloads: `<script>alert(1)</script>`, `<img onerror=alert(1) src=x>`, `<a href="javascript:alert(1)">`, `<div style="background:url(javascript:alert(1))">`
@@ -150,6 +151,7 @@ The backend enforces a strict CSP via `backend/config.py:content_security_policy
 ```
 default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';
 img-src 'self' https: data:; font-src 'self' data:; connect-src 'self';
+frame-src https://www.youtube.com https://www.youtube-nocookie.com;
 base-uri 'self'; form-action 'self'; frame-ancestors 'none'
 ```
 
