@@ -7,6 +7,8 @@ from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from backend.exceptions import InternalServerError
+
 INSECURE_DEV_SENTINEL = "change-me-in-production"
 INSECURE_BOOTSTRAP_SENTINEL = "admin"
 
@@ -99,4 +101,4 @@ class Settings(BaseSettings):
 
         if violations:
             joined = "; ".join(violations)
-            raise ValueError(f"Insecure production configuration: {joined}")
+            raise InternalServerError(f"Insecure production configuration: {joined}")

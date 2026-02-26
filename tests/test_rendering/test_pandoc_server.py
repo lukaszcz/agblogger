@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
+from backend.exceptions import InternalServerError
 from backend.pandoc.server import PandocServer
 
 
@@ -30,16 +31,16 @@ class TestPandocServerInit:
         server = PandocServer()
         assert server.is_running is False
 
-    def test_port_zero_raises_value_error(self) -> None:
-        with pytest.raises(ValueError, match="port"):
+    def test_port_zero_raises_internal_server_error(self) -> None:
+        with pytest.raises(InternalServerError, match="port"):
             PandocServer(port=0)
 
-    def test_port_too_large_raises_value_error(self) -> None:
-        with pytest.raises(ValueError, match="port"):
+    def test_port_too_large_raises_internal_server_error(self) -> None:
+        with pytest.raises(InternalServerError, match="port"):
             PandocServer(port=70000)
 
-    def test_timeout_zero_raises_value_error(self) -> None:
-        with pytest.raises(ValueError, match="timeout"):
+    def test_timeout_zero_raises_internal_server_error(self) -> None:
+        with pytest.raises(InternalServerError, match="timeout"):
             PandocServer(timeout=0)
 
 

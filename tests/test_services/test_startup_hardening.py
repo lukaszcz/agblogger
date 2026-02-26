@@ -178,6 +178,58 @@ class TestGlobalExceptionHandlers:
         assert resp.json()["detail"] == "Invalid content encoding"
 
     @pytest.mark.asyncio
+    async def test_internal_server_error_returns_500_with_generic_message(
+        self, tmp_path: Path
+    ) -> None:
+        settings = Settings(
+            secret_key="test-secret-key-min-32-characters-long",
+            admin_password="testpassword",
+            debug=True,
+            frontend_dir=tmp_path / "no-frontend",
+        )
+        app = create_app(settings)
+
+        @app.get("/test-internal-server-error")
+        async def _raise_internal_server_error() -> None:
+            from backend.exceptions import InternalServerError
+
+            raise InternalServerError("sensitive decryption key: abc123secret")
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.get("/test-internal-server-error")
+        assert resp.status_code == 500
+        assert resp.json()["detail"] == "Internal server error"
+        assert "sensitive" not in resp.text
+        assert "abc123secret" not in resp.text
+
+    @pytest.mark.asyncio
+    async def test_internal_server_error_logs_details(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        settings = Settings(
+            secret_key="test-secret-key-min-32-characters-long",
+            admin_password="testpassword",
+            debug=True,
+            frontend_dir=tmp_path / "no-frontend",
+        )
+        app = create_app(settings)
+
+        @app.get("/test-internal-server-error-logging")
+        async def _raise_internal_server_error() -> None:
+            from backend.exceptions import InternalServerError
+
+            raise InternalServerError("sensitive decryption details here")
+
+        with caplog.at_level(logging.ERROR, logger="backend.main"):
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                resp = await client.get("/test-internal-server-error-logging")
+
+        assert resp.status_code == 500
+        assert any("sensitive decryption details here" in r.message for r in caplog.records)
+
+    @pytest.mark.asyncio
     async def test_operational_error_returns_503(self, tmp_path: Path) -> None:
         settings = Settings(
             secret_key="test-secret-key-min-32-characters-long",

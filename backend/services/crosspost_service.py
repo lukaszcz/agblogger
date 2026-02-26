@@ -11,6 +11,7 @@ from sqlalchemy.exc import IntegrityError
 
 from backend.crosspost.base import CrossPostContent, CrossPostResult
 from backend.crosspost.registry import get_poster, list_platforms
+from backend.exceptions import InternalServerError
 from backend.models.crosspost import CrossPost, SocialAccount
 from backend.services.crypto_service import decrypt_value, encrypt_value
 from backend.services.datetime_service import format_datetime, now_utc
@@ -176,7 +177,11 @@ async def crosspost(
 
         try:
             credentials = json.loads(decrypt_value(account.credentials, secret_key))
-        except ValueError:
+        except InternalServerError:
+            credentials = None
+        except json.JSONDecodeError:
+            credentials = None
+        if credentials is None:
             logger.warning(
                 "Failed to decrypt account data for %s account %s; "
                 "re-enter account data after key rotation",

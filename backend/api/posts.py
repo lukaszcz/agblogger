@@ -133,20 +133,23 @@ async def list_posts_endpoint(
     """List posts with pagination and filtering."""
     label_list = labels.split(",") if labels else None
     draft_author = (user.display_name or user.username) if user else None
-    return await list_posts(
-        session,
-        page=page,
-        per_page=per_page,
-        label=label,
-        labels=label_list,
-        label_mode=label_mode or "or",
-        author=author,
-        from_date=from_date,
-        to_date=to_date,
-        draft_author=draft_author,
-        sort=sort,
-        order=order,
-    )
+    try:
+        return await list_posts(
+            session,
+            page=page,
+            per_page=per_page,
+            label=label,
+            labels=label_list,
+            label_mode=label_mode or "or",
+            author=author,
+            from_date=from_date,
+            to_date=to_date,
+            draft_author=draft_author,
+            sort=sort,
+            order=order,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/search", response_model=list[SearchResult])

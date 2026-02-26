@@ -7,6 +7,8 @@ import hashlib
 
 from cryptography.fernet import Fernet, InvalidToken
 
+from backend.exceptions import InternalServerError
+
 
 def _derive_key(secret_key: str) -> bytes:
     """Derive a Fernet key from the application secret using SHA-256."""
@@ -26,4 +28,4 @@ def decrypt_value(ciphertext: str, secret_key: str) -> str:
     try:
         return f.decrypt(ciphertext.encode()).decode()
     except InvalidToken as exc:
-        raise ValueError("Failed to decrypt credential data") from exc
+        raise InternalServerError("Failed to decrypt credential data") from exc

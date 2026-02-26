@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from backend.exceptions import InternalServerError
 from backend.filesystem.content_manager import ContentManager
 from backend.filesystem.toml_manager import (
     LabelDef,
@@ -215,21 +216,25 @@ class TestFTSOperationalError:
 
 
 class TestInvalidDateFilterLogging:
-    """Invalid date filters should log a warning."""
+    """Invalid date filters raise ValueError from the service layer."""
 
     @pytest.mark.asyncio
-    async def test_invalid_from_date_raises_400(self) -> None:
-        from fastapi import HTTPException
-
+    async def test_invalid_from_date_raises_value_error(self) -> None:
         from backend.services.post_service import list_posts
 
         mock_session = AsyncMock()
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(ValueError, match="date"):
             await list_posts(mock_session, from_date="not-a-date")
 
-        assert exc_info.value.status_code == 400
-        assert "not-a-date" in str(exc_info.value.detail)
+    @pytest.mark.asyncio
+    async def test_invalid_to_date_raises_value_error(self) -> None:
+        from backend.services.post_service import list_posts
+
+        mock_session = AsyncMock()
+
+        with pytest.raises(ValueError, match="date"):
+            await list_posts(mock_session, to_date="not-a-date")
 
 
 class TestSyncTimestampNarrowing:
@@ -450,3 +455,58 @@ class TestSymlinkCleanupError:
 
         assert result is True
         assert not post_dir.exists()
+
+
+class TestCryptoDecryptionError:
+    """Decryption failures raise InternalServerError, not ValueError."""
+
+    def test_decrypt_invalid_ciphertext_raises_internal_error(self) -> None:
+        from backend.services.crypto_service import decrypt_value
+
+        with pytest.raises(InternalServerError, match="Failed to decrypt"):
+            decrypt_value("not-valid-ciphertext", "some-secret-key-for-testing!!")
+
+    def test_decrypt_invalid_ciphertext_not_value_error(self) -> None:
+        from backend.services.crypto_service import decrypt_value
+
+        with pytest.raises(InternalServerError):
+            decrypt_value("not-valid-ciphertext", "some-secret-key-for-testing!!")
+
+        # Ensure it does NOT raise ValueError
+        try:
+            decrypt_value("not-valid-ciphertext", "some-secret-key-for-testing!!")
+        except InternalServerError:
+            pass
+        except ValueError:
+            pytest.fail("decrypt_value should raise InternalServerError, not ValueError")
+
+
+class TestPandocServerConfigValidation:
+    """Pandoc server config errors raise InternalServerError."""
+
+    def test_invalid_port_raises_internal_error(self) -> None:
+        from backend.pandoc.server import PandocServer
+
+        with pytest.raises(InternalServerError, match="port"):
+            PandocServer(port=0)
+
+    def test_invalid_timeout_raises_internal_error(self) -> None:
+        from backend.pandoc.server import PandocServer
+
+        with pytest.raises(InternalServerError, match="timeout"):
+            PandocServer(timeout=0)
+
+
+class TestConfigSecurityValidation:
+    """Production security validation raises InternalServerError."""
+
+    def test_insecure_config_raises_internal_error(self) -> None:
+        from backend.config import Settings
+
+        settings = Settings(
+            secret_key="change-me-in-production",
+            admin_password="admin",
+            debug=False,
+        )
+        with pytest.raises(InternalServerError, match="Insecure production"):
+            settings.validate_runtime_security()

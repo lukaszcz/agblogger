@@ -85,9 +85,18 @@ except OSError as exc:
     raise HTTPException(status_code=500, detail=str(exc))
 ```
 
+### Exception type conventions
+
+Use the correct exception type to control what clients see:
+
+- **`InternalServerError`** (`backend/exceptions.py`) — for errors whose details must never reach clients: decryption failures, config validation, infrastructure port conflicts, etc. The global handler returns a generic `"Internal server error"` (500) and logs the full details server-side.
+- **`ValueError`** — for business logic validation errors that are safe to forward to clients: invalid dates, bad input formats, etc. The global handler returns `str(exc)` as the 422 detail.
+
+Services must never import `HTTPException` from FastAPI. Raise `ValueError` or `InternalServerError` and let the API layer or global handlers translate to HTTP responses.
+
 ### Global exception handlers
 
-Five handlers in `backend/main.py` catch `RenderError`, `RuntimeError`, `OSError`, `YAMLError`, and `JSONDecodeError` at the framework boundary. Each logs the full traceback and returns a generic message. If you introduce a new exception type that could escape route handlers, add a corresponding global handler.
+The global exception handlers in `backend/main.py` catch unhandled errors at the framework boundary. Each logs the full traceback and returns a generic message. If you introduce a new exception type that could escape route handlers, add a corresponding global handler.
 
 ### External service interaction
 

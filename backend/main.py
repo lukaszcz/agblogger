@@ -427,6 +427,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             content={"detail": "Data integrity error"},
         )
 
+    from backend.exceptions import InternalServerError
+
+    @app.exception_handler(InternalServerError)
+    async def internal_server_error_handler(
+        request: Request, exc: InternalServerError
+    ) -> JSONResponse:
+        logger.error(
+            "InternalServerError in %s %s: %s",
+            request.method,
+            request.url.path,
+            exc,
+            exc_info=exc,
+        )
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Internal server error"},
+        )
+
     @app.exception_handler(ValueError)
     async def value_error_handler(request: Request, exc: ValueError) -> JSONResponse:
         logger.error("ValueError in %s %s: %s", request.method, request.url.path, exc, exc_info=exc)

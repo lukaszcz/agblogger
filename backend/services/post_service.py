@@ -7,7 +7,6 @@ import math
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from fastapi import HTTPException
 from sqlalchemy import func, or_, select, text
 
 from backend.models.label import PostLabelCache
@@ -72,10 +71,8 @@ async def list_posts(
             from_dt = parse_datetime(date_part + " 00:00:00", default_tz="UTC")
             stmt = stmt.where(PostCache.created_at >= from_dt)
         except ValueError:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid 'from' date format: {from_date!r}. Expected YYYY-MM-DD.",
-            ) from None
+            msg = f"Invalid 'from' date format: {from_date!r}. Expected YYYY-MM-DD."
+            raise ValueError(msg) from None
 
     if to_date:
         try:
@@ -83,10 +80,8 @@ async def list_posts(
             to_dt = parse_datetime(date_part + " 23:59:59.999999", default_tz="UTC")
             stmt = stmt.where(PostCache.created_at <= to_dt)
         except ValueError:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid 'to' date format: {to_date!r}. Expected YYYY-MM-DD.",
-            ) from None
+            msg = f"Invalid 'to' date format: {to_date!r}. Expected YYYY-MM-DD."
+            raise ValueError(msg) from None
 
     # Label filtering
     label_ids: list[str] = []

@@ -98,3 +98,12 @@ Features: GitHub Flavored Markdown (tables, task lists, strikethrough), KaTeX ma
 After rendering and sanitization, `rewrite_relative_urls()` rewrites relative `src` and `href` attributes in the HTML to absolute `/api/content/...` paths based on the post's file path. This allows co-located assets (e.g., `photo.png` next to `index.md`) to be referenced with simple relative paths in markdown and served correctly via the content API.
 
 Lua filter files exist in `backend/pandoc/filters/` as placeholders for future use (callouts, tabsets, video embeds, local link rewriting) but are not currently wired into the rendering pipeline.
+
+## Exception Conventions
+
+The service layer uses two exception types to separate internal errors from business logic errors:
+
+- **`InternalServerError`** (`backend/exceptions.py`): For errors whose details must never reach clients — decryption failures, config validation, infrastructure port conflicts. The global handler in `main.py` logs the full message and returns a generic `"Internal server error"` (500).
+- **`ValueError`**: For business logic validation errors that are safe for clients — invalid dates, bad input formats. The global handler returns `str(exc)` as the 422 detail.
+
+Services must not import `HTTPException` from FastAPI. They raise `ValueError` or `InternalServerError`, and the API layer (`backend/api/`) translates to HTTP responses where needed. Global exception handlers in `main.py` serve as a safety net for unhandled exceptions.

@@ -465,6 +465,8 @@ class TestProductionStartupValidation:
             trusted_hosts=["test"],
         )
 
-        with pytest.raises(ValueError):
+        from backend.exceptions import InternalServerError
+
+        with pytest.raises(InternalServerError):
             async with create_test_client(settings):
                 pass

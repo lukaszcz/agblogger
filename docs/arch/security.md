@@ -173,17 +173,30 @@ Refresh tokens, PATs, and invite codes are hashed with SHA-256 before database s
 
 ### Global Exception Handlers
 
-Five exception handlers in `backend/main.py` catch unhandled errors at the framework boundary:
+Exception handlers in `backend/main.py` catch unhandled errors at the framework boundary:
 
 | Exception | HTTP Status | Client Message |
 |-----------|-------------|----------------|
+| `InternalServerError` | 500 | "Internal server error" |
 | `RenderError` | 502 | "Rendering service unavailable" |
 | `RuntimeError` | 500 | "Internal processing error" |
 | `OSError` | 500 | "Storage operation failed" |
 | `YAMLError` | 422 | "Invalid content format" |
 | `JSONDecodeError` | 500 | "Data integrity error" |
+| `ValueError` | 422 | `str(exc)` (business logic errors safe for clients) |
+| `TypeError` | 500 | "Internal server error" |
+| `CalledProcessError` | 502 | "External process failed" |
+| `UnicodeDecodeError` | 422 | "Invalid content encoding" |
+| `OperationalError` | 503 | "Database temporarily unavailable" |
+| `RequestValidationError` | 422 | Structured field-level errors |
 
-All handlers log the full exception with traceback server-side while returning only generic messages to clients. Internal error details are never exposed.
+All handlers log the full exception with traceback server-side while returning only generic messages to clients. `InternalServerError` is used for errors whose details must never reach clients (decryption failures, config validation, infrastructure issues). `ValueError` is the only handler that forwards `str(exc)` to clients, reserved for business logic validation errors.
+
+### Exception Type Conventions
+
+- **`InternalServerError`** (`backend/exceptions.py`): Raise for internal errors (decryption, config, infrastructure) whose messages contain sensitive details.
+- **`ValueError`**: Raise for business logic validation (invalid dates, bad formats) where the message is safe for client display.
+- **Service layer rule**: Services must not import `HTTPException`. Raise `ValueError` or `InternalServerError`; the API layer translates to HTTP responses.
 
 ### Pandoc Resilience
 

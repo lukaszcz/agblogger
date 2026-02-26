@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from backend.exceptions import InternalServerError
 from backend.services.crypto_service import decrypt_value, encrypt_value
 
 
@@ -23,11 +24,11 @@ class TestCryptoService:
 
     def test_decrypt_with_wrong_key_raises(self) -> None:
         ciphertext = encrypt_value("secret data", "correct-key")
-        with pytest.raises(ValueError, match="Failed to decrypt"):
+        with pytest.raises(InternalServerError, match="Failed to decrypt"):
             decrypt_value(ciphertext, "wrong-key")
 
     def test_decrypt_garbage_raises(self) -> None:
-        with pytest.raises(ValueError, match="Failed to decrypt"):
+        with pytest.raises(InternalServerError, match="Failed to decrypt"):
             decrypt_value("not-valid-ciphertext", "any-key")
 
     def test_empty_string_roundtrip(self) -> None:
