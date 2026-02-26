@@ -83,8 +83,8 @@ Always start a dev server with `just start`. Remember to stop a running dev serv
 ## Security Guidelines
 
 - All exceptions need to be handled gracefully, especially errors originating from interaction with external services (network, database, pandoc, git, filesystem). Never silently ignore exceptions.
-- Never expose internal server error details to clients. Return a generic error message to clients while keeping detailed logging server-side.
-- Input validation errors and invalid action errors are not internal server errors: the clients should be informed what went wrong when the error is a direct result of invalid input or invalid user action.
+- Never expose *internal* server error details to clients. Return a generic error message to clients while keeping detailed logging server-side.
+- Bussiness logic errors (input validation, invalid action, etc.) are NOT internal server errors: the clients should be informed what went wrong when the error is a direct result of invalid user action or input.
 - Any security-sensitive bug fix or feature change must include failing-first regression tests that cover abuse paths, not only happy paths.
 - Read docs/guidelines/security.md for the full security guidelines. Read docs/arch/security.md for security architecture.
 - **IMPORTANT**: Read docs/guidelines/security.md before making any changes related to authentication, authorization, input validation, sanitization, error handling, or infrastructure security.

@@ -5,8 +5,8 @@ Development guidelines for maintaining and extending AgBlogger's security postur
 ## General Principles
 
 - Every exception must be handled gracefully. Never silently swallow exceptions — log them, surface an appropriate error, or propagate them.
-- Never expose internal error details to clients. Route handlers and global exception handlers must return generic messages. Log the full exception server-side.
-- Input validation errors and invalid action errors are not internal server errors: the clients should be informed what went wrong when the error is a direct result of invalid input or invalid user action.
+- Never expose *internal* error details to clients. Route handlers and global exception handlers must return generic messages. Log the full exception server-side.
+- Bussiness logic errors (input validation, invalid action, etc.) are NOT internal server errors: the clients should be informed what went wrong when the error is a direct result of invalid user action or input.
 - Every security-sensitive change must include failing-first regression tests covering abuse paths, not only happy paths.
 - Read `docs/arch/security.md` before modifying any code related to authentication, authorization, input validation, error handling, or infrastructure security.
 
