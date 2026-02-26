@@ -7,7 +7,7 @@ import os
 import re
 import shutil
 from pathlib import Path as FilePath
-from typing import Annotated
+from typing import Annotated, Literal
 
 import yaml
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
@@ -123,12 +123,12 @@ async def list_posts_endpoint(
     per_page: int = Query(20, ge=1, le=100),
     label: str | None = None,
     labels: str | None = None,
-    label_mode: str | None = Query(None, alias="labelMode"),
+    label_mode: Literal["and", "or"] | None = Query(None, alias="labelMode"),
     author: str | None = None,
     from_date: str | None = Query(None, alias="from"),
     to_date: str | None = Query(None, alias="to"),
-    sort: str = "created_at",
-    order: str = "desc",
+    sort: Literal["created_at", "modified_at", "title", "author"] = "created_at",
+    order: Literal["asc", "desc"] = "desc",
 ) -> PostListResponse:
     """List posts with pagination and filtering."""
     label_list = labels.split(",") if labels else None

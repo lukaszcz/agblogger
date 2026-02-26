@@ -329,7 +329,7 @@ describe('LabelInput', () => {
     await user.keyboard('{Enter}')
 
     await waitFor(() => {
-      expect(screen.getByText('Invalid label')).toBeInTheDocument()
+      expect(screen.getByText("String should match pattern '^[a-z0-9][a-z0-9-]*'")).toBeInTheDocument()
     })
     // Should NOT show the generic load error
     expect(screen.queryByText('Failed to load labels. Type to create new ones.')).not.toBeInTheDocument()
@@ -349,12 +349,52 @@ describe('LabelInput', () => {
     await user.keyboard('{Enter}')
 
     await waitFor(() => {
-      expect(screen.getByText('Invalid label')).toBeInTheDocument()
+      expect(screen.getByText('validation error')).toBeInTheDocument()
     })
 
     // Typing again should clear the validation error
     await user.type(input, 'x')
-    expect(screen.queryByText('Invalid label')).not.toBeInTheDocument()
+    expect(screen.queryByText('validation error')).not.toBeInTheDocument()
+  })
+
+  it('shows extracted message from 422 detail with field/message format', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    const body = JSON.stringify({
+      detail: [{ field: 'id', message: 'Label ID must be lowercase alphanumeric' }],
+    })
+    mockCreateLabel.mockRejectedValueOnce(
+      new (HTTPError as unknown as new (s: number, b: string) => Error)(422, body),
+    )
+    await renderLabelInput({ onChange })
+
+    const input = screen.getByRole('combobox')
+    await user.type(input, 'BAD LABEL')
+    await user.keyboard('{Enter}')
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Label ID must be lowercase alphanumeric'),
+      ).toBeInTheDocument()
+    })
+  })
+
+  it('shows extracted message from 422 detail string', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    const body = JSON.stringify({ detail: 'ID must be lowercase' })
+    mockCreateLabel.mockRejectedValueOnce(
+      new (HTTPError as unknown as new (s: number, b: string) => Error)(422, body),
+    )
+    await renderLabelInput({ onChange })
+
+    const input = screen.getByRole('combobox')
+    await user.type(input, 'BAD')
+    await user.keyboard('{Enter}')
+
+    await waitFor(() => {
+      expect(screen.getByText('ID must be lowercase')).toBeInTheDocument()
+    })
   })
 
   it('ArrowUp wraps around to last item', async () => {

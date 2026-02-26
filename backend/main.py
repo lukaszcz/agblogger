@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 import yaml
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
@@ -362,6 +363,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(crosspost_router)
 
     # Global exception handlers — safety net for unhandled exceptions
+
+    @app.exception_handler(RequestValidationError)
+    async def request_validation_handler(
+        request: Request, exc: RequestValidationError
+    ) -> JSONResponse:
+        errors = []
+        for err in exc.errors():
+            loc = err.get("loc", ())
+            field = str(loc[-1]) if loc else "unknown"
+            errors.append({"field": field, "message": err.get("msg", "Invalid value")})
+        return JSONResponse(status_code=422, content={"detail": errors})
+
     from backend.pandoc.renderer import RenderError
 
     @app.exception_handler(RenderError)
@@ -417,9 +430,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.exception_handler(ValueError)
     async def value_error_handler(request: Request, exc: ValueError) -> JSONResponse:
         logger.error("ValueError in %s %s: %s", request.method, request.url.path, exc, exc_info=exc)
+        message = str(exc) if str(exc) else "Invalid value"
         return JSONResponse(
             status_code=422,
-            content={"detail": "Invalid value"},
+            content={"detail": message},
         )
 
     @app.exception_handler(TypeError)

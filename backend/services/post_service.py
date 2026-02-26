@@ -7,6 +7,7 @@ import math
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+from fastapi import HTTPException
 from sqlalchemy import func, or_, select, text
 
 from backend.models.label import PostLabelCache
@@ -71,7 +72,10 @@ async def list_posts(
             from_dt = parse_datetime(date_part + " 00:00:00", default_tz="UTC")
             stmt = stmt.where(PostCache.created_at >= from_dt)
         except ValueError:
-            logger.warning("Invalid from_date filter ignored: %r", from_date)
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid 'from' date format: {from_date!r}. Expected YYYY-MM-DD.",
+            ) from None
 
     if to_date:
         try:
@@ -79,7 +83,10 @@ async def list_posts(
             to_dt = parse_datetime(date_part + " 23:59:59.999999", default_tz="UTC")
             stmt = stmt.where(PostCache.created_at <= to_dt)
         except ValueError:
-            logger.warning("Invalid to_date filter ignored: %r", to_date)
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid 'to' date format: {to_date!r}. Expected YYYY-MM-DD.",
+            ) from None
 
     # Label filtering
     label_ids: list[str] = []
@@ -121,10 +128,6 @@ async def list_posts(
     total_result = await session.execute(count_stmt)
     total = total_result.scalar() or 0
 
-    # Sort (validated against allowlist)
-    allowed_sorts = {"created_at", "modified_at", "title", "author"}
-    if sort not in allowed_sorts:
-        sort = "created_at"
     sort_col = getattr(PostCache, sort, PostCache.created_at)
     stmt = stmt.order_by(sort_col.asc()) if order == "asc" else stmt.order_by(sort_col.desc())
 

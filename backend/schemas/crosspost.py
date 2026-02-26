@@ -8,7 +8,9 @@ from pydantic import BaseModel, Field
 class SocialAccountCreate(BaseModel):
     """Request to connect a social media account."""
 
-    platform: str = Field(min_length=1, description="Platform name, e.g. 'bluesky' or 'mastodon'")
+    platform: str = Field(
+        min_length=1, max_length=50, description="Platform name, e.g. 'bluesky' or 'mastodon'"
+    )
     account_name: str = Field(default="", description="Display name for the account")
     credentials: dict[str, str] = Field(
         description="Platform-specific credentials (stored as JSON)"
@@ -27,7 +29,9 @@ class SocialAccountResponse(BaseModel):
 class CrossPostRequest(BaseModel):
     """Request to cross-post a blog post."""
 
-    post_path: str = Field(min_length=1, description="Relative file path of the post to cross-post")
+    post_path: str = Field(
+        min_length=1, max_length=500, description="Relative file path of the post to cross-post"
+    )
     platforms: list[str] = Field(min_length=1, description="List of platform names to post to")
     custom_text: str | None = Field(
         default=None, description="Optional custom text to post instead of auto-generated content"

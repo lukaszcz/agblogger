@@ -56,8 +56,8 @@ describe('LoginPage', () => {
   it('renders sign in form', () => {
     renderLogin()
     expect(screen.getByRole('heading', { name: 'Sign in' })).toBeInTheDocument()
-    expect(screen.getByLabelText('Username')).toBeInTheDocument()
-    expect(screen.getByLabelText('Password')).toBeInTheDocument()
+    expect(screen.getByLabelText(/Username/)).toBeInTheDocument()
+    expect(screen.getByLabelText(/Password/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument()
   })
 
@@ -65,8 +65,8 @@ describe('LoginPage', () => {
     mockLogin.mockResolvedValue(undefined)
     renderLogin()
 
-    await userEvent.type(screen.getByLabelText('Username'), 'admin')
-    await userEvent.type(screen.getByLabelText('Password'), 'secret')
+    await userEvent.type(screen.getByLabelText(/Username/), 'admin')
+    await userEvent.type(screen.getByLabelText(/Password/), 'secret')
     await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
 
     expect(mockLogin).toHaveBeenCalledWith('admin', 'secret')
@@ -83,5 +83,27 @@ describe('LoginPage', () => {
     renderLogin()
     const button = screen.getByRole('button', { name: 'Signing in...' })
     expect(button).toBeDisabled()
+  })
+
+  it('clears error when user types', async () => {
+    mockError = 'Invalid username or password'
+    renderLogin()
+    expect(screen.getByText('Invalid username or password')).toBeInTheDocument()
+
+    await userEvent.type(screen.getByLabelText(/Username/), 'a')
+
+    expect(screen.queryByText('Invalid username or password')).not.toBeInTheDocument()
+  })
+
+  it('shows required indicators on username and password', () => {
+    renderLogin()
+    const usernameLabel = screen.getByText((content, element) => {
+      return element?.tagName === 'LABEL' && content.includes('Username') && content.includes('*')
+    })
+    const passwordLabel = screen.getByText((content, element) => {
+      return element?.tagName === 'LABEL' && content.includes('Password') && content.includes('*')
+    })
+    expect(usernameLabel).toBeInTheDocument()
+    expect(passwordLabel).toBeInTheDocument()
   })
 })

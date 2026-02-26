@@ -218,24 +218,18 @@ class TestInvalidDateFilterLogging:
     """Invalid date filters should log a warning."""
 
     @pytest.mark.asyncio
-    async def test_invalid_from_date_logs_warning(self, caplog: pytest.LogCaptureFixture) -> None:
-        from unittest.mock import MagicMock
+    async def test_invalid_from_date_raises_400(self) -> None:
+        from fastapi import HTTPException
 
         from backend.services.post_service import list_posts
 
         mock_session = AsyncMock()
-        # Return 0 for count query (scalar() is sync on the result object)
-        mock_count_result = MagicMock()
-        mock_count_result.scalar.return_value = 0
-        # Return empty list for main query (scalars().all() are sync on the result)
-        mock_main_result = MagicMock()
-        mock_main_result.scalars.return_value.all.return_value = []
-        mock_session.execute = AsyncMock(side_effect=[mock_count_result, mock_main_result])
 
-        with caplog.at_level(logging.WARNING, logger="backend.services.post_service"):
+        with pytest.raises(HTTPException) as exc_info:
             await list_posts(mock_session, from_date="not-a-date")
 
-        assert any("Invalid from_date" in r.message for r in caplog.records)
+        assert exc_info.value.status_code == 400
+        assert "not-a-date" in str(exc_info.value.detail)
 
 
 class TestSyncTimestampNarrowing:

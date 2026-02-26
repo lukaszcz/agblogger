@@ -290,6 +290,43 @@ describe('LabelSettingsPage', () => {
     })
   })
 
+  it('clears error when user adds a name', async () => {
+    mockFetchLabel.mockResolvedValue({ ...testLabel, names: [] })
+    mockFetchLabels.mockResolvedValue(allLabels)
+    const user = userEvent.setup()
+    renderSettings()
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /save changes/i })).toBeInTheDocument()
+    })
+
+    // Trigger validation error — error + hint text both contain the message
+    await user.click(screen.getByRole('button', { name: /save changes/i }))
+    expect(screen.getAllByText('At least one display name is required.')).toHaveLength(2)
+
+    // Type a name and add it
+    await user.type(screen.getByPlaceholderText('Add a display name...'), 'test-name')
+    await user.click(screen.getByRole('button', { name: 'Add' }))
+
+    // Error banner should be gone, only the hint text remains
+    expect(screen.getAllByText('At least one display name is required.')).toHaveLength(1)
+  })
+
+  it('shows required indicator on Display Names heading', async () => {
+    mockFetchLabel.mockResolvedValue(testLabel)
+    mockFetchLabels.mockResolvedValue(allLabels)
+    renderSettings()
+
+    await waitFor(() => {
+      expect(screen.getByText('software engineering')).toBeInTheDocument()
+    })
+
+    const heading = screen.getByText((content, element) => {
+      return element?.tagName === 'H2' && content.includes('Display Names') && content.includes('*')
+    })
+    expect(heading).toBeInTheDocument()
+  })
+
   it('cancels delete confirmation', async () => {
     mockFetchLabel.mockResolvedValue(testLabel)
     mockFetchLabels.mockResolvedValue(allLabels)

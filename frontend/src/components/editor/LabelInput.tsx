@@ -79,7 +79,23 @@ export default function LabelInput({ value, onChange, disabled }: LabelInputProp
       if (err instanceof HTTPError && err.response.status === 409) {
         addLabel(trimmed)
       } else if (err instanceof HTTPError && err.response.status === 422) {
-        setCreateError('Invalid label')
+        let message = 'Invalid label ID'
+        try {
+          const text = await err.response.text()
+          const parsed: unknown = JSON.parse(text)
+          if (typeof parsed === 'object' && parsed !== null && 'detail' in parsed) {
+            const detail = (parsed as { detail: unknown }).detail
+            if (typeof detail === 'string' && detail.length > 0) {
+              message = detail
+            } else if (Array.isArray(detail) && detail.length > 0) {
+              const first = detail[0] as { message?: string; msg?: string }
+              message = first.message ?? first.msg ?? message
+            }
+          }
+        } catch {
+          // Parse failed, use default message
+        }
+        setCreateError(message)
       } else {
         setLoadError(true)
       }

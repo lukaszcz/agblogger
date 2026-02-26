@@ -74,6 +74,7 @@ export default function LabelSettingsPage() {
   function handleRemoveName(index: number) {
     if (names.length <= 1) return
     setNames(names.filter((_, i) => i !== index))
+    setError(null)
   }
 
   function handleAddName() {
@@ -82,6 +83,7 @@ export default function LabelSettingsPage() {
     if (names.includes(trimmed)) return
     setNames([...names, trimmed])
     setNewName('')
+    setError(null)
   }
 
   function handleToggleParent(parentId: string) {
@@ -90,6 +92,7 @@ export default function LabelSettingsPage() {
     } else {
       setParents([...parents, parentId])
     }
+    setError(null)
   }
 
   async function handleSave() {
@@ -190,7 +193,7 @@ export default function LabelSettingsPage() {
 
       {/* Names section */}
       <section className="mb-8 p-5 bg-paper border border-border rounded-lg">
-        <h2 className="text-sm font-medium text-ink mb-3">Display Names</h2>
+        <h2 className="text-sm font-medium text-ink mb-3">Display Names *</h2>
         <div className="flex flex-wrap gap-2 mb-3">
           {names.map((name, i) => (
             <span

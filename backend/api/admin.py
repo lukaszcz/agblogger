@@ -154,7 +154,11 @@ async def update_page_endpoint(
 ) -> dict[str, str]:
     """Update a page's title and/or content."""
     if not _PAGE_ID_PATTERN.match(page_id):
-        raise HTTPException(status_code=400, detail="Invalid page ID")
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid page ID: must start with a lowercase letter or digit, "
+            "and contain only lowercase alphanumeric characters, hyphens, or underscores.",
+        )
     try:
         update_page(content_manager, page_id, title=body.title, content=body.content)
     except ValueError as exc:
@@ -176,7 +180,11 @@ async def delete_page_endpoint(
 ) -> None:
     """Delete a page."""
     if not _PAGE_ID_PATTERN.match(page_id):
-        raise HTTPException(status_code=400, detail="Invalid page ID")
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid page ID: must start with a lowercase letter or digit, "
+            "and contain only lowercase alphanumeric characters, hyphens, or underscores.",
+        )
     try:
         delete_page(content_manager, page_id, delete_file=delete_file)
     except ValueError as exc:

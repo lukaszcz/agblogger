@@ -218,7 +218,7 @@ describe('EditorPage', () => {
     expect(bodyTextarea).toBeTruthy()
 
     // Title should be restored
-    expect(screen.getByLabelText('Title')).toHaveValue('Restored Title')
+    expect(screen.getByLabelText(/Title/)).toHaveValue('Restored Title')
   })
 
   it('dismisses banner and clears draft when Discard is clicked', async () => {
@@ -242,14 +242,14 @@ describe('EditorPage', () => {
   it('renders title input for new post', async () => {
     renderEditor('/editor/new')
     await waitFor(() => {
-      expect(screen.getByLabelText('Title')).toBeInTheDocument()
+      expect(screen.getByLabelText(/Title/)).toBeInTheDocument()
     })
   })
 
   it('save disabled when title is empty', async () => {
     renderEditor('/editor/new')
     await waitFor(() => {
-      expect(screen.getByLabelText('Title')).toBeInTheDocument()
+      expect(screen.getByLabelText(/Title/)).toBeInTheDocument()
     })
     // Title is initially empty for new posts
     const saveButton = screen.getByRole('button', { name: /save/i })
@@ -260,14 +260,14 @@ describe('EditorPage', () => {
     mockFetchPostForEdit.mockResolvedValue(editResponse)
     renderEditor('/editor/posts/existing.md')
     await waitFor(() => {
-      expect(screen.getByLabelText('Title')).toHaveValue('Existing Post')
+      expect(screen.getByLabelText(/Title/)).toHaveValue('Existing Post')
     })
   })
 
   it('no file path input for new post', async () => {
     renderEditor('/editor/new')
     await waitFor(() => {
-      expect(screen.getByLabelText('Title')).toBeInTheDocument()
+      expect(screen.getByLabelText(/Title/)).toBeInTheDocument()
     })
     expect(screen.queryByLabelText('File path')).not.toBeInTheDocument()
   })
@@ -277,13 +277,13 @@ describe('EditorPage', () => {
     renderEditor('/editor/new')
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Title')).toBeInTheDocument()
+      expect(screen.getByLabelText(/Title/)).toBeInTheDocument()
     })
 
     const saveButton = screen.getByRole('button', { name: /save/i })
     expect(saveButton).toBeDisabled()
 
-    await user.type(screen.getByLabelText('Title'), 'A Title')
+    await user.type(screen.getByLabelText(/Title/), 'A Title')
     expect(saveButton).toBeEnabled()
   })
 
@@ -302,10 +302,10 @@ describe('EditorPage', () => {
     renderEditor('/editor/new')
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Title')).toBeInTheDocument()
+      expect(screen.getByLabelText(/Title/)).toBeInTheDocument()
     })
 
-    await user.type(screen.getByLabelText('Title'), 'My Title')
+    await user.type(screen.getByLabelText(/Title/), 'My Title')
     await user.click(screen.getByRole('button', { name: /save/i }))
 
     await waitFor(() => {
@@ -332,7 +332,7 @@ describe('EditorPage', () => {
     renderEditor('/editor/posts/existing.md')
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Title')).toHaveValue('Existing Post')
+      expect(screen.getByLabelText(/Title/)).toHaveValue('Existing Post')
     })
 
     await user.click(screen.getByRole('button', { name: /save/i }))
@@ -356,10 +356,10 @@ describe('EditorPage', () => {
     renderEditor('/editor/new')
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Title')).toBeInTheDocument()
+      expect(screen.getByLabelText(/Title/)).toBeInTheDocument()
     })
 
-    await user.type(screen.getByLabelText('Title'), 'Test')
+    await user.type(screen.getByLabelText(/Title/), 'Test')
     await user.click(screen.getByRole('button', { name: /save/i }))
 
     await waitFor(() => {
@@ -376,10 +376,10 @@ describe('EditorPage', () => {
     renderEditor('/editor/new')
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Title')).toBeInTheDocument()
+      expect(screen.getByLabelText(/Title/)).toBeInTheDocument()
     })
 
-    await user.type(screen.getByLabelText('Title'), 'Test')
+    await user.type(screen.getByLabelText(/Title/), 'Test')
     await user.click(screen.getByRole('button', { name: /save/i }))
 
     await waitFor(() => {
@@ -399,10 +399,10 @@ describe('EditorPage', () => {
     renderEditor('/editor/new')
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Title')).toBeInTheDocument()
+      expect(screen.getByLabelText(/Title/)).toBeInTheDocument()
     })
 
-    await user.type(screen.getByLabelText('Title'), 'Test')
+    await user.type(screen.getByLabelText(/Title/), 'Test')
     await user.click(screen.getByRole('button', { name: /save/i }))
 
     await waitFor(() => {
@@ -422,10 +422,10 @@ describe('EditorPage', () => {
     renderEditor('/editor/new')
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Title')).toBeInTheDocument()
+      expect(screen.getByLabelText(/Title/)).toBeInTheDocument()
     })
 
-    await user.type(screen.getByLabelText('Title'), 'Test')
+    await user.type(screen.getByLabelText(/Title/), 'Test')
     await user.click(screen.getByRole('button', { name: /save/i }))
 
     await waitFor(() => {
@@ -440,10 +440,10 @@ describe('EditorPage', () => {
     renderEditor('/editor/new')
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Title')).toBeInTheDocument()
+      expect(screen.getByLabelText(/Title/)).toBeInTheDocument()
     })
 
-    await user.type(screen.getByLabelText('Title'), 'Test')
+    await user.type(screen.getByLabelText(/Title/), 'Test')
     await user.click(screen.getByRole('button', { name: /save/i }))
 
     await waitFor(() => {
@@ -475,10 +475,10 @@ describe('EditorPage', () => {
     renderEditor('/editor/new')
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Title')).toBeInTheDocument()
+      expect(screen.getByLabelText(/Title/)).toBeInTheDocument()
     })
 
-    await user.type(screen.getByLabelText('Title'), 'Test')
+    await user.type(screen.getByLabelText(/Title/), 'Test')
     await user.click(screen.getByRole('button', { name: /save/i }))
 
     await waitFor(() => {
@@ -495,10 +495,10 @@ describe('EditorPage', () => {
     renderEditor('/editor/new')
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Title')).toBeInTheDocument()
+      expect(screen.getByLabelText(/Title/)).toBeInTheDocument()
     })
 
-    await user.type(screen.getByLabelText('Title'), 'Test')
+    await user.type(screen.getByLabelText(/Title/), 'Test')
     await user.click(screen.getByRole('button', { name: /save/i }))
 
     await waitFor(() => {
@@ -550,7 +550,7 @@ describe('EditorPage', () => {
     renderEditor('/editor/posts/existing.md')
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Title')).toHaveValue('Existing Post')
+      expect(screen.getByLabelText(/Title/)).toHaveValue('Existing Post')
     })
 
     // Wait for debounced preview to fire (body is non-empty from loaded post)
@@ -573,7 +573,7 @@ describe('EditorPage', () => {
     renderEditor('/editor/new')
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Title')).toBeInTheDocument()
+      expect(screen.getByLabelText(/Title/)).toBeInTheDocument()
     })
 
     // Type some body text to trigger preview
@@ -601,10 +601,10 @@ describe('EditorPage', () => {
     renderEditor('/editor/new')
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Title')).toBeInTheDocument()
+      expect(screen.getByLabelText(/Title/)).toBeInTheDocument()
     })
 
-    await user.type(screen.getByLabelText('Title'), 'Test')
+    await user.type(screen.getByLabelText(/Title/), 'Test')
     await user.click(screen.getByRole('button', { name: /save/i }))
 
     await waitFor(() => {
@@ -624,10 +624,10 @@ describe('EditorPage', () => {
     renderEditor('/editor/new')
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Title')).toBeInTheDocument()
+      expect(screen.getByLabelText(/Title/)).toBeInTheDocument()
     })
 
-    await user.type(screen.getByLabelText('Title'), 'Test')
+    await user.type(screen.getByLabelText(/Title/), 'Test')
     await user.click(screen.getByRole('button', { name: /save/i }))
 
     await waitFor(() => {
@@ -646,7 +646,7 @@ describe('EditorPage', () => {
       renderEditor('/editor/posts/existing.md')
 
       await waitFor(() => {
-        expect(screen.getByLabelText('Title')).toHaveValue('Existing Post')
+        expect(screen.getByLabelText(/Title/)).toHaveValue('Existing Post')
       })
 
       // Find the hidden file input and trigger upload
@@ -673,6 +673,95 @@ describe('EditorPage', () => {
     }
   })
 
+  it('shows preview unavailable when preview API fails', async () => {
+    const user = userEvent.setup()
+    const mockApi = (await import('@/api/client')).default
+    const mockPost = vi.mocked(mockApi.post)
+    mockPost.mockClear()
+    mockPost.mockReturnValue({
+      json: () => Promise.reject(new Error('network error')),
+    } as ReturnType<typeof mockApi.post>)
+
+    renderEditor('/editor/new')
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Title/)).toBeInTheDocument()
+    })
+
+    const textareas = document.querySelectorAll('textarea')
+    await user.type(textareas[0]!, 'Some content to trigger preview')
+
+    await waitFor(() => {
+      expect(screen.getByText(/preview unavailable/i)).toBeInTheDocument()
+    })
+  })
+
+  it('shows title character count', async () => {
+    const user = userEvent.setup()
+    renderEditor('/editor/new')
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Title/)).toBeInTheDocument()
+    })
+
+    await user.type(screen.getByLabelText(/Title/), 'Hello')
+    expect(screen.getByText('5 / 500')).toBeInTheDocument()
+  })
+
+  it('shows required indicator on title', async () => {
+    renderEditor('/editor/new')
+
+    await waitFor(() => {
+      expect(screen.getByText(/Title/)).toBeInTheDocument()
+    })
+
+    // The title label should have a required indicator
+    const titleLabel = screen.getByText((content, element) => {
+      return element?.tagName === 'LABEL' && content.includes('Title') && content.includes('*')
+    })
+    expect(titleLabel).toBeInTheDocument()
+  })
+
+  it('shows upload file size limit', async () => {
+    mockFetchPostForEdit.mockResolvedValue(editResponse)
+    renderEditor('/editor/posts/existing.md')
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Title/)).toHaveValue('Existing Post')
+    })
+
+    expect(screen.getByText(/max 10 MB/i)).toBeInTheDocument()
+  })
+
+  it('shows 422 with field/message detail as field-prefixed error', async () => {
+    const mockCreatePost = vi.mocked(createPost)
+    mockCreatePost.mockRejectedValue(
+      new (MockHTTPError as unknown as new (s: number, b?: string) => Error)(
+        422,
+        JSON.stringify({
+          detail: [
+            { field: 'title', message: 'String should have at least 1 character' },
+          ],
+        }),
+      ),
+    )
+    const user = userEvent.setup()
+    renderEditor('/editor/new')
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Title/)).toBeInTheDocument()
+    })
+
+    await user.type(screen.getByLabelText(/Title/), 'Test')
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Title: String should have at least 1 character'),
+      ).toBeInTheDocument()
+    })
+  })
+
   it('shows 422 with unparseable body as generic validation error', async () => {
     const mockCreatePost = vi.mocked(createPost)
     mockCreatePost.mockRejectedValue(
@@ -685,10 +774,10 @@ describe('EditorPage', () => {
     renderEditor('/editor/new')
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Title')).toBeInTheDocument()
+      expect(screen.getByLabelText(/Title/)).toBeInTheDocument()
     })
 
-    await user.type(screen.getByLabelText('Title'), 'Test')
+    await user.type(screen.getByLabelText(/Title/), 'Test')
     await user.click(screen.getByRole('button', { name: /save/i }))
 
     await waitFor(() => {

@@ -35,6 +35,7 @@ export default function EditorPage() {
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [preview, setPreview] = useState<string | null>(null)
+  const [previewError, setPreviewError] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const renderedPreview = useRenderedHtml(preview)
   const previewRequestRef = useRef(0)
@@ -124,9 +125,12 @@ export default function EditorPage() {
           .json<{ html: string }>()
         if (previewRequestRef.current === requestId) {
           setPreview(resp.html)
+          setPreviewError(false)
         }
       } catch {
-        // Silently ignore preview failures — editor remains usable
+        if (previewRequestRef.current === requestId) {
+          setPreviewError(true)
+        }
       }
     }, 500)
     return () => clearTimeout(timer)
@@ -170,8 +174,13 @@ export default function EditorPage() {
               setError(
                 detail
                   .map((d: unknown) => {
-                    const item = d as { msg?: string }
-                    return item.msg ?? 'Unknown error'
+                    const item = d as { field?: string; message?: string; msg?: string }
+                    const msg = item.message ?? item.msg ?? 'Unknown error'
+                    if (item.field != null && item.field.length > 0) {
+                      const label = item.field.charAt(0).toUpperCase() + item.field.slice(1)
+                      return `${label}: ${msg}`
+                    }
+                    return msg
                   })
                   .join(', '),
               )
@@ -344,15 +353,19 @@ export default function EditorPage() {
 
       <div className="mb-4 space-y-3 p-4 bg-paper border border-border rounded-lg">
         <div>
-          <label htmlFor="title" className="block text-xs font-medium text-muted mb-1">
-            Title
-          </label>
+          <div className="flex items-center justify-between mb-1">
+            <label htmlFor="title" className="block text-xs font-medium text-muted">
+              Title *
+            </label>
+            <span className="text-xs text-muted">{title.length} / 500</span>
+          </div>
           <input
             id="title"
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             disabled={saving}
+            maxLength={500}
             placeholder="Post title"
             className="w-full px-3 py-2 bg-paper-warm border border-border rounded-lg
                      text-ink text-sm
@@ -449,6 +462,7 @@ export default function EditorPage() {
           {uploading && (
             <span className="text-xs text-muted">Uploading...</span>
           )}
+          <span className="text-xs text-muted">Max 10 MB per file</span>
         </div>
       )}
 
@@ -476,7 +490,9 @@ export default function EditorPage() {
         </div>
 
         <div className="p-6 bg-paper border border-border rounded-lg overflow-y-auto">
-          {preview !== null ? (
+          {previewError ? (
+            <p className="text-sm text-red-600 italic">Preview unavailable</p>
+          ) : preview !== null ? (
             <div
               className="prose max-w-none"
               dangerouslySetInnerHTML={{ __html: renderedPreview }}

@@ -392,11 +392,11 @@ describe('AdminPage', () => {
     await user.click(screen.getByRole('button', { name: /add page/i }))
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Page ID')).toBeInTheDocument()
+      expect(screen.getByLabelText(/Page ID/)).toBeInTheDocument()
     })
 
-    await user.type(screen.getByLabelText('Page ID'), 'contact')
-    await user.type(screen.getByLabelText(/^Title$/i), 'Contact')
+    await user.type(screen.getByLabelText(/Page ID/), 'contact')
+    await user.type(screen.getByPlaceholderText('e.g. About'), 'Contact')
     await user.click(screen.getByRole('button', { name: /create page/i }))
 
     await waitFor(() => {
@@ -417,8 +417,8 @@ describe('AdminPage', () => {
     })
 
     await user.click(screen.getByRole('button', { name: /add page/i }))
-    await user.type(screen.getByLabelText('Page ID'), 'timeline')
-    await user.type(screen.getByLabelText(/^Title$/i), 'Timeline 2')
+    await user.type(screen.getByLabelText(/Page ID/), 'timeline')
+    await user.type(screen.getByPlaceholderText('e.g. About'), 'Timeline 2')
     await user.click(screen.getByRole('button', { name: /create page/i }))
 
     await waitFor(() => {
@@ -508,7 +508,7 @@ describe('AdminPage', () => {
     renderAdmin()
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Current Password')).toBeInTheDocument()
+      expect(screen.getByLabelText(/Current Password/)).toBeInTheDocument()
     })
 
     // Submit with empty fields
@@ -523,12 +523,12 @@ describe('AdminPage', () => {
     renderAdmin()
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Current Password')).toBeInTheDocument()
+      expect(screen.getByLabelText(/Current Password/)).toBeInTheDocument()
     })
 
-    await user.type(screen.getByLabelText('Current Password'), 'oldpassword')
-    await user.type(screen.getByLabelText('New Password'), 'newpassword1')
-    await user.type(screen.getByLabelText('Confirm New Password'), 'newpassword2')
+    await user.type(screen.getByLabelText(/Current Password/), 'oldpassword')
+    await user.type(screen.getByLabelText(/^New Password/), 'newpassword1')
+    await user.type(screen.getByLabelText(/Confirm New Password/), 'newpassword2')
     await user.click(screen.getByRole('button', { name: /change password/i }))
 
     expect(screen.getByText('New passwords do not match.')).toBeInTheDocument()
@@ -540,12 +540,12 @@ describe('AdminPage', () => {
     renderAdmin()
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Current Password')).toBeInTheDocument()
+      expect(screen.getByLabelText(/Current Password/)).toBeInTheDocument()
     })
 
-    await user.type(screen.getByLabelText('Current Password'), 'oldpass')
-    await user.type(screen.getByLabelText('New Password'), 'short')
-    await user.type(screen.getByLabelText('Confirm New Password'), 'short')
+    await user.type(screen.getByLabelText(/Current Password/), 'oldpass')
+    await user.type(screen.getByLabelText(/^New Password/), 'short')
+    await user.type(screen.getByLabelText(/Confirm New Password/), 'short')
     await user.click(screen.getByRole('button', { name: /change password/i }))
 
     expect(screen.getByText('New password must be at least 8 characters.')).toBeInTheDocument()
@@ -558,20 +558,20 @@ describe('AdminPage', () => {
     renderAdmin()
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Current Password')).toBeInTheDocument()
+      expect(screen.getByLabelText(/Current Password/)).toBeInTheDocument()
     })
 
-    await user.type(screen.getByLabelText('Current Password'), 'oldpassword')
-    await user.type(screen.getByLabelText('New Password'), 'newpassword123')
-    await user.type(screen.getByLabelText('Confirm New Password'), 'newpassword123')
+    await user.type(screen.getByLabelText(/Current Password/), 'oldpassword')
+    await user.type(screen.getByLabelText(/^New Password/), 'newpassword123')
+    await user.type(screen.getByLabelText(/Confirm New Password/), 'newpassword123')
     await user.click(screen.getByRole('button', { name: /change password/i }))
 
     await waitFor(() => {
       expect(screen.getByText('Password changed successfully.')).toBeInTheDocument()
     })
-    expect(screen.getByLabelText('Current Password')).toHaveValue('')
-    expect(screen.getByLabelText('New Password')).toHaveValue('')
-    expect(screen.getByLabelText('Confirm New Password')).toHaveValue('')
+    expect(screen.getByLabelText(/Current Password/)).toHaveValue('')
+    expect(screen.getByLabelText(/^New Password/)).toHaveValue('')
+    expect(screen.getByLabelText(/Confirm New Password/)).toHaveValue('')
   })
 
   it('shows 400 error with detail from response', async () => {
@@ -586,12 +586,12 @@ describe('AdminPage', () => {
     renderAdmin()
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Current Password')).toBeInTheDocument()
+      expect(screen.getByLabelText(/Current Password/)).toBeInTheDocument()
     })
 
-    await user.type(screen.getByLabelText('Current Password'), 'wrongpass')
-    await user.type(screen.getByLabelText('New Password'), 'newpassword123')
-    await user.type(screen.getByLabelText('Confirm New Password'), 'newpassword123')
+    await user.type(screen.getByLabelText(/Current Password/), 'wrongpass')
+    await user.type(screen.getByLabelText(/^New Password/), 'newpassword123')
+    await user.type(screen.getByLabelText(/Confirm New Password/), 'newpassword123')
     await user.click(screen.getByRole('button', { name: /change password/i }))
 
     await waitFor(() => {
@@ -608,12 +608,12 @@ describe('AdminPage', () => {
     renderAdmin()
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Current Password')).toBeInTheDocument()
+      expect(screen.getByLabelText(/Current Password/)).toBeInTheDocument()
     })
 
-    await user.type(screen.getByLabelText('Current Password'), 'oldpassword')
-    await user.type(screen.getByLabelText('New Password'), 'newpassword123')
-    await user.type(screen.getByLabelText('Confirm New Password'), 'newpassword123')
+    await user.type(screen.getByLabelText(/Current Password/), 'oldpassword')
+    await user.type(screen.getByLabelText(/^New Password/), 'newpassword123')
+    await user.type(screen.getByLabelText(/Confirm New Password/), 'newpassword123')
     await user.click(screen.getByRole('button', { name: /change password/i }))
 
     await waitFor(() => {
@@ -636,6 +636,51 @@ describe('AdminPage', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('social-accounts-panel')).toBeInTheDocument()
+    })
+  })
+
+  it('clears password error when user types in password field', async () => {
+    setupLoadSuccess()
+    const user = userEvent.setup()
+    renderAdmin()
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Current Password/)).toBeInTheDocument()
+    })
+
+    // Trigger a password error
+    await user.click(screen.getByRole('button', { name: /change password/i }))
+    expect(screen.getByText('All fields are required.')).toBeInTheDocument()
+
+    // Type in the current password field
+    await user.type(screen.getByLabelText(/Current Password/), 'a')
+
+    // Error should be cleared
+    expect(screen.queryByText('All fields are required.')).not.toBeInTheDocument()
+  })
+
+  it('shows page ID format hint in add page form', async () => {
+    setupLoadSuccess()
+    const user = userEvent.setup()
+    renderAdmin()
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /add page/i })).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: /add page/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/lowercase/i)).toBeInTheDocument()
+    })
+  })
+
+  it('shows password min length hint', async () => {
+    setupLoadSuccess()
+    renderAdmin()
+
+    await waitFor(() => {
+      expect(screen.getByText(/at least 8 characters/i)).toBeInTheDocument()
     })
   })
 })

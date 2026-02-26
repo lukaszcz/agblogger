@@ -815,7 +815,7 @@ export default function AdminPage() {
           <div className="mt-4 p-4 bg-paper-warm border border-border rounded-lg space-y-3">
             <div>
               <label htmlFor="new-page-id" className="block text-xs font-medium text-muted mb-1">
-                Page ID
+                Page ID *
               </label>
               <input
                 id="new-page-id"
@@ -829,13 +829,16 @@ export default function AdminPage() {
                          focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20
                          disabled:opacity-50"
               />
+              <p className="text-xs text-muted mt-1">
+                Lowercase alphanumeric characters, hyphens, and underscores only.
+              </p>
             </div>
             <div>
               <label
                 htmlFor="new-page-title"
                 className="block text-xs font-medium text-muted mb-1"
               >
-                Title
+                Title *
               </label>
               <input
                 id="new-page-title"
@@ -907,7 +910,7 @@ export default function AdminPage() {
               htmlFor="current-password"
               className="block text-xs font-medium text-muted mb-1"
             >
-              Current Password
+              Current Password *
             </label>
             <input
               id="current-password"
@@ -917,6 +920,7 @@ export default function AdminPage() {
               value={currentPassword}
               onChange={(e) => {
                 setCurrentPassword(e.target.value)
+                setPasswordError(null)
                 setPasswordSuccess(null)
               }}
               disabled={busy}
@@ -929,7 +933,7 @@ export default function AdminPage() {
 
           <div>
             <label htmlFor="new-password" className="block text-xs font-medium text-muted mb-1">
-              New Password
+              New Password *
             </label>
             <input
               id="new-password"
@@ -939,6 +943,7 @@ export default function AdminPage() {
               value={newPassword}
               onChange={(e) => {
                 setNewPassword(e.target.value)
+                setPasswordError(null)
                 setPasswordSuccess(null)
               }}
               disabled={busy}
@@ -947,6 +952,7 @@ export default function AdminPage() {
                        focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20
                        disabled:opacity-50"
             />
+            <p className="text-xs text-muted mt-1">At least 8 characters.</p>
           </div>
 
           <div>
@@ -954,7 +960,7 @@ export default function AdminPage() {
               htmlFor="confirm-password"
               className="block text-xs font-medium text-muted mb-1"
             >
-              Confirm New Password
+              Confirm New Password *
             </label>
             <input
               id="confirm-password"
@@ -964,6 +970,7 @@ export default function AdminPage() {
               value={confirmPassword}
               onChange={(e) => {
                 setConfirmPassword(e.target.value)
+                setPasswordError(null)
                 setPasswordSuccess(null)
               }}
               disabled={busy}
