@@ -784,4 +784,25 @@ describe('EditorPage', () => {
       expect(screen.getByText('Validation error. Check your input.')).toBeInTheDocument()
     })
   })
+
+  it('logs warning when fetchSocialAccounts fails', async () => {
+    const { fetchSocialAccounts } = await import('@/api/crosspost')
+    vi.mocked(fetchSocialAccounts).mockRejectedValueOnce(new Error('Network error'))
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    renderEditor('/editor/new')
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Title/)).toBeInTheDocument()
+    })
+
+    await waitFor(() => {
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('social accounts'),
+        expect.any(Error),
+      )
+    })
+
+    warnSpy.mockRestore()
+  })
 })

@@ -18,6 +18,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { useSiteStore } from '@/stores/siteStore'
 import { HTTPError } from '@/api/client'
 import api from '@/api/client'
+import { parseErrorDetail } from '@/api/parseError'
 import type { AdminSiteSettings, AdminPageConfig } from '@/api/client'
 import {
   fetchAdminSiteSettings,
@@ -36,6 +37,7 @@ const BUILTIN_PAGE_IDS = new Set(['timeline', 'labels'])
 
 function PagePreview({ markdown }: { markdown: string }) {
   const [html, setHtml] = useState<string | null>(null)
+  const [previewError, setPreviewError] = useState(false)
   const requestRef = useRef(0)
   const hasContent = markdown.trim().length > 0
 
@@ -49,15 +51,22 @@ function PagePreview({ markdown }: { markdown: string }) {
           .json<{ html: string }>()
         if (requestRef.current === requestId) {
           setHtml(resp.html)
+          setPreviewError(false)
         }
       } catch {
-        // Silently ignore preview failures
+        if (requestRef.current === requestId) {
+          setPreviewError(true)
+        }
       }
     }, 500)
     return () => clearTimeout(timer)
   }, [markdown, hasContent])
 
   const rendered = useRenderedHtml(hasContent ? html : null)
+
+  if (previewError) {
+    return <p className="text-sm text-red-600 italic">Preview unavailable</p>
+  }
 
   if (!rendered) {
     return <p className="text-sm text-muted italic">Preview will appear here...</p>
@@ -405,20 +414,8 @@ export default function AdminPage() {
     } catch (err) {
       if (err instanceof HTTPError) {
         if (err.response.status === 400) {
-          try {
-            const text = await err.response.text()
-            const parsed: unknown = JSON.parse(text)
-            let detail = 'Invalid request.'
-            if (typeof parsed === 'object' && parsed !== null && 'detail' in parsed) {
-              const rawDetail = (parsed as { detail: unknown }).detail
-              if (typeof rawDetail === 'string') {
-                detail = rawDetail
-              }
-            }
-            setPasswordError(detail)
-          } catch {
-            setPasswordError('Invalid request.')
-          }
+          const detail = await parseErrorDetail(err.response, 'Invalid request.')
+          setPasswordError(detail)
         } else if (err.response.status === 401) {
           setPasswordError('Session expired. Please log in again.')
         } else {

@@ -373,6 +373,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             loc = err.get("loc", ())
             field = str(loc[-1]) if loc else "unknown"
             errors.append({"field": field, "message": err.get("msg", "Invalid value")})
+        logger.warning(
+            "RequestValidationError in %s %s: %s",
+            request.method,
+            request.url.path,
+            errors,
+        )
         return JSONResponse(status_code=422, content={"detail": errors})
 
     from backend.pandoc.renderer import RenderError
@@ -448,7 +454,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.exception_handler(ValueError)
     async def value_error_handler(request: Request, exc: ValueError) -> JSONResponse:
         logger.error("ValueError in %s %s: %s", request.method, request.url.path, exc, exc_info=exc)
-        message = str(exc) if str(exc) else "Invalid value"
+        message = str(exc) or "Invalid value"
         return JSONResponse(
             status_code=422,
             content={"detail": message},

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -216,7 +216,7 @@ class TestFTSOperationalError:
 
 
 class TestInvalidDateFilterLogging:
-    """Invalid date filters raise ValueError from the service layer."""
+    """Invalid date filters raise ValueError and log original parse error."""
 
     @pytest.mark.asyncio
     async def test_invalid_from_date_raises_value_error(self) -> None:
@@ -235,6 +235,55 @@ class TestInvalidDateFilterLogging:
 
         with pytest.raises(ValueError, match="date"):
             await list_posts(mock_session, to_date="not-a-date")
+
+    @pytest.mark.asyncio
+    async def test_invalid_from_date_logs_original_error(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        from backend.services.post_service import list_posts
+
+        mock_session = AsyncMock()
+
+        with (
+            caplog.at_level(logging.WARNING, logger="backend.services.post_service"),
+            pytest.raises(ValueError),
+        ):
+            await list_posts(mock_session, from_date="not-a-date")
+
+        assert any("not-a-date" in r.message for r in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_invalid_to_date_logs_original_error(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        from backend.services.post_service import list_posts
+
+        mock_session = AsyncMock()
+
+        with (
+            caplog.at_level(logging.WARNING, logger="backend.services.post_service"),
+            pytest.raises(ValueError),
+        ):
+            await list_posts(mock_session, to_date="not-a-date")
+
+        assert any("not-a-date" in r.message for r in caplog.records)
+
+
+class TestInvalidSortColumn:
+    """Invalid sort column raises ValueError instead of silently falling back."""
+
+    @pytest.mark.asyncio
+    async def test_invalid_sort_column_raises_value_error(self) -> None:
+        from backend.services.post_service import list_posts
+
+        mock_result = MagicMock()
+        mock_result.scalar.return_value = 0
+        mock_result.scalars.return_value.all.return_value = []
+        mock_session = AsyncMock()
+        mock_session.execute = AsyncMock(return_value=mock_result)
+
+        with pytest.raises(ValueError, match="sort"):
+            await list_posts(mock_session, sort="nonexistent_column")
 
 
 class TestSyncTimestampNarrowing:

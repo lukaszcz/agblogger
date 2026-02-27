@@ -374,7 +374,7 @@ describe('LabelInput', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText('Label ID must be lowercase alphanumeric'),
+        screen.getByText('Id: Label ID must be lowercase alphanumeric'),
       ).toBeInTheDocument()
     })
   })

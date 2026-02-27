@@ -71,6 +71,7 @@ async def list_posts(
             from_dt = parse_datetime(date_part + " 00:00:00", default_tz="UTC")
             stmt = stmt.where(PostCache.created_at >= from_dt)
         except ValueError:
+            logger.warning("Failed to parse 'from' date %r", from_date, exc_info=True)
             msg = f"Invalid 'from' date format: {from_date!r}. Expected YYYY-MM-DD."
             raise ValueError(msg) from None
 
@@ -80,6 +81,7 @@ async def list_posts(
             to_dt = parse_datetime(date_part + " 23:59:59.999999", default_tz="UTC")
             stmt = stmt.where(PostCache.created_at <= to_dt)
         except ValueError:
+            logger.warning("Failed to parse 'to' date %r", to_date, exc_info=True)
             msg = f"Invalid 'to' date format: {to_date!r}. Expected YYYY-MM-DD."
             raise ValueError(msg) from None
 
@@ -123,7 +125,11 @@ async def list_posts(
     total_result = await session.execute(count_stmt)
     total = total_result.scalar() or 0
 
-    sort_col = getattr(PostCache, sort, PostCache.created_at)
+    allowed_sort_columns = {"created_at", "modified_at", "title", "author"}
+    if sort not in allowed_sort_columns:
+        msg = f"Invalid sort column: {sort!r}. Allowed: {', '.join(sorted(allowed_sort_columns))}"
+        raise ValueError(msg)
+    sort_col = getattr(PostCache, sort)
     stmt = stmt.order_by(sort_col.asc()) if order == "asc" else stmt.order_by(sort_col.desc())
 
     # Paginate

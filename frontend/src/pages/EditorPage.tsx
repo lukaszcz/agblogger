@@ -7,6 +7,7 @@ import { fetchPostForEdit, createPost, updatePost, uploadAssets } from '@/api/po
 import { fetchSocialAccounts } from '@/api/crosspost'
 import type { SocialAccount } from '@/api/crosspost'
 import { HTTPError } from '@/api/client'
+import { parseErrorDetail } from '@/api/parseError'
 import api from '@/api/client'
 import { useEditorAutoSave } from '@/hooks/useEditorAutoSave'
 import type { DraftData } from '@/hooks/useEditorAutoSave'
@@ -107,7 +108,9 @@ export default function EditorPage() {
     if (user) {
       fetchSocialAccounts()
         .then(setAccounts)
-        .catch(() => {})
+        .catch((err: unknown) => {
+          console.warn('Failed to load social accounts', err)
+        })
     }
   }, [user])
 
@@ -163,35 +166,11 @@ export default function EditorPage() {
         } else if (status === 404) {
           setError('Post not found. It may have been deleted.')
         } else if (status === 422) {
-          try {
-            const text = await err.response.text()
-            const parsed: unknown = JSON.parse(text)
-            let detail: unknown
-            if (typeof parsed === 'object' && parsed !== null && 'detail' in parsed) {
-              detail = (parsed as { detail: unknown }).detail
-            }
-            if (Array.isArray(detail)) {
-              setError(
-                detail
-                  .map((d: unknown) => {
-                    const item = d as { field?: string; message?: string; msg?: string }
-                    const msg = item.message ?? item.msg ?? 'Unknown error'
-                    if (item.field != null && item.field.length > 0) {
-                      const label = item.field.charAt(0).toUpperCase() + item.field.slice(1)
-                      return `${label}: ${msg}`
-                    }
-                    return msg
-                  })
-                  .join(', '),
-              )
-            } else if (typeof detail === 'string') {
-              setError(detail.length > 0 ? detail : 'Validation error. Check your input.')
-            } else {
-              setError('Validation error. Check your input.')
-            }
-          } catch {
-            setError('Validation error. Check your input.')
-          }
+          const message = await parseErrorDetail(
+            err.response,
+            'Validation error. Check your input.',
+          )
+          setError(message)
         } else {
           setError('Failed to save post. Please try again.')
         }

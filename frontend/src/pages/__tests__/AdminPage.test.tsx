@@ -675,6 +675,27 @@ describe('AdminPage', () => {
     })
   })
 
+  it('shows preview error when preview API fails', async () => {
+    setupLoadSuccess()
+    const user = userEvent.setup()
+    const mockApi = (await import('@/api/client')).default
+    vi.mocked(mockApi.post).mockReturnValue({
+      json: () => Promise.reject(new Error('Server error')),
+    } as ReturnType<typeof mockApi.post>)
+
+    renderAdmin()
+
+    await waitFor(() => {
+      expect(screen.getByText('About')).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByText('About'))
+
+    await waitFor(() => {
+      expect(screen.getByText('Preview unavailable')).toBeInTheDocument()
+    })
+  })
+
   it('shows password min length hint', async () => {
     setupLoadSuccess()
     renderAdmin()

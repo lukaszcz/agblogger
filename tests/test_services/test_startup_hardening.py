@@ -230,6 +230,36 @@ class TestGlobalExceptionHandlers:
         assert any("sensitive decryption details here" in r.message for r in caplog.records)
 
     @pytest.mark.asyncio
+    async def test_request_validation_error_logs_details(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        from pydantic import BaseModel
+
+        settings = Settings(
+            secret_key="test-secret-key-min-32-characters-long",
+            admin_password="testpassword",
+            debug=True,
+            frontend_dir=tmp_path / "no-frontend",
+        )
+        app = create_app(settings)
+
+        class StrictBody(BaseModel):
+            email: str
+
+        @app.post("/test-validation-logging")
+        async def _needs_body(body: StrictBody) -> dict[str, str]:
+            return {"email": body.email}
+
+        with caplog.at_level(logging.WARNING, logger="backend.main"):
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                resp = await client.post("/test-validation-logging", json={"wrong": "field"})
+
+        assert resp.status_code == 422
+        assert any("RequestValidationError" in r.message for r in caplog.records)
+
+    @pytest.mark.asyncio
     async def test_operational_error_returns_503(self, tmp_path: Path) -> None:
         settings = Settings(
             secret_key="test-secret-key-min-32-characters-long",

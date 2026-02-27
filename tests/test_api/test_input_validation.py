@@ -188,7 +188,7 @@ class TestPageIdErrorMessage:
     """Page ID validation error explains the required format."""
 
     @pytest.mark.asyncio
-    async def test_invalid_page_id_explains_format(self, client: AsyncClient) -> None:
+    async def test_invalid_page_id_put_explains_format(self, client: AsyncClient) -> None:
         token = await login(client)
         resp = await client.put(
             "/api/admin/pages/INVALID!",
@@ -198,6 +198,17 @@ class TestPageIdErrorMessage:
         assert resp.status_code == 400
         detail = resp.json()["detail"].lower()
         # Should explain the allowed format, not just say "Invalid page ID"
+        assert "lowercase" in detail or "a-z" in detail or "alphanumeric" in detail
+
+    @pytest.mark.asyncio
+    async def test_invalid_page_id_delete_explains_format(self, client: AsyncClient) -> None:
+        token = await login(client)
+        resp = await client.delete(
+            "/api/admin/pages/INVALID!",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 400
+        detail = resp.json()["detail"].lower()
         assert "lowercase" in detail or "a-z" in detail or "alphanumeric" in detail
 
 
@@ -226,3 +237,24 @@ class TestCrosspostSchemaLimits:
             credentials={"key": "val"},
         )
         assert account.platform == "bluesky"
+
+    def test_post_path_max_length_rejected(self) -> None:
+        """post_path over 500 chars should be rejected."""
+        from pydantic import ValidationError
+
+        from backend.schemas.crosspost import CrossPostRequest
+
+        with pytest.raises(ValidationError):
+            CrossPostRequest(
+                post_path="x" * 501,
+                platforms=["bluesky"],
+            )
+
+    def test_post_path_valid_length_accepted(self) -> None:
+        from backend.schemas.crosspost import CrossPostRequest
+
+        req = CrossPostRequest(
+            post_path="posts/2026-01-01-test/index.md",
+            platforms=["bluesky"],
+        )
+        assert req.post_path == "posts/2026-01-01-test/index.md"

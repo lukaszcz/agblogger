@@ -6,98 +6,73 @@
 
 ## Critical Issues (2)
 
-### 1. [Security] Global ValueError handler leaks internal error details to clients
+### 1. ~~[Security] Global ValueError handler leaks internal error details to clients~~ RESOLVED
 
-`backend/main.py:433-437`
+Resolved in c87ca26: Introduced `InternalServerError` exception class. Internal errors (decryption, config, pandoc) now raise `InternalServerError` instead of `ValueError`. Global handler returns generic "Internal server error" (500).
 
-The handler now forwards `str(exc)` verbatim. Since `ValueError` is used throughout the codebase for both business-logic and internal errors, this exposes internal details like:
+### 2. ~~[Architecture] HTTPException imported into service layer~~ RESOLVED
 
-- `"Path traversal detected: {rel_path}"` (filesystem/content_manager.py)
-- `"Failed to decrypt credential data"` (services/crypto_service.py)
-- `"Insecure production configuration: {joined}"` (config.py)
-- Pandoc server connection details (pandoc/server.py)
-
-This violates the security guideline: "Never expose internal server error details to clients."
-
-**Fix:** Introduce a `BusinessValidationError(ValueError)` subclass for intentionally user-facing errors. Keep the global `ValueError` handler returning generic messages. Or handle specific `ValueError`s at the route level.
-
-### 2. [Architecture] HTTPException imported into service layer
-
-`backend/services/post_service.py:10`
-
-This is the only service file that imports `HTTPException`. The codebase pattern is: services raise domain exceptions, API layer translates to HTTP responses. This couples the service layer to FastAPI, breaking it for non-HTTP callers (CLI, sync).
-
-**Fix:** Raise `ValueError` from the service and catch it in `backend/api/posts.py` to raise `HTTPException(400, ...)`.
+Resolved in c87ca26: `post_service.py` no longer imports `HTTPException`. Raises `ValueError` from the service; caught in `api/posts.py` to raise `HTTPException(400)`.
 
 ## Important Issues (7)
 
-### 3. [Error Handling] AdminPage PagePreview silently swallows preview errors
+### 3. ~~[Error Handling] AdminPage PagePreview silently swallows preview errors~~ RESOLVED
 
-`frontend/src/pages/AdminPage.tsx:53-55`
+Added `previewError` state to `PagePreview` component, matching the pattern already used in `EditorPage`. Shows "Preview unavailable" on failure.
 
-The same silent preview failure that was fixed in `EditorPage` (with `previewError` state) was left unchanged here with `// Silently ignore preview failures`.
+### 4. ~~[Error Handling] `raise ValueError from None` discards traceback context~~ RESOLVED
 
-### 4. [Error Handling] `raise HTTPException from None` discards traceback context
+Added `logger.warning()` with `exc_info=True` before the re-raise in both `from_date` and `to_date` parsing blocks, preserving the original parse error in server logs.
 
-`backend/services/post_service.py:74-78, 85-89`
+### 5. ~~[Error Handling] fetchSocialAccounts silently swallowed in EditorPage~~ RESOLVED
 
-The original `ValueError` from `parse_datetime` is completely discarded. The server should log the original error before re-raising.
+Replaced `.catch(() => {})` with `.catch((err) => { console.warn('Failed to load social accounts', err) })`.
 
-### 5. [Error Handling] fetchSocialAccounts silently swallowed in EditorPage
+### 6. ~~[Docs] Typo "Bussiness" in 2 files~~ RESOLVED
 
-`frontend/src/pages/EditorPage.tsx:109-111`
+Fixed to "Business" in `CLAUDE.md` and `docs/guidelines/security.md`.
 
-`.catch(() => {})` with no logging or error state. Pre-existing but in a modified file.
+### 7. ~~[Docs] Stale exception handler count in security docs~~ RESOLVED
 
-### 6. [Docs] Typo "Bussiness" in 2 files
+Resolved in c87ca26: Updated `docs/guidelines/security.md` and `docs/arch/security.md` with the full handler table.
 
-`AGENTS.md:87`, `docs/guidelines/security.md:9` -- should be "Business".
+### 8. ~~[Error Handling] RequestValidationError handler has no logging~~ RESOLVED
 
-### 7. [Docs] Stale exception handler count in security docs
+Added `logger.warning()` call to the `RequestValidationError` handler in `main.py`.
 
-`docs/guidelines/security.md:90` and `docs/arch/security.md:176` -- say "Five handlers" but there are now 11. The table also claims all handlers return "only generic messages," which is no longer true after the `ValueError` and `RequestValidationError` changes.
+### 9. ~~[Robustness] Service layer sort fallback weakened~~ RESOLVED
 
-### 8. [Error Handling] RequestValidationError handler has no logging
-
-`backend/main.py:367-376`
-
-Unlike every other exception handler in the file, this one has zero logging. Also, it strips `loc` to just the last element, losing context for nested fields.
-
-### 9. [Robustness] Service layer sort fallback weakened
-
-`backend/services/post_service.py:131`
-
-The explicit allowlist was removed but the function signature still accepts `str`. Non-API callers get a silent fallback to `created_at` via `getattr(PostCache, sort, PostCache.created_at)`.
+Added explicit `_ALLOWED_SORT_COLUMNS` validation in `list_posts`. Invalid sort columns now raise `ValueError` instead of silently falling back.
 
 ## Suggestions (7)
 
-### 10. [Dedup] Extract shared parseErrorDetail utility on frontend
+### 10. ~~[Dedup] Extract shared parseErrorDetail utility on frontend~~ RESOLVED
 
-Three components (`LabelInput.tsx`, `EditorPage.tsx`, `AdminPage.tsx`) duplicate ~45 lines of error-response parsing logic. Extract to `frontend/src/api/parseError.ts`.
+Extracted to `frontend/src/api/parseError.ts`. Replaced duplicated error-parsing logic in `LabelInput.tsx`, `EditorPage.tsx`, and `AdminPage.tsx`.
 
-### 11. [Dedup] Extract page ID error message constant
+### 11. ~~[Dedup] Extract page ID error message constant~~ RESOLVED
 
-`backend/api/admin.py:159-160, 185-186` -- identical 3-line error string repeated. Extract to a module constant.
+Extracted `_PAGE_ID_ERROR` constant in `backend/api/admin.py`, used by both PUT and DELETE handlers.
 
-### 12. [Simplify] `str(exc) if str(exc)` calls str() twice
+### 12. ~~[Simplify] `str(exc) if str(exc)` calls str() twice~~ RESOLVED
 
-`backend/main.py:433` -- use `str(exc) or "Invalid value"` instead.
+Changed to `str(exc) or "Invalid value"`.
 
-### 13. [Tests] Missing tests for DELETE endpoint page ID validation
+### 13. ~~[Tests] Missing tests for DELETE endpoint page ID validation~~ RESOLVED
 
-Only PUT is tested in `TestPageIdErrorMessage`. The DELETE endpoint has the same validation but no test.
+Added `test_invalid_page_id_delete_explains_format` to `TestPageIdErrorMessage`.
 
-### 14. [Tests] Missing to_date service-level unit test
+### 14. ~~[Tests] Missing to_date service-level unit test~~ RESOLVED
 
-`test_error_handling.py` -- `from_date` has a service-level test but the old `to_date` test was removed.
+Resolved in c87ca26: Added `test_invalid_to_date_raises_value_error`.
 
-### 15. [Tests] Missing CrossPostRequest.post_path max_length test
+### 15. ~~[Tests] Missing CrossPostRequest.post_path max_length test~~ RESOLVED
 
-Only `platform` max_length is tested. `post_path` max_length=500 is untested.
+Added `test_post_path_max_length_rejected` and `test_post_path_valid_length_accepted` to `TestCrosspostSchemaLimits`.
 
-### 16. [Docs] Review document doesn't indicate which items are resolved
+### 16. ~~[Docs] Review document doesn't indicate which items are resolved~~ RESOLVED
 
-`docs/reviews/2026-02-26-input-validation-review.md` -- items fixed in the same commit still appear as open findings.
+This document now marks all resolved items.
 
 ## Strengths
 
